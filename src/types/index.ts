@@ -1,0 +1,221 @@
+export interface StorageRecord {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+  version: number;
+}
+
+export type ProductUnit = 'pcs' | 'packet' | 'box' | 'bottle' | 'kg' | 'gram' | 'litre' | 'ml' | 'plate' | 'cup' | 'glass' | 'meter' | 'roll' | 'dozen' | 'custom';
+
+export interface Product extends StorageRecord {
+  barcode: string;
+  name: string;
+  category: string;
+  brand: string;
+  supplierId: string;
+  supplierIds?: string[]; // multiple suppliers support
+  unit: ProductUnit;
+  quantity: number;
+  minimumStock: number;
+  purchaseRate: number;
+  sellingRate: number;
+  profitPerUnit: number;
+  hasExpiry?: boolean;    // does this product have expiry dates?
+  notes: string;
+  imageBase64?: string;
+}
+
+/** A single received batch of a product — tracks supplier, dates, and remaining qty */
+export interface ProductBatch extends StorageRecord {
+  productId: string;
+  supplierId: string;            // which supplier this batch came from
+  purchaseInvoiceId?: string;    // optional link to purchase invoice
+  batchNumber: string;           // e.g. "B-2024-001"
+  manufacturingDate: string | null;
+  /** If set, expiryDate is auto-calculated as mfgDate + expiryMonths months */
+  expiryMonths: number | null;
+  expiryDate: string | null;     // final expiry (auto or manual)
+  initialQuantity: number;       // how many entered stock in this batch
+  quantity: number;              // remaining stock in this batch
+  purchaseRate: number;
+  notes: string;
+}
+
+export interface Supplier extends StorageRecord {
+  name: string;
+  phone: string;
+  email: string;
+  address: string;
+  vatPan: string;
+  notes: string;
+}
+
+export interface Customer extends StorageRecord {
+  name: string;
+  phone: string;
+  address: string;
+  email: string;
+  notes: string;
+}
+
+export type PaymentMethod = 'cash' | 'qr' | 'card' | 'bank' | 'split';
+
+export interface PurchaseItem {
+  productId: string;
+  productName: string;
+  quantity: number;
+  purchaseRate: number;
+  subtotal: number;
+}
+
+export interface PurchaseInvoice extends StorageRecord {
+  invoiceNumber: string;
+  supplierId: string;
+  date: string;
+  items: PurchaseItem[];
+  discount: number;
+  tax: number;
+  grandTotal: number;
+  paymentMethod: PaymentMethod;
+  notes: string;
+}
+
+export interface SaleItem {
+  productId: string;
+  productName: string;
+  quantity: number;
+  sellingRate: number;
+  subtotal: number;
+}
+
+export interface SaleInvoice extends StorageRecord {
+  customerId: string | null;
+  date: string;
+  items: SaleItem[];
+  discount: number;
+  tax: number;
+  grandTotal: number;
+  paidAmount: number;
+  paymentMethod: PaymentMethod;
+  splitPayments?: { method: PaymentMethod; amount: number }[];
+  notes: string;
+}
+
+export interface HotelRoom extends StorageRecord {
+  roomNumber: string;
+  roomType: string;
+  floor: number;
+  capacity: number;
+  status: 'available' | 'occupied' | 'reserved' | 'cleaning' | 'maintenance';
+  currentGuestName: string | null;
+  currentCheckIn: string | null;
+  currentCheckOut: string | null;
+  ratePerNight: number;
+  notes: string;
+  imageBase64?: string;
+}
+
+export interface HotelBillItem {
+  description: string;
+  category: 'food' | 'laundry' | 'drinks' | 'other';
+  amount: number;
+}
+
+export interface HotelBill extends StorageRecord {
+  invoiceNumber: string;
+  guestName: string;
+  phone: string;
+  address: string;
+  roomId: string;
+  roomNumber: string;
+  checkIn: string;
+  checkOut: string;
+  numberOfNights: number;
+  roomCharge: number;
+  additionalItems: HotelBillItem[];
+  discount: number;
+  tax: number;
+  grandTotal: number;
+  paidAmount: number;
+  dueAmount: number;
+  paymentMethod: PaymentMethod;
+  notes: string;
+}
+
+export interface RestaurantItem {
+  name: string;
+  quantity: number;
+  rate: number;
+  total: number;
+}
+
+export interface RestaurantBill extends StorageRecord {
+  billNumber: string;
+  tableNumber: string;
+  date: string;
+  items: RestaurantItem[];
+  discount: number;
+  tax: number;
+  grandTotal: number;
+  paidAmount: number;
+  paymentMethod: PaymentMethod;
+  notes: string;
+}
+
+export type ExpenseCategory = 'salary' | 'electricity' | 'water' | 'internet' | 'food' | 'fuel' | 'maintenance' | 'tax' | 'miscellaneous';
+
+export interface Expense extends StorageRecord {
+  date: string;
+  category: ExpenseCategory;
+  description: string;
+  amount: number;
+  paymentMethod: PaymentMethod;
+  notes: string;
+}
+
+export interface CashBookEntry extends StorageRecord {
+  date: string;
+  openingCash: number;
+  cashIn: number;
+  cashOut: number;
+  closingCash: number;
+  reason: string;
+  notes: string;
+}
+
+export interface Credit extends StorageRecord {
+  customerId: string;
+  customerName: string;
+  phone: string;
+  description: string;
+  amount: number;
+  date: string;
+  dueDate: string | null;
+  status: 'pending' | 'paid';
+  paidAt: string | null;
+  notes: string;
+}
+
+export interface AppSettings {
+  businessName: string;
+  businessLogoBase64: string | null;
+  phone: string;
+  address: string;
+  vatNumber: string;
+  currency: string;
+  currencySymbol: string;
+  taxRate: number;
+  lowStockThreshold: number;
+  theme: 'light' | 'dark' | 'system';
+  language: string;
+}
+
+export type UserRole = 'admin' | 'manager' | 'cashier' | 'receptionist' | 'staff';
+
+export interface AppUser extends StorageRecord {
+  name: string;
+  pin: string;
+  role: UserRole;
+  isActive: boolean;
+}
