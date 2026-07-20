@@ -11,13 +11,13 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Separator } from '@/components/ui/separator';
 import {
   ArrowLeft, ImagePlus, Save, Plus, Trash2, FlaskConical,
-  AlertTriangle, CheckCircle2, Info,
+  AlertTriangle, CheckCircle2, Info, Pencil,
 } from 'lucide-react';
 import { ProductUnit, ProductBatch } from '@/types';
 import { toast } from 'sonner';
@@ -345,20 +345,29 @@ export default function InventoryForm() {
     toast.success('Batch removed');
   };
 
+  // ─── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="p-4 md:p-6 max-w-3xl mx-auto pb-28 md:pb-6">
-      {/* Header */}
-      <div className="flex items-center gap-4 mb-6">
-        <Button variant="ghost" size="icon" onClick={() => setLocation('/inventory')}>
+    <div className="p-4 md:p-6 max-w-3xl mx-auto pb-6">
+
+      {/* ── Header ────────────────────────────────────────────────── */}
+      <div className="flex items-center gap-3 mb-4">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="-ml-2 shrink-0"
+          onClick={() => setLocation('/inventory')}
+        >
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div>
-          <h1 className="text-2xl font-bold">{isNew ? 'Add Product' : 'Edit Product'}</h1>
-          <p className="text-sm text-muted-foreground">Fill in the details below. Fields marked * are required.</p>
+          <h1 className="text-xl font-bold leading-tight">
+            {isNew ? 'Add Product' : 'Edit Product'}
+          </h1>
+          <p className="text-xs text-muted-foreground">Fields marked * are required.</p>
         </div>
       </div>
 
-      {/* Warnings */}
+      {/* ── Warnings ──────────────────────────────────────────────── */}
       {warnings.length > 0 && (
         <Alert className="mb-4 border-orange-300 bg-orange-50">
           <AlertTriangle className="h-4 w-4 text-orange-500" />
@@ -371,182 +380,66 @@ export default function InventoryForm() {
       )}
 
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        <form onSubmit={form.handleSubmit(onSubmit)}>
+          {/* Card wrapper — gives desktop a clean grouped look */}
+          <div className="md:rounded-2xl md:border md:bg-card md:overflow-hidden md:shadow-sm">
 
-          {/* ── Basic Info ─────────────────────────────────────────── */}
-          <Card>
-            <CardHeader><CardTitle>Basic Information</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex flex-col md:flex-row gap-6">
-                {/* Image */}
-                <div className="w-full md:w-32 flex flex-col items-center gap-2">
-                  <div
-                    className="w-32 h-32 rounded-xl border-2 border-dashed border-muted-foreground/30 flex flex-col items-center justify-center bg-muted/50 overflow-hidden cursor-pointer hover:bg-muted transition-colors"
-                    onClick={() => document.getElementById('image-upload')?.click()}
-                  >
-                    {imageBase64 ? (
-                      <img src={imageBase64} alt="Product" className="w-full h-full object-cover" />
-                    ) : (
-                      <>
-                        <ImagePlus className="h-8 w-8 text-muted-foreground mb-2" />
-                        <span className="text-xs text-muted-foreground text-center px-2">Upload Image</span>
-                      </>
-                    )}
-                    <input id="image-upload" type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
-                  </div>
-                  {imageBase64 && (
-                    <Button type="button" variant="ghost" size="sm" className="text-xs text-destructive h-auto py-1"
-                      onClick={() => form.setValue('imageBase64', '')}>Remove</Button>
+            {/* ── 1. Product Identity ───────────────────────────────── */}
+            <section className="px-4 py-4 space-y-3">
+
+              {/* Image tap target + Name */}
+              <div className="flex items-start gap-3">
+                <div
+                  className="w-14 h-14 rounded-xl border-2 border-dashed border-muted-foreground/30 flex items-center justify-center bg-muted/40 overflow-hidden cursor-pointer hover:bg-muted/70 active:scale-95 transition-all shrink-0 mt-5"
+                  onClick={() => document.getElementById('image-upload')?.click()}
+                >
+                  {imageBase64 ? (
+                    <img src={imageBase64} alt="Product" className="w-full h-full object-cover" />
+                  ) : (
+                    <ImagePlus className="h-5 w-5 text-muted-foreground" />
                   )}
+                  <input
+                    id="image-upload"
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleImageUpload}
+                  />
                 </div>
-
-                <div className="flex-1 space-y-4">
+                <div className="flex-1 min-w-0">
                   <FormField control={form.control} name="name" render={({ field }) => (
                     <FormItem>
                       <FormLabel>Product Name *</FormLabel>
-                      <FormControl><Input placeholder="e.g. Coca-Cola 500ml" {...field} /></FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <FormField control={form.control} name="barcode" render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Barcode</FormLabel>
-                        <FormControl><Input placeholder="Scan or type barcode" {...field} /></FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )} />
-                    <FormField control={form.control} name="category" render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Category *</FormLabel>
-                        <FormControl><Input placeholder="e.g. Beverages" {...field} /></FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )} />
-                  </div>
-                  <FormField control={form.control} name="brand" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Brand</FormLabel>
-                      <FormControl><Input placeholder="e.g. Coca-Cola" {...field} /></FormControl>
+                      <FormControl>
+                        <Input placeholder="e.g. Coca-Cola 500ml" autoFocus={isNew} {...field} />
+                      </FormControl>
                       <FormMessage />
                     </FormItem>
                   )} />
                 </div>
               </div>
-            </CardContent>
-          </Card>
 
-          {/* ── Pricing ────────────────────────────────────────────── */}
-          <Card>
-            <CardHeader><CardTitle>Pricing</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="purchaseRate"
-                  render={({ field }) => {
-                    const latestBatch = localBatches
-                      .slice()
-                      .sort(
-                        (a, b) =>
-                          new Date(b.createdAt).getTime() -
-                          new Date(a.createdAt).getTime()
-                      )[0];
+              {imageBase64 && (
+                <button
+                  type="button"
+                  className="text-xs text-destructive ml-[68px] -mt-1"
+                  onClick={() => form.setValue('imageBase64', '')}
+                >
+                  Remove image
+                </button>
+              )}
 
-                    return (
-                      <FormItem>
-                        <FormLabel>Purchase Price</FormLabel>
-
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            min={0}
-                            {...field}
-                            value={
-                              hasExpiry
-                                ? averagePurchaseRate.toFixed(2)
-                                : field.value
-                            }
-                            disabled={hasExpiry}
-                          />
-                        </FormControl>
-
-                        {hasExpiry && (
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Purchase price is managed from batches.
-                          </p>
-                        )}
-
-                        <FormMessage />
-                      </FormItem>
-                    );
-                  }}
-                />
-                <FormField control={form.control} name="sellingRate" render={({ field }) => (
+              {/* Category + Unit */}
+              <div className="grid grid-cols-2 gap-3">
+                <FormField control={form.control} name="category" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Selling Rate * (MRP)</FormLabel>
-                    <FormControl><Input type="number" step="0.01" min={0.01} {...field} /></FormControl>
+                    <FormLabel>Category *</FormLabel>
+                    <FormControl>
+                      <Input placeholder="e.g. Beverages" {...field} />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />
-              </div>
-              <div className={`flex justify-between items-center p-3 rounded-lg border ${profitPerUnit >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-                <div className="flex items-center gap-2">
-                  {profitPerUnit >= 0
-                    ? <CheckCircle2 className="h-4 w-4 text-green-600" />
-                    : <AlertTriangle className="h-4 w-4 text-destructive" />}
-                  <span className="text-sm font-medium">Profit per unit</span>
-                </div>
-                <div className="text-right">
-                  <span className={`font-bold ${profitPerUnit >= 0 ? 'text-green-700' : 'text-destructive'}`}>
-                    {profitPerUnit >= 0 ? '+' : ''}{profitPerUnit.toFixed(2)}
-                  </span>
-                  <span className="text-xs text-muted-foreground ml-2">({profitMargin}% margin)</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* ── Stock ──────────────────────────────────────────────── */}
-          <Card>
-            <CardHeader><CardTitle>Stock &amp; Inventory</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="quantity"
-                  render={({ field }) => {
-                    const batchStock = localBatches.reduce(
-                      (sum, batch) => sum + batch.quantity,
-                      0
-                    );
-
-                    return (
-                      <FormItem>
-                        <FormLabel>Current Stock</FormLabel>
-
-                        <FormControl>
-                          <Input
-                            type="number"
-                            min={0}
-                            {...field}
-                            value={hasExpiry ? batchStock : field.value}
-                            disabled={hasExpiry}
-                          />
-                        </FormControl>
-
-                        {hasExpiry && (
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Stock is automatically calculated from all batches.
-                          </p>
-                        )}
-
-                        <FormMessage />
-                      </FormItem>
-                    );
-                  }}
-                />
                 <FormField control={form.control} name="unit" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Unit *</FormLabel>
@@ -562,184 +455,371 @@ export default function InventoryForm() {
                   </FormItem>
                 )} />
               </div>
-              <FormField control={form.control} name="minimumStock" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Low Stock Alert Threshold</FormLabel>
-                  <FormControl><Input type="number" min={0} {...field} /></FormControl>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    You'll see a warning when stock falls at or below this number.
-                  </p>
-                  <FormMessage />
-                </FormItem>
-              )} />
-            </CardContent>
-          </Card>
 
-          {/* ── Suppliers ──────────────────────────────────────────── */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Suppliers</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {suppliers.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No suppliers added yet. <button type="button" className="text-primary underline" onClick={() => setLocation('/suppliers/new')}>Add a supplier</button></p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {suppliers.map(s => {
-                    const selected = selectedSupplierIds.includes(s.id);
-                    return (
-                      <button
-                        key={s.id}
-                        type="button"
-                        onClick={() => toggleSupplier(s.id)}
-                        className={`px-3 py-1.5 rounded-full border text-sm font-medium transition-colors ${selected
-                          ? 'bg-primary text-primary-foreground border-primary'
-                          : 'border-border hover:bg-muted'
-                          }`}
-                      >
-                        {s.name}
-                        {selected && <span className="ml-1 opacity-70">✓</span>}
-                      </button>
-                    );
-                  })}
+              {/* Barcode + Brand */}
+              <div className="grid grid-cols-2 gap-3">
+                <FormField control={form.control} name="barcode" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Barcode</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Scan or type" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="brand" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Brand</FormLabel>
+                    <FormControl>
+                      <Input placeholder="e.g. Coca-Cola" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              </div>
+            </section>
+
+            <Separator />
+
+            {/* ── 2. Expiry Tracking toggle ─────────────────────────── */}
+            <section className="px-4 py-4 space-y-2">
+              <FormField control={form.control} name="hasExpiry" render={({ field }) => (
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className={`p-1.5 rounded-lg shrink-0 ${hasExpiry ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
+                      <FlaskConical className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium leading-tight">Track Expiry &amp; Batches</p>
+                      <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
+                        {hasExpiry
+                          ? 'Stock, cost & supplier per batch'
+                          : 'Enable for products with expiry dates'}
+                      </p>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={field.value ?? false}
+                    onCheckedChange={field.onChange}
+                    className="shrink-0"
+                  />
                 </div>
-              )}
-              {selectedSupplierIds.length > 0 && (
-                <p className="text-xs text-muted-foreground mt-2">
-                  {selectedSupplierIds.length} supplier(s) selected. First selected is used as primary.
+              )} />
+
+              {hasExpiry && (
+                <p className="text-xs text-muted-foreground flex items-start gap-1.5 pt-1 pl-0.5">
+                  <Info className="h-3.5 w-3.5 mt-0.5 text-blue-500 shrink-0" />
+                  Sold FEFO (earliest expiry first). Purchase cost is the weighted average across all batches.
                 </p>
               )}
-            </CardContent>
-          </Card>
+            </section>
 
-          {/* ── Expiry & Batches ───────────────────────────────────── */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-2">
-                  <FlaskConical className="h-5 w-5 text-primary" /> Expiry &amp; Batches
-                </CardTitle>
-                <div className="flex items-center gap-3">
-                  <span className="text-sm text-muted-foreground">This product expires</span>
-                  <FormField control={form.control} name="hasExpiry" render={({ field }) => (
-                    <Switch checked={field.value ?? false} onCheckedChange={field.onChange} />
+            <Separator />
+
+            {/* ── 3. Pricing ────────────────────────────────────────── */}
+            <section className="px-4 py-4 space-y-3">
+              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Pricing</p>
+
+              {hasExpiry ? (
+                /* Expiry mode: only selling rate; purchase cost read-only from batches */
+                <div className="space-y-2">
+                  <FormField control={form.control} name="sellingRate" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Selling Price (MRP) *</FormLabel>
+                      <FormControl>
+                        <Input type="number" step="0.01" min={0.01} {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                  {localBatches.length > 0 && (
+                    <div className="flex items-center justify-between bg-muted/50 rounded-lg px-3 py-2.5 text-sm">
+                      <span className="text-muted-foreground">Avg purchase cost (from batches)</span>
+                      <span className="font-semibold">{averagePurchaseRate.toFixed(2)}</span>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* Normal mode: purchase + selling side by side */
+                <div className="grid grid-cols-2 gap-3">
+                  <FormField control={form.control} name="purchaseRate" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Purchase Cost</FormLabel>
+                      <FormControl>
+                        <Input type="number" step="0.01" min={0} {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                  <FormField control={form.control} name="sellingRate" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Selling Price (MRP) *</FormLabel>
+                      <FormControl>
+                        <Input type="number" step="0.01" min={0.01} {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
                   )} />
                 </div>
-              </div>
-            </CardHeader>
+              )}
 
-            {hasExpiry && (
-              <CardContent className="space-y-4">
-                <Alert className="border-blue-200 bg-blue-50">
-                  <Info className="h-4 w-4 text-blue-500" />
-                  <AlertDescription className="text-blue-700 text-sm">
-                    Each batch can have a different supplier and expiry date. Stock is sold using <strong>FEFO</strong> — earliest expiry first.
-                  </AlertDescription>
-                </Alert>
-
-                {localBatches.length === 0 ? (
-                  <div className="text-center py-6 border border-dashed rounded-lg text-muted-foreground text-sm">
-                    No batches yet. Add your first batch below.
+              {/* Profit indicator — always visible once selling rate is set */}
+              {watchedValues.sellingRate > 0 && (
+                <div className={`flex items-center justify-between px-3 py-2.5 rounded-xl border text-sm ${profitPerUnit >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                  <div className="flex items-center gap-2">
+                    {profitPerUnit >= 0
+                      ? <CheckCircle2 className="h-4 w-4 text-green-600" />
+                      : <AlertTriangle className="h-4 w-4 text-destructive" />}
+                    <span className="font-medium">Profit per unit</span>
                   </div>
-                ) : (
-                  <div className="space-y-2">
-                    {sortedBatches.map(batch => {
-                      const supplier = suppliers.find(s => s.id === batch.supplierId);
-                      const status = getBatchStatus(batch.expiryDate);
-                      return (
-                        <div
-                          key={batch.id}
-                          className={`p-3 rounded-lg border flex flex-col sm:flex-row sm:items-center gap-3 ${status === 'expired' ? 'border-destructive/40 bg-red-50' :
-                            status === 'expiring' ? 'border-orange-300/60 bg-orange-50' :
-                              'border-border bg-muted/20'
-                            }`}
-                        >
-                          <div className="flex-1 min-w-0 space-y-1">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-medium text-sm">{batch.batchNumber}</span>
-                              <ExpiryBadge expiryDate={batch.expiryDate} />
-                              {supplier && (
-                                <Badge variant="outline" className="text-[10px]">{supplier.name}</Badge>
-                              )}
-                            </div>
-                            <div className="text-xs text-muted-foreground flex flex-wrap gap-x-3">
-                              {batch.manufacturingDate && (
-                                <span>Mfg: {fmtDate(parseISO(batch.manufacturingDate), 'dd MMM yyyy')}</span>
-                              )}
-                              {batch.expiryDate && (
-                                <span>Exp: {fmtDate(parseISO(batch.expiryDate), 'dd MMM yyyy')}</span>
-                              )}
-                              {batch.expiryMonths && (
-                                <span>({batch.expiryMonths}m shelf life)</span>
-                              )}
-                              <span>Qty: {batch.quantity}/{batch.initialQuantity}</span>
-                              {batch.purchaseRate > 0 && <span>Rate: {batch.purchaseRate}</span>}
-                            </div>
-                          </div>
-                          <div className="flex gap-2 shrink-0">
-                            <Button type="button" variant="outline" size="sm" className="h-7 text-xs"
-                              onClick={() => { setEditingBatch(batch); setBatchDialogOpen(true); }}>
-                              Edit
-                            </Button>
-                            <Button type="button" variant="ghost" size="sm" className="h-7 text-xs text-destructive hover:text-destructive"
-                              onClick={() => handleDeleteBatch(batch.id)}>
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        </div>
-                      );
-                    })}
+                  <div className="text-right leading-tight">
+                    <span className={`font-bold ${profitPerUnit >= 0 ? 'text-green-700' : 'text-destructive'}`}>
+                      {profitPerUnit >= 0 ? '+' : ''}{profitPerUnit.toFixed(2)}
+                    </span>
+                    <span className="text-xs text-muted-foreground ml-1.5">({profitMargin}%)</span>
                   </div>
-                )}
+                </div>
+              )}
+            </section>
 
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => { setEditingBatch(null); setBatchDialogOpen(true); }}
-                >
-                  <Plus className="h-4 w-4 mr-2" /> Add Batch
-                </Button>
-              </CardContent>
+            <Separator />
+
+            {/* ── 4. Stock ──────────────────────────────────────────── */}
+            <section className="px-4 py-4 space-y-3">
+              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Stock</p>
+
+              {hasExpiry ? (
+                /* Expiry mode: stock is read-only (sum of batches) + low-stock threshold */
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between bg-muted/50 rounded-lg px-3 py-2.5 text-sm">
+                    <span className="text-muted-foreground">Total stock (from batches)</span>
+                    <span className="font-semibold">
+                      {localBatches.reduce((sum, b) => sum + b.quantity, 0)}{' '}
+                      <span className="text-muted-foreground font-normal">{watchedValues.unit}</span>
+                    </span>
+                  </div>
+                  <FormField control={form.control} name="minimumStock" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Low Stock Alert</FormLabel>
+                      <FormControl>
+                        <Input type="number" min={0} {...field} />
+                      </FormControl>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Alert when total batch stock falls to this level.
+                      </p>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                </div>
+              ) : (
+                /* Normal mode: current stock + low-stock threshold */
+                <div className="grid grid-cols-2 gap-3">
+                  <FormField control={form.control} name="quantity" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Current Stock</FormLabel>
+                      <FormControl>
+                        <Input type="number" min={0} {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                  <FormField control={form.control} name="minimumStock" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Low Stock Alert</FormLabel>
+                      <FormControl>
+                        <Input type="number" min={0} {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                </div>
+              )}
+            </section>
+
+            <Separator />
+
+            {/* ── 5a. Suppliers — only in non-expiry mode ───────────── */}
+            {!hasExpiry && (
+              <>
+                <section className="px-4 py-4 space-y-3">
+                  <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Suppliers</p>
+                  {suppliers.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      No suppliers yet.{' '}
+                      <button
+                        type="button"
+                        className="text-primary underline"
+                        onClick={() => setLocation('/suppliers/new')}
+                      >
+                        Add one
+                      </button>
+                    </p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {suppliers.map(s => {
+                        const selected = selectedSupplierIds.includes(s.id);
+                        return (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => toggleSupplier(s.id)}
+                            className={`px-3 py-1.5 rounded-full border text-sm font-medium transition-colors ${selected
+                              ? 'bg-primary text-primary-foreground border-primary'
+                              : 'border-border hover:bg-muted'
+                              }`}
+                          >
+                            {s.name}
+                            {selected && <span className="ml-1 opacity-70">✓</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {selectedSupplierIds.length > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      {selectedSupplierIds.length} supplier(s) selected — first is primary.
+                    </p>
+                  )}
+                </section>
+                <Separator />
+              </>
             )}
-          </Card>
 
-          {/* ── Notes ──────────────────────────────────────────────── */}
-          <Card>
-            <CardHeader><CardTitle>Additional Notes</CardTitle></CardHeader>
-            <CardContent>
+            {/* ── 5b. Batches — only in expiry mode ────────────────── */}
+            {hasExpiry && (
+              <>
+                <section className="px-4 py-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Batches</p>
+                    {localBatches.length > 0 && (
+                      <span className="text-xs text-muted-foreground">{localBatches.length} batch{localBatches.length !== 1 ? 'es' : ''}</span>
+                    )}
+                  </div>
+
+                  {localBatches.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-8 border-2 border-dashed rounded-xl text-muted-foreground gap-1.5">
+                      <FlaskConical className="h-6 w-6 opacity-40" />
+                      <p className="text-sm">No batches yet</p>
+                      <p className="text-xs opacity-70">Add the first batch below</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {sortedBatches.map(batch => {
+                        const supplier = suppliers.find(s => s.id === batch.supplierId);
+                        const status = getBatchStatus(batch.expiryDate);
+                        return (
+                          <div
+                            key={batch.id}
+                            className={`p-3 rounded-xl border ${status === 'expired'
+                              ? 'border-destructive/40 bg-red-50'
+                              : status === 'expiring'
+                                ? 'border-orange-300/60 bg-orange-50'
+                                : 'border-border bg-muted/20'
+                              }`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="space-y-1 min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="font-medium text-sm">{batch.batchNumber}</span>
+                                  <ExpiryBadge expiryDate={batch.expiryDate} />
+                                  {supplier && (
+                                    <Badge variant="outline" className="text-[10px] py-0 px-1.5">{supplier.name}</Badge>
+                                  )}
+                                </div>
+                                <div className="text-xs text-muted-foreground flex flex-wrap gap-x-3 gap-y-0.5">
+                                  {batch.expiryDate && (
+                                    <span>Exp: {fmtDate(parseISO(batch.expiryDate), 'dd MMM yyyy')}</span>
+                                  )}
+                                  <span>Qty: {batch.quantity}/{batch.initialQuantity}</span>
+                                  {batch.purchaseRate > 0 && (
+                                    <span>Cost: {batch.purchaseRate}</span>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex gap-1 shrink-0">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-muted-foreground"
+                                  onClick={() => { setEditingBatch(batch); setBatchDialogOpen(true); }}
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-destructive"
+                                  onClick={() => handleDeleteBatch(batch.id)}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => { setEditingBatch(null); setBatchDialogOpen(true); }}
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Batch
+                  </Button>
+                </section>
+                <Separator />
+              </>
+            )}
+
+            {/* ── 6. Notes ──────────────────────────────────────────── */}
+            <section className="px-4 py-4">
               <FormField control={form.control} name="notes" render={({ field }) => (
                 <FormItem>
+                  <FormLabel className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                    Notes
+                  </FormLabel>
                   <FormControl>
-                    <Textarea placeholder="Internal notes about this product..." rows={3} {...field} />
+                    <Textarea
+                      placeholder="Internal notes about this product..."
+                      rows={2}
+                      className="resize-none"
+                      {...field}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
-            </CardContent>
-          </Card>
+            </section>
 
-          {/* ── Save Bar ───────────────────────────────────────────── */}
+          </div>{/* end card wrapper */}
+
+          {/* ── Save bar ──────────────────────────────────────────── */}
+          {/* sticky bottom-16 clears the mobile bottom nav (h-16 / z-40);
+              md:bottom-0 sits flush on desktop where there's no bottom nav */}
           <div className="sticky bottom-0 md:relative bg-background/80 backdrop-blur-sm p-4 md:p-0 border-t md:border-0 -mx-4 md:mx-0 z-10 flex justify-end gap-3">
             <Button
               type="button"
               variant="outline"
+              className="flex-1"
               onClick={() => {
                 if (form.formState.isDirty) {
-                  const discard = confirm(
-                    'Discard all unsaved changes?'
-                  );
-
+                  const discard = confirm('Discard all unsaved changes?');
                   if (!discard) return;
                 }
-
                 setLocation('/inventory');
               }}
             >
               Cancel
             </Button>
-            <Button type="submit" size="lg" className="w-full md:w-auto">
-              <Save className="mr-2 h-5 w-5" /> {isNew ? 'Add Product' : 'Save Changes'}
+            <Button type="submit" className="flex-1">
+              <Save className="mr-2 h-4 w-4" />
+              {isNew ? 'Add Product' : 'Save Changes'}
             </Button>
           </div>
         </form>

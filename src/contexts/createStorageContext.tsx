@@ -32,8 +32,9 @@ export function createStorageContext<T extends { id: string }>(key: string) {
 
     const add = useCallback((item: any) => {
       const newItem = {
-        ...item,
         id: uuidv4(),
+        ...item,
+
       };
       storageService.save(key, newItem);
       refresh();
