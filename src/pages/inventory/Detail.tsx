@@ -13,6 +13,7 @@ import {
   FileText, ShoppingCart,
 } from 'lucide-react';
 import { ExpiryBadge, getBatchStatus } from '@/components/BatchFormDialog';
+import { useMemo } from 'react';
 
 export default function InventoryDetail() {
   const { id } = useParams<{ id: string }>();
@@ -39,14 +40,27 @@ export default function InventoryDetail() {
     .filter(b => b.productId === id)
     .sort((a, b) => (a.expiryDate ?? '').localeCompare(b.expiryDate ?? ''));
 
-  const supplierNames = (() => {
+  const suppliersById = useMemo(() => {
+    const map = new Map<string, (typeof suppliers)[number]>();
+
+    for (const supplier of suppliers) {
+      map.set(supplier.id, supplier);
+    }
+
+    return map;
+  }, [suppliers]);
+
+  const supplierNames = useMemo(() => {
     const ids = product.supplierIds?.length
       ? product.supplierIds
-      : product.supplierId ? [product.supplierId] : [];
+      : product.supplierId
+        ? [product.supplierId]
+        : [];
+
     return ids
-      .map(sid => suppliers.find(s => s.id === sid)?.name)
+      .map(id => suppliersById.get(id)?.name)
       .filter(Boolean) as string[];
-  })();
+  }, [product, suppliersById]);
 
   const isOutOfStock = product.quantity === 0;
   const isLowStock = product.quantity > 0 && product.quantity <= product.minimumStock;
@@ -58,8 +72,39 @@ export default function InventoryDetail() {
   const stockValue = product.purchaseRate * product.quantity;
   const retailValue = product.sellingRate * product.quantity;
 
-  const expiredCount = batches.filter(b => getBatchStatus(b.expiryDate) === 'expired').length;
-  const expiringSoonCount = batches.filter(b => getBatchStatus(b.expiryDate) === 'expiring').length;
+  const expiredCount = batches.filter(
+    b => getBatchStatus(b.expiryDate) === 'expired'
+  ).length;
+
+  const expiringSoonCount = batches.filter(
+    b => getBatchStatus(b.expiryDate) === 'expiring'
+  ).length;
+
+  const healthyCount = batches.filter(
+    b => getBatchStatus(b.expiryDate) === 'ok'
+  ).length;
+
+  const totalBatchStock = batches.reduce(
+    (sum, batch) => sum + batch.quantity,
+    0
+  );
+
+  const nextExpiryBatch = batches.find(
+    b => getBatchStatus(b.expiryDate) !== 'expired'
+  );
+
+
+  const latestExpiryBatch =
+    batches.length > 0
+      ? [...batches].reverse().find(b => b.expiryDate)
+      : undefined;
+
+  console.log('Product ID:', id);
+  console.log('All batches:', allBatches);
+  console.log(
+    'Matching batches:',
+    allBatches.filter(b => b.productId === id)
+  );
 
   return (
     <div className="p-4 md:p-6 space-y-5 max-w-3xl mx-auto pb-24 md:pb-8">
@@ -225,16 +270,15 @@ export default function InventoryDetail() {
             ) : (
               <div className="space-y-2">
                 {batches.map(b => {
-                  const sup = suppliers.find(s => s.id === b.supplierId);
+                  const sup = suppliersById.get(b.supplierId);
                   const status = getBatchStatus(b.expiryDate);
                   return (
                     <div
                       key={b.id}
-                      className={`rounded-lg border p-3 text-sm space-y-2 ${
-                        status === 'expired' ? 'border-red-200 bg-red-50/50' :
+                      className={`rounded-lg border p-3 text-sm space-y-2 ${status === 'expired' ? 'border-red-200 bg-red-50/50' :
                         status === 'expiring' ? 'border-yellow-200 bg-yellow-50/50' :
-                        'bg-muted/30'
-                      }`}
+                          'bg-muted/30'
+                        }`}
                     >
                       <div className="flex items-center justify-between gap-2">
                         <span className="font-mono font-semibold text-xs">{b.batchNumber}</span>
@@ -276,7 +320,123 @@ export default function InventoryDetail() {
                   );
                 })}
               </div>
+
             )}
+            {/* Expiry Summary */}
+            <Card>
+              <CardHeader className="pb-2 pt-4">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <CalendarDays className="h-4 w-4 text-muted-foreground" />
+                  Expiry Summary
+                </CardTitle>
+              </CardHeader>
+
+              <CardContent className="pb-4">
+                {!product.hasExpiry ? (
+                  <p className="text-sm text-muted-foreground">
+                    Expiry tracking is disabled for this product.
+                  </p>
+                ) : batches.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    Expiry tracking is enabled, but no batches have been added yet.
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+
+                    <div>
+                      <p className="text-[10px] uppercase text-muted-foreground mb-1">
+                        Total Batches
+                      </p>
+                      <p className="font-semibold">{batches.length}</p>
+                    </div>
+
+                    <div>
+                      <p className="text-[10px] uppercase text-muted-foreground mb-1">
+                        Batch Stock
+                      </p>
+                      <p className="font-semibold">
+                        {totalBatchStock} {product.unit}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-[10px] uppercase text-muted-foreground mb-1">
+                        Product Stock
+                      </p>
+
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold">
+                          {product.quantity} {product.unit}
+                        </span>
+
+                        {product.quantity === totalBatchStock ? (
+                          <Badge className="bg-green-100 text-green-700 border-green-300">
+                            Match
+                          </Badge>
+                        ) : (
+                          <Badge variant="destructive">
+                            Mismatch
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="text-[10px] uppercase text-muted-foreground mb-1">
+                        Healthy
+                      </p>
+                      <p className="font-semibold">
+                        {healthyCount} batch{healthyCount !== 1 && 'es'}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-[10px] uppercase text-muted-foreground mb-1">
+                        Expiring Soon
+                      </p>
+                      <p className="font-semibold text-yellow-700">
+                        {expiringSoonCount} batch{expiringSoonCount !== 1 && 'es'}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-[10px] uppercase text-muted-foreground mb-1">
+                        Expired
+                      </p>
+                      <p className="font-semibold text-red-600">
+                        {expiredCount} batch{expiredCount !== 1 && 'es'}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-[10px] uppercase text-muted-foreground mb-1">
+                        Next Expiry
+                      </p>
+
+                      <p className="font-semibold">
+                        {nextExpiryBatch?.expiryDate
+                          ? formatDate(parseISO(nextExpiryBatch.expiryDate), 'dd MMM yyyy')
+                          : '—'}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-[10px] uppercase text-muted-foreground mb-1">
+                        Latest Expiry
+                      </p>
+
+                      <p className="font-semibold">
+                        {latestExpiryBatch?.expiryDate
+                          ? formatDate(parseISO(latestExpiryBatch.expiryDate), 'dd MMM yyyy')
+                          : '—'}
+                      </p>
+                    </div>
+
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
             <Button
               variant="outline"
               size="sm"

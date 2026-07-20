@@ -86,12 +86,41 @@ export default function InventoryForm() {
   });
 
   const watchedValues = form.watch();
-  const profitPerUnit = (watchedValues.sellingRate || 0) - (watchedValues.purchaseRate || 0);
-  const profitMargin = watchedValues.sellingRate > 0
-    ? Math.round((profitPerUnit / watchedValues.sellingRate) * 100)
-    : 0;
+  const imageBase64 = watchedValues.imageBase64 ?? '';
   const hasExpiry = watchedValues.hasExpiry ?? false;
-  const selectedSupplierIds: string[] = watchedValues.supplierIds ?? [];
+
+  const selectedSupplierIds: string[] =
+    watchedValues.supplierIds ?? [];
+
+  const averagePurchaseRate = useMemo(() => {
+    if (!hasExpiry || localBatches.length === 0) {
+      return watchedValues.purchaseRate || 0;
+    }
+
+    const totalQty = localBatches.reduce(
+      (sum, batch) => sum + batch.quantity,
+      0
+    );
+
+    if (totalQty === 0) return 0;
+
+    const totalCost = localBatches.reduce(
+      (sum, batch) => sum + batch.purchaseRate * batch.quantity,
+      0
+    );
+
+    return totalCost / totalQty;
+  }, [hasExpiry, localBatches, watchedValues.purchaseRate]);
+
+  const profitPerUnit =
+    (watchedValues.sellingRate || 0) - averagePurchaseRate;
+
+  const profitMargin =
+    watchedValues.sellingRate > 0
+      ? Math.round(
+        (profitPerUnit / watchedValues.sellingRate) * 100
+      )
+      : 0;
 
   // Validation warnings (non-blocking)
   const warnings = useMemo(() => {
@@ -120,61 +149,92 @@ export default function InventoryForm() {
     return `B-${year}-${String(n).padStart(3, '0')}`;
   }, [localBatches, allBatches, existingProduct, isNew]);
 
+  const barcodeLookup = useMemo(() => {
+    const map = new Map<string, typeof items[number]>();
+
+    for (const item of items) {
+      if (item.barcode) {
+        map.set(item.barcode, item);
+      }
+    }
+
+    return map;
+  }, [items]);
+
+  const sortedBatches = useMemo(() => {
+    return [...localBatches].sort(
+      (a, b) =>
+        (a.expiryDate ?? '').localeCompare(b.expiryDate ?? '')
+    );
+  }, [localBatches]);
+
   const onSubmit = (data: ProductFormValues) => {
     try {
-      // Validate barcode uniqueness
       if (data.barcode) {
-        const duplicate = items.find(
-          i => i.barcode === data.barcode && i.id !== existingProduct?.id
-        );
-        if (duplicate) {
-          form.setError('barcode', { message: `Barcode already used by "${duplicate.name}"` });
+        const duplicate = barcodeLookup.get(data.barcode);
+
+        if (duplicate && duplicate.id !== existingProduct?.id) {
+          form.setError('barcode', {
+            message: `Barcode already used by "${duplicate.name}"`,
+          });
           return;
         }
       }
 
+      const calculatedStock = data.hasExpiry
+        ? localBatches.reduce((total, batch) => total + batch.quantity, 0)
+        : data.quantity;
+
       const productData = {
         ...data,
+        quantity: calculatedStock,
         barcode: data.barcode ?? '',
         brand: data.brand ?? '',
         supplierId: data.supplierIds?.[0] ?? '',
         supplierIds: data.supplierIds ?? [],
         notes: data.notes ?? '',
         hasExpiry: data.hasExpiry ?? false,
-        profitPerUnit: data.sellingRate - data.purchaseRate,
+        profitPerUnit: data.sellingRate - averagePurchaseRate,
         unit: data.unit as ProductUnit,
         imageBase64: data.imageBase64 ?? '',
       };
 
       if (isNew) {
         const newId = uuidv4();
-        add({ ...productData, id: newId } as any);
 
-        // Persist new batches
-        for (const b of localBatches) {
-          addBatch({ ...b, productId: newId } as any);
+        add({
+          ...productData,
+          id: newId,
+        } as any);
+
+        for (const batch of localBatches) {
+          addBatch({
+            ...batch,
+            productId: newId,
+          } as any);
         }
 
         toast.success('Product added successfully');
       } else if (existingProduct) {
         update(existingProduct.id, productData);
 
-        // Update or add batches that were changed locally
-        for (const b of localBatches) {
-          const exists = allBatches.find(ab => ab.id === b.id);
+        for (const batch of localBatches) {
+          const exists = allBatches.some(ab => ab.id === batch.id);
+
           if (exists) {
-            updateBatch(b.id, b);
+            updateBatch(batch.id, batch);
           } else {
-            addBatch(b as any);
+            addBatch(batch as any);
           }
         }
 
         toast.success('Product updated successfully');
       }
+
       setLocation('/inventory');
     } catch (error) {
-      toast.error('Failed to save product');
       console.error(error);
+      toast.error('Failed to save product');
     }
   };
 
@@ -198,7 +258,11 @@ export default function InventoryForm() {
   };
 
   // Batch handlers
-  const handleSaveBatch = (batchData: Omit<ProductBatch, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt' | 'version'>) => {
+  const handleSaveBatch = (
+    batchData: Omit<ProductBatch, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt' | 'version'>
+  ) => {
+    let updatedBatches: ProductBatch[];
+
     if (editingBatch) {
       const updated: ProductBatch = {
         ...editingBatch,
@@ -206,10 +270,19 @@ export default function InventoryForm() {
         updatedAt: new Date().toISOString(),
         version: editingBatch.version + 1,
       };
-      setLocalBatches(prev => prev.map(b => b.id === editingBatch.id ? updated : b));
-      if (!isNew) updateBatch(editingBatch.id, updated);
+
+      updatedBatches = localBatches.map(b =>
+        b.id === editingBatch.id ? updated : b
+      );
+
+      setLocalBatches(updatedBatches);
+
+      if (!isNew) {
+        updateBatch(editingBatch.id, updated);
+      }
     } else {
       const now = new Date().toISOString();
+
       const newBatch: ProductBatch = {
         ...batchData,
         id: uuidv4(),
@@ -218,18 +291,57 @@ export default function InventoryForm() {
         deletedAt: null,
         version: 1,
       };
-      setLocalBatches(prev => [...prev, newBatch]);
+
+      updatedBatches = [...localBatches, newBatch];
+
+      setLocalBatches(updatedBatches);
+
       if (!isNew && existingProduct) {
-        addBatch({ ...newBatch, productId: existingProduct.id } as any);
+        addBatch({
+          ...newBatch,
+          productId: existingProduct.id,
+        } as any);
       }
     }
+
+    if (!isNew && existingProduct && form.getValues('hasExpiry')) {
+      const totalStock = updatedBatches.reduce(
+        (sum, batch) => sum + batch.quantity,
+        0
+      );
+
+      update(existingProduct.id, {
+        quantity: totalStock,
+      });
+    }
+
     setEditingBatch(null);
   };
 
   const handleDeleteBatch = (batchId: string) => {
     if (!confirm('Remove this batch?')) return;
-    setLocalBatches(prev => prev.filter(b => b.id !== batchId));
-    if (!isNew) removeBatch(batchId);
+
+    const updatedBatches = localBatches.filter(
+      batch => batch.id !== batchId
+    );
+
+    setLocalBatches(updatedBatches);
+
+    if (!isNew) {
+      removeBatch(batchId);
+
+      if (existingProduct && form.getValues('hasExpiry')) {
+        const totalStock = updatedBatches.reduce(
+          (sum, batch) => sum + batch.quantity,
+          0
+        );
+
+        update(existingProduct.id, {
+          quantity: totalStock,
+        });
+      }
+    }
+
     toast.success('Batch removed');
   };
 
@@ -272,8 +384,8 @@ export default function InventoryForm() {
                     className="w-32 h-32 rounded-xl border-2 border-dashed border-muted-foreground/30 flex flex-col items-center justify-center bg-muted/50 overflow-hidden cursor-pointer hover:bg-muted transition-colors"
                     onClick={() => document.getElementById('image-upload')?.click()}
                   >
-                    {form.watch('imageBase64') ? (
-                      <img src={form.watch('imageBase64')} alt="Product" className="w-full h-full object-cover" />
+                    {imageBase64 ? (
+                      <img src={imageBase64} alt="Product" className="w-full h-full object-cover" />
                     ) : (
                       <>
                         <ImagePlus className="h-8 w-8 text-muted-foreground mb-2" />
@@ -282,7 +394,7 @@ export default function InventoryForm() {
                     )}
                     <input id="image-upload" type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
                   </div>
-                  {form.watch('imageBase64') && (
+                  {imageBase64 && (
                     <Button type="button" variant="ghost" size="sm" className="text-xs text-destructive h-auto py-1"
                       onClick={() => form.setValue('imageBase64', '')}>Remove</Button>
                   )}
@@ -329,13 +441,48 @@ export default function InventoryForm() {
             <CardHeader><CardTitle>Pricing</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <FormField control={form.control} name="purchaseRate" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Purchase Rate (cost price)</FormLabel>
-                    <FormControl><Input type="number" step="0.01" min={0} {...field} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )} />
+                <FormField
+                  control={form.control}
+                  name="purchaseRate"
+                  render={({ field }) => {
+                    const latestBatch = localBatches
+                      .slice()
+                      .sort(
+                        (a, b) =>
+                          new Date(b.createdAt).getTime() -
+                          new Date(a.createdAt).getTime()
+                      )[0];
+
+                    return (
+                      <FormItem>
+                        <FormLabel>Purchase Price</FormLabel>
+
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min={0}
+                            {...field}
+                            value={
+                              hasExpiry
+                                ? averagePurchaseRate.toFixed(2)
+                                : field.value
+                            }
+                            disabled={hasExpiry}
+                          />
+                        </FormControl>
+
+                        {hasExpiry && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Purchase price is managed from batches.
+                          </p>
+                        )}
+
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  }}
+                />
                 <FormField control={form.control} name="sellingRate" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Selling Rate * (MRP)</FormLabel>
@@ -366,13 +513,40 @@ export default function InventoryForm() {
             <CardHeader><CardTitle>Stock &amp; Inventory</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <FormField control={form.control} name="quantity" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Current Stock</FormLabel>
-                    <FormControl><Input type="number" min={0} {...field} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )} />
+                <FormField
+                  control={form.control}
+                  name="quantity"
+                  render={({ field }) => {
+                    const batchStock = localBatches.reduce(
+                      (sum, batch) => sum + batch.quantity,
+                      0
+                    );
+
+                    return (
+                      <FormItem>
+                        <FormLabel>Current Stock</FormLabel>
+
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min={0}
+                            {...field}
+                            value={hasExpiry ? batchStock : field.value}
+                            disabled={hasExpiry}
+                          />
+                        </FormControl>
+
+                        {hasExpiry && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Stock is automatically calculated from all batches.
+                          </p>
+                        )}
+
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  }}
+                />
                 <FormField control={form.control} name="unit" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Unit *</FormLabel>
@@ -418,11 +592,10 @@ export default function InventoryForm() {
                         key={s.id}
                         type="button"
                         onClick={() => toggleSupplier(s.id)}
-                        className={`px-3 py-1.5 rounded-full border text-sm font-medium transition-colors ${
-                          selected
-                            ? 'bg-primary text-primary-foreground border-primary'
-                            : 'border-border hover:bg-muted'
-                        }`}
+                        className={`px-3 py-1.5 rounded-full border text-sm font-medium transition-colors ${selected
+                          ? 'bg-primary text-primary-foreground border-primary'
+                          : 'border-border hover:bg-muted'
+                          }`}
                       >
                         {s.name}
                         {selected && <span className="ml-1 opacity-70">✓</span>}
@@ -470,55 +643,52 @@ export default function InventoryForm() {
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {localBatches
-                      .sort((a, b) => (a.expiryDate ?? '').localeCompare(b.expiryDate ?? ''))
-                      .map(batch => {
-                        const supplier = suppliers.find(s => s.id === batch.supplierId);
-                        const status = getBatchStatus(batch.expiryDate);
-                        return (
-                          <div
-                            key={batch.id}
-                            className={`p-3 rounded-lg border flex flex-col sm:flex-row sm:items-center gap-3 ${
-                              status === 'expired' ? 'border-destructive/40 bg-red-50' :
-                              status === 'expiring' ? 'border-orange-300/60 bg-orange-50' :
+                    {sortedBatches.map(batch => {
+                      const supplier = suppliers.find(s => s.id === batch.supplierId);
+                      const status = getBatchStatus(batch.expiryDate);
+                      return (
+                        <div
+                          key={batch.id}
+                          className={`p-3 rounded-lg border flex flex-col sm:flex-row sm:items-center gap-3 ${status === 'expired' ? 'border-destructive/40 bg-red-50' :
+                            status === 'expiring' ? 'border-orange-300/60 bg-orange-50' :
                               'border-border bg-muted/20'
                             }`}
-                          >
-                            <div className="flex-1 min-w-0 space-y-1">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="font-medium text-sm">{batch.batchNumber}</span>
-                                <ExpiryBadge expiryDate={batch.expiryDate} />
-                                {supplier && (
-                                  <Badge variant="outline" className="text-[10px]">{supplier.name}</Badge>
-                                )}
-                              </div>
-                              <div className="text-xs text-muted-foreground flex flex-wrap gap-x-3">
-                                {batch.manufacturingDate && (
-                                  <span>Mfg: {fmtDate(parseISO(batch.manufacturingDate), 'dd MMM yyyy')}</span>
-                                )}
-                                {batch.expiryDate && (
-                                  <span>Exp: {fmtDate(parseISO(batch.expiryDate), 'dd MMM yyyy')}</span>
-                                )}
-                                {batch.expiryMonths && (
-                                  <span>({batch.expiryMonths}m shelf life)</span>
-                                )}
-                                <span>Qty: {batch.quantity}/{batch.initialQuantity}</span>
-                                {batch.purchaseRate > 0 && <span>Rate: {batch.purchaseRate}</span>}
-                              </div>
+                        >
+                          <div className="flex-1 min-w-0 space-y-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-medium text-sm">{batch.batchNumber}</span>
+                              <ExpiryBadge expiryDate={batch.expiryDate} />
+                              {supplier && (
+                                <Badge variant="outline" className="text-[10px]">{supplier.name}</Badge>
+                              )}
                             </div>
-                            <div className="flex gap-2 shrink-0">
-                              <Button type="button" variant="outline" size="sm" className="h-7 text-xs"
-                                onClick={() => { setEditingBatch(batch); setBatchDialogOpen(true); }}>
-                                Edit
-                              </Button>
-                              <Button type="button" variant="ghost" size="sm" className="h-7 text-xs text-destructive hover:text-destructive"
-                                onClick={() => handleDeleteBatch(batch.id)}>
-                                <Trash2 className="h-3 w-3" />
-                              </Button>
+                            <div className="text-xs text-muted-foreground flex flex-wrap gap-x-3">
+                              {batch.manufacturingDate && (
+                                <span>Mfg: {fmtDate(parseISO(batch.manufacturingDate), 'dd MMM yyyy')}</span>
+                              )}
+                              {batch.expiryDate && (
+                                <span>Exp: {fmtDate(parseISO(batch.expiryDate), 'dd MMM yyyy')}</span>
+                              )}
+                              {batch.expiryMonths && (
+                                <span>({batch.expiryMonths}m shelf life)</span>
+                              )}
+                              <span>Qty: {batch.quantity}/{batch.initialQuantity}</span>
+                              {batch.purchaseRate > 0 && <span>Rate: {batch.purchaseRate}</span>}
                             </div>
                           </div>
-                        );
-                      })}
+                          <div className="flex gap-2 shrink-0">
+                            <Button type="button" variant="outline" size="sm" className="h-7 text-xs"
+                              onClick={() => { setEditingBatch(batch); setBatchDialogOpen(true); }}>
+                              Edit
+                            </Button>
+                            <Button type="button" variant="ghost" size="sm" className="h-7 text-xs text-destructive hover:text-destructive"
+                              onClick={() => handleDeleteBatch(batch.id)}>
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
 
@@ -551,7 +721,23 @@ export default function InventoryForm() {
 
           {/* ── Save Bar ───────────────────────────────────────────── */}
           <div className="sticky bottom-0 md:relative bg-background/80 backdrop-blur-sm p-4 md:p-0 border-t md:border-0 -mx-4 md:mx-0 z-10 flex justify-end gap-3">
-            <Button type="button" variant="outline" onClick={() => setLocation('/inventory')}>Cancel</Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                if (form.formState.isDirty) {
+                  const discard = confirm(
+                    'Discard all unsaved changes?'
+                  );
+
+                  if (!discard) return;
+                }
+
+                setLocation('/inventory');
+              }}
+            >
+              Cancel
+            </Button>
             <Button type="submit" size="lg" className="w-full md:w-auto">
               <Save className="mr-2 h-5 w-5" /> {isNew ? 'Add Product' : 'Save Changes'}
             </Button>

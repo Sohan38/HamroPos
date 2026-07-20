@@ -10,7 +10,7 @@ out-tsc
 
 # dependencies
 node_modules
-
+android
 # IDEs and editors
 /.idea
 .project

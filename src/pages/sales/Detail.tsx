@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ArrowLeft, Printer, ShoppingCart, User, Calendar, CreditCard } from 'lucide-react';
 import { SaleBillPrint } from '@/components/SaleBillPrint';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 
 export default function SaleDetail() {
   const { id } = useParams<{ id: string }>();
@@ -19,8 +19,17 @@ export default function SaleDetail() {
   const { format } = useCurrency();
   const [showPrint, setShowPrint] = useState(false);
 
-  const sale = sales.find(s => s.id === id);
-  const customer = sale?.customerId ? customers.find(c => c.id === sale.customerId) : null;
+  const sale = useMemo(
+    () => sales.find(s => s.id === id),
+    [sales, id]
+  );
+
+  const customer = useMemo(
+    () => sale?.customerId
+      ? customers.find(c => c.id === sale.customerId)
+      : null,
+    [customers, sale]
+  );
 
   if (!sale) {
     return (
@@ -33,11 +42,32 @@ export default function SaleDetail() {
     );
   }
 
-  const subtotal = sale.items.reduce((s, i) => s + i.subtotal, 0);
-  const saleDate = (() => {
-    try { return formatDate(parseISO(sale.date), 'PPpp'); }
-    catch { return formatDate(new Date(sale.date), 'PPpp'); }
-  })();
+  const { subtotal, saleDate } = useMemo(() => {
+    const subtotal = sale.items.reduce(
+      (sum, item) => sum + item.subtotal,
+      0
+    );
+
+    let saleDate = '';
+
+    try {
+      saleDate = formatDate(
+        parseISO(sale.date),
+        'PPpp'
+      );
+    } catch {
+      saleDate = formatDate(
+        new Date(sale.date),
+        'PPpp'
+      );
+    }
+
+    return {
+      subtotal,
+      saleDate,
+    };
+
+  }, [sale]);
 
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-3xl mx-auto pb-24 md:pb-6">

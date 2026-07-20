@@ -19,18 +19,27 @@ import {
 import { useApp } from '@/contexts/AppContext';
 
 // Compute cost-of-goods-sold for a set of sales using current inventory data for purchase rates
-function computeCOGS(sales: ReturnType<typeof useSales>['items'], inventory: ReturnType<typeof useInventory>['items']) {
+function computeCOGS(
+  sales: ReturnType<typeof useSales>['items'],
+  inventory: ReturnType<typeof useInventory>['items']
+) {
+  const purchaseMap = new Map(
+    inventory.map(product => [
+      product.id,
+      product.purchaseRate
+    ])
+  );
+
   let cogs = 0;
+
   for (const sale of sales) {
     for (const item of sale.items) {
-      const product = inventory.find(p => p.id === item.productId);
-      const buyRate = product?.purchaseRate ?? 0;
-      cogs += buyRate * item.quantity;
+      cogs += (purchaseMap.get(item.productId) ?? 0) * item.quantity;
     }
   }
+
   return cogs;
 }
-
 export default function Dashboard() {
   const [, setLocation] = useLocation();
   const { items: inventory } = useInventory();
@@ -41,6 +50,15 @@ export default function Dashboard() {
   const { items: batches } = useProductBatches();
   const { format: formatCurrency } = useCurrency();
   const { settings } = useApp();
+  const inventoryMap = useMemo(
+    () => new Map(
+      inventory.map(product => [
+        product.id,
+        product
+      ])
+    ),
+    [inventory]
+  );
 
   const metrics = useMemo(() => {
     const todaySales = sales.filter(s => {
@@ -72,6 +90,7 @@ export default function Dashboard() {
     const lowStockItems = inventory.filter(i => i.quantity <= i.minimumStock && i.quantity > 0);
     const outOfStockItems = inventory.filter(i => i.quantity === 0);
 
+
     // Expiry alerts — one entry per batch, joined with product name
     type ExpiryAlert = { batchId: string; productId: string; productName: string; batchNo: string; expiryDate: string; qty: number };
     const expiredBatches: ExpiryAlert[] = [];
@@ -79,7 +98,7 @@ export default function Dashboard() {
     for (const batch of batches) {
       if (!batch.expiryDate || batch.quantity <= 0) continue;
       const status = getBatchStatus(batch.expiryDate);
-      const product = inventory.find(p => p.id === batch.productId);
+      const product = inventoryMap.get(batch.productId);
       const productName = product?.name ?? 'Unknown Product';
       const entry: ExpiryAlert = {
         batchId: batch.id,
@@ -125,7 +144,7 @@ export default function Dashboard() {
       inventoryCount: inventory.length,
       bestSellers,
     };
-  }, [sales, expenses, credits, purchases, inventory, batches]);
+  }, [sales, expenses, credits, purchases, inventory, batches, inventoryMap]);
 
   // 7-day chart data
   const chartData = useMemo(() => {
@@ -150,9 +169,40 @@ export default function Dashboard() {
     return data;
   }, [sales, expenses, inventory]);
 
-  const recentSales = [...sales].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
-  const recentPurchases = [...purchases].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 3);
-  const recentExpenses = [...expenses].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 3);
+  const recentSales = useMemo(
+    () =>
+      [...sales]
+        .sort((a, b) =>
+          new Date(b.date).getTime() -
+          new Date(a.date).getTime()
+        )
+        .slice(0, 5),
+    [sales]
+  );
+
+
+  const recentPurchases = useMemo(
+    () =>
+      [...purchases]
+        .sort((a, b) =>
+          new Date(b.date).getTime() -
+          new Date(a.date).getTime()
+        )
+        .slice(0, 3),
+    [purchases]
+  );
+
+
+  const recentExpenses = useMemo(
+    () =>
+      [...expenses]
+        .sort((a, b) =>
+          new Date(b.date).getTime() -
+          new Date(a.date).getTime()
+        )
+        .slice(0, 3),
+    [expenses]
+  );
 
   const quickActions = [
     { label: 'New Sale', icon: ShoppingCart, href: '/sales/new', color: 'bg-blue-500/10 text-blue-600' },
@@ -269,107 +319,163 @@ export default function Dashboard() {
       </div>
 
       {/* Stock + Expiry alerts */}
-      {(metrics.lowStockItems.length > 0 || metrics.outOfStockItems.length > 0 ||
-        metrics.expiredBatches.length > 0 || metrics.expiringSoonBatches.length > 0) && (
-        <Card className="border-orange-300/50">
-          <CardHeader className="pb-2 pt-4">
-            <CardTitle className="text-sm flex items-center gap-2 text-orange-600">
-              <AlertTriangle className="h-4 w-4" />
-              Stock Alerts ({
-                metrics.lowStockItems.length + metrics.outOfStockItems.length +
-                metrics.expiredBatches.length + metrics.expiringSoonBatches.length
-              })
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pb-4 space-y-3">
+      {/* Stock + Expiry alerts */}
+      {(
+        metrics.lowStockItems.length > 0 ||
+        metrics.outOfStockItems.length > 0 ||
+        metrics.expiredBatches.length > 0 ||
+        metrics.expiringSoonBatches.length > 0
+      ) && (
+          <Card className="border-orange-300/50">
+            <CardHeader className="pb-2 pt-4">
+              <CardTitle className="text-sm flex items-center gap-2 text-orange-600">
+                <AlertTriangle className="h-4 w-4" />
+                Stock Alerts ({
+                  metrics.lowStockItems.length +
+                  metrics.outOfStockItems.length +
+                  metrics.expiredBatches.length +
+                  metrics.expiringSoonBatches.length
+                })
+              </CardTitle>
+            </CardHeader>
 
-            {/* Out of stock */}
-            {metrics.outOfStockItems.length > 0 && (
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-red-500 mb-1.5">Out of Stock</p>
-                <div className="flex flex-wrap gap-2">
-                  {metrics.outOfStockItems.slice(0, 5).map(item => (
-                    <Badge key={item.id} variant="destructive" className="text-xs cursor-pointer" onClick={() => setLocation('/inventory')}>
-                      {item.name} — OUT
-                    </Badge>
-                  ))}
-                  {metrics.outOfStockItems.length > 5 && (
-                    <Button variant="ghost" size="sm" className="text-xs h-6 px-2" onClick={() => setLocation('/inventory')}>
-                      +{metrics.outOfStockItems.length - 5} more
-                    </Button>
-                  )}
+            <CardContent className="pb-4 space-y-3">
+
+              {/* Out of stock */}
+              {metrics.outOfStockItems.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-red-500 mb-1.5">
+                    Out of Stock
+                  </p>
+
+                  <div className="flex flex-wrap gap-2">
+                    {metrics.outOfStockItems.slice(0, 5).map(item => (
+                      <Badge
+                        key={item.id}
+                        variant="destructive"
+                        className="text-xs cursor-pointer"
+                        onClick={() => setLocation(`/inventory/${item.id}`)}
+                      >
+                        {item.name} — OUT
+                      </Badge>
+                    ))}
+
+                    {metrics.outOfStockItems.length > 5 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs h-6 px-2"
+                        onClick={() => setLocation('/inventory')}
+                      >
+                        +{metrics.outOfStockItems.length - 5} more
+                      </Button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* Low stock */}
-            {metrics.lowStockItems.length > 0 && (
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-orange-500 mb-1.5">Low Stock</p>
-                <div className="flex flex-wrap gap-2">
-                  {metrics.lowStockItems.slice(0, 5).map(item => (
-                    <Badge key={item.id} className="text-xs bg-orange-100 text-orange-700 border-orange-300 cursor-pointer" onClick={() => setLocation('/inventory')}>
-                      {item.name} — {item.quantity} left
-                    </Badge>
-                  ))}
-                  {metrics.lowStockItems.length > 5 && (
-                    <Button variant="ghost" size="sm" className="text-xs h-6 px-2" onClick={() => setLocation('/inventory')}>
-                      +{metrics.lowStockItems.length - 5} more
-                    </Button>
-                  )}
+
+              {/* Low stock */}
+              {metrics.lowStockItems.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-orange-500 mb-1.5">
+                    Low Stock
+                  </p>
+
+                  <div className="flex flex-wrap gap-2">
+                    {metrics.lowStockItems.slice(0, 5).map(item => (
+                      <Badge
+                        key={item.id}
+                        className="text-xs bg-orange-100 text-orange-700 border-orange-300 cursor-pointer"
+                        onClick={() => setLocation(`/inventory/${item.id}`)}
+                      >
+                        {item.name} — {item.quantity} left
+                      </Badge>
+                    ))}
+
+                    {metrics.lowStockItems.length > 5 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs h-6 px-2"
+                        onClick={() => setLocation('/inventory')}
+                      >
+                        +{metrics.lowStockItems.length - 5} more
+                      </Button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* Expired batches */}
-            {metrics.expiredBatches.length > 0 && (
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-red-600 mb-1.5">Expired Batches</p>
-                <div className="flex flex-wrap gap-2">
-                  {metrics.expiredBatches.slice(0, 5).map(b => (
-                    <Badge
-                      key={b.batchId}
-                      className="text-xs bg-red-100 text-red-700 border-red-300 cursor-pointer"
-                      onClick={() => setLocation(`/inventory/${b.productId}`)}
-                    >
-                      {b.productName} · {b.batchNo} — {b.qty} units
-                    </Badge>
-                  ))}
-                  {metrics.expiredBatches.length > 5 && (
-                    <Button variant="ghost" size="sm" className="text-xs h-6 px-2" onClick={() => setLocation('/inventory')}>
-                      +{metrics.expiredBatches.length - 5} more
-                    </Button>
-                  )}
+
+              {/* Expired batches */}
+              {metrics.expiredBatches.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-red-600 mb-1.5">
+                    Expired Batches
+                  </p>
+
+                  <div className="flex flex-wrap gap-2">
+                    {metrics.expiredBatches.slice(0, 5).map(b => (
+                      <Badge
+                        key={b.batchId}
+                        className="text-xs bg-red-100 text-red-700 border-red-300 cursor-pointer"
+                        onClick={() => setLocation(`/inventory/${b.productId}`)}
+                      >
+                        {b.productName} · {b.batchNo} — {b.qty} units
+                      </Badge>
+                    ))}
+
+                    {metrics.expiredBatches.length > 5 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs h-6 px-2"
+                        onClick={() => setLocation('/inventory')}
+                      >
+                        +{metrics.expiredBatches.length - 5} more
+                      </Button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* Expiring soon batches */}
-            {metrics.expiringSoonBatches.length > 0 && (
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-yellow-600 mb-1.5">Expiring Soon</p>
-                <div className="flex flex-wrap gap-2">
-                  {metrics.expiringSoonBatches.slice(0, 5).map(b => (
-                    <Badge
-                      key={b.batchId}
-                      className="text-xs bg-yellow-100 text-yellow-800 border-yellow-300 cursor-pointer"
-                      onClick={() => setLocation(`/inventory/${b.productId}`)}
-                    >
-                      {b.productName} · {b.batchNo} — exp {format(parseISO(b.expiryDate), 'dd MMM')}
-                    </Badge>
-                  ))}
-                  {metrics.expiringSoonBatches.length > 5 && (
-                    <Button variant="ghost" size="sm" className="text-xs h-6 px-2" onClick={() => setLocation('/inventory')}>
-                      +{metrics.expiringSoonBatches.length - 5} more
-                    </Button>
-                  )}
+
+              {/* Expiring soon batches */}
+              {metrics.expiringSoonBatches.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-yellow-600 mb-1.5">
+                    Expiring Soon
+                  </p>
+
+                  <div className="flex flex-wrap gap-2">
+                    {metrics.expiringSoonBatches.slice(0, 5).map(b => (
+                      <Badge
+                        key={b.batchId}
+                        className="text-xs bg-yellow-100 text-yellow-800 border-yellow-300 cursor-pointer"
+                        onClick={() => setLocation(`/inventory/${b.productId}`)}
+                      >
+                        {b.productName} · {b.batchNo} — exp {format(parseISO(b.expiryDate), 'dd MMM')}
+                      </Badge>
+                    ))}
+
+                    {metrics.expiringSoonBatches.length > 5 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs h-6 px-2"
+                        onClick={() => setLocation('/inventory')}
+                      >
+                        +{metrics.expiringSoonBatches.length - 5} more
+                      </Button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-          </CardContent>
-        </Card>
-      )}
+            </CardContent>
+          </Card>
+        )}
 
       {/* Quick Actions */}
       <div>

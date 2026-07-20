@@ -13,6 +13,7 @@ import { PaymentMethod, ProductBatch, SaleInvoice } from '@/types';
 const BarcodeScanner = lazy(() => import('@/components/BarcodeScanner').then(module => ({ default: module.BarcodeScanner })));
 const SaleBillPrint = lazy(() => import('@/components/SaleBillPrint').then(module => ({ default: module.SaleBillPrint })));
 
+
 interface CartItem {
   productId: string;
   productName: string;
@@ -22,18 +23,32 @@ interface CartItem {
   subtotal: number;
 }
 
+
 /**
  * FEFO deduction: given sorted batches (earliest expiry first),
  * deduct `needed` qty from them in order. Returns updated batch list.
  */
-function fefoDeduct(batches: ProductBatch[], needed: number): ProductBatch[] {
+function fefoDeduct(
+  batches: ProductBatch[],
+  needed: number
+): { id: string; quantity: number }[] {
   let remaining = needed;
-  return batches.map(b => {
-    if (remaining <= 0) return b;
-    const take = Math.min(b.quantity, remaining);
-    remaining -= take;
-    return { ...b, quantity: b.quantity - take };
-  });
+  const updates: { id: string; quantity: number }[] = [];
+
+  for (const batch of batches) {
+    if (remaining <= 0) break;
+
+    const deduction = Math.min(batch.quantity, remaining);
+
+    updates.push({
+      id: batch.id,
+      quantity: batch.quantity - deduction,
+    });
+
+    remaining -= deduction;
+  }
+
+  return updates;
 }
 
 export default function SalesPos() {
@@ -56,14 +71,52 @@ export default function SalesPos() {
   const [showResults, setShowResults] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
 
+  const availableProducts = useMemo(
+    () => inventory.filter(product => product.quantity > 0),
+    [inventory]
+  );
+
+  const inventoryById = useMemo(() => {
+    const map = new Map<string, typeof inventory[number]>();
+
+    for (const product of inventory) {
+      map.set(product.id, product);
+    }
+
+    return map;
+  }, [inventory]);
+
   // Name-only search for POS dropdown
   const searchResults = useMemo(() => {
-    if (!searchQuery.trim()) return [];
-    const q = searchQuery.toLowerCase().trim();
-    return inventory
-      .filter(item => item.name.toLowerCase().includes(q) && item.quantity > 0)
+    const q = searchQuery.trim().toLowerCase();
+
+    if (!q) return [];
+
+    return availableProducts
+      .filter(product =>
+        product.name.toLowerCase().includes(q) ||
+        product.barcode?.toLowerCase().includes(q) ||
+        product.category?.toLowerCase().includes(q) ||
+        product.unit?.toLowerCase().includes(q)
+      )
+      .sort((a, b) => {
+        const aName = a.name.toLowerCase();
+        const bName = b.name.toLowerCase();
+
+        if (aName === q) return -1;
+        if (bName === q) return 1;
+
+        const aStarts = aName.startsWith(q);
+        const bStarts = bName.startsWith(q);
+
+        if (aStarts && !bStarts) return -1;
+        if (!aStarts && bStarts) return 1;
+
+        return b.quantity - a.quantity;
+      })
       .slice(0, 12);
-  }, [searchQuery, inventory]);
+
+  }, [availableProducts, searchQuery]);
 
   const addToCart = (product: typeof inventory[0]) => {
     setCart(current => {
@@ -94,21 +147,37 @@ export default function SalesPos() {
   };
 
   const handleBarcodeScanned = (barcode: string) => {
-    const product = inventory.find(p => p.barcode === barcode && p.quantity > 0);
-    if (product) {
-      addToCart(product);
-      toast.success(`Added: ${product.name}`);
-    } else {
-      const fuzzy = inventory.find(p => p.barcode.includes(barcode) || barcode.includes(p.barcode));
-      if (fuzzy) {
-        addToCart(fuzzy);
-        toast.success(`Added: ${fuzzy.name}`);
-      } else {
-        setSearchQuery(barcode);
-        setShowResults(true);
-        toast.info(`Barcode ${barcode} — search results shown`);
-      }
+    const code = barcode.trim();
+
+    const exact = inventory.find(
+      p => p.barcode === code && p.quantity > 0
+    );
+
+    if (exact) {
+      addToCart(exact);
+      toast.success(`Added ${exact.name}`);
+      return;
     }
+
+    const partial = inventory.find(
+      p =>
+        p.quantity > 0 &&
+        (
+          p.barcode?.includes(code) ||
+          code.includes(p.barcode ?? '')
+        )
+    );
+
+    if (partial) {
+      addToCart(partial);
+      toast.success(`Added ${partial.name}`);
+      return;
+    }
+
+    setSearchQuery(code);
+    setShowResults(true);
+
+    toast.error("Product not found");
   };
 
   const updateCartQuantity = (productId: string, delta: number) => {
@@ -138,26 +207,74 @@ export default function SalesPos() {
   };
 
   const removeFromCart = (productId: string) => {
-    setCart(current => current.filter(item => item.productId !== productId));
+    setCart(current =>
+      current.filter(item => item.productId !== productId)
+    );
   };
 
   const subtotal = cart.reduce((sum, item) => sum + item.subtotal, 0);
-  const taxAmount = Math.round((subtotal - discount) * (taxPercent / 100) * 100) / 100;
-  const grandTotal = Math.max(0, subtotal - discount + taxAmount);
-  const change = paidAmount !== '' && Number(paidAmount) > grandTotal
-    ? Number(paidAmount) - grandTotal : 0;
 
-  const handleCheckout = () => {
-    if (cart.length === 0) { toast.error('Cart is empty'); return; }
+  const taxAmount =
+    Math.round((subtotal - discount) * (taxPercent / 100) * 100) / 100;
 
-    // Validate stock
-    const stockErrors: string[] = [];
-    for (const item of cart) {
-      const product = inventory.find(p => p.id === item.productId);
-      if (!product || product.quantity < item.quantity) {
-        stockErrors.push(`${item.productName} (stock: ${product?.quantity ?? 0}, needed: ${item.quantity})`);
+  const grandTotal = Math.max(
+    0,
+    subtotal - discount + taxAmount
+  );
+
+  const change =
+    paidAmount !== '' && Number(paidAmount) > grandTotal
+      ? Number(paidAmount) - grandTotal
+      : 0;
+
+  const batchesByProduct = useMemo(() => {
+    const map = new Map<string, ProductBatch[]>();
+
+    for (const batch of batches) {
+      if (batch.quantity <= 0) continue;
+
+      const list = map.get(batch.productId);
+
+      if (list) {
+        list.push(batch);
+      } else {
+        map.set(batch.productId, [batch]);
       }
     }
+
+    for (const list of map.values()) {
+      list.sort((a, b) => {
+        if (!a.expiryDate && !b.expiryDate) return 0;
+        if (!a.expiryDate) return 1;
+        if (!b.expiryDate) return -1;
+
+        return a.expiryDate.localeCompare(b.expiryDate);
+      });
+    }
+
+    return map;
+  }, [batches]);
+
+  const handleCheckout = () => {
+    if (cart.length === 0) return;
+
+    // Validate stock
+    const stockErrors = cart
+      .map(item => {
+        const product = inventoryById.get(item.productId);
+
+        if (!product) {
+          return `${item.productName} no longer exists`;
+        }
+
+        if (product.quantity < item.quantity) {
+          return `${item.productName} (available: ${product.quantity}, needed: ${item.quantity})`;
+        }
+
+        return null;
+      })
+      .filter(Boolean);
+
     if (stockErrors.length > 0) {
       toast.error(`Insufficient stock: ${stockErrors.join('; ')}`);
       return;
@@ -188,43 +305,40 @@ export default function SalesPos() {
         notes: '',
       };
 
+
+
+
+      // Save sale ONCE
       addSale(saleRecord);
 
-      // Deduct stock — FEFO for products with batches, direct for others
+      // Deduct stock (FEFO) and update inventory
       for (const item of cart) {
-        const product = inventory.find(p => p.id === item.productId);
+        const product = inventoryById.get(item.productId);
+
         if (!product) continue;
 
-        const productBatches = batches
-          .filter(b => b.productId === item.productId && b.quantity > 0)
-          .sort((a, b) => {
-            // Null expiry (no expiry) goes last; sort earliest expiry first
-            if (!a.expiryDate && !b.expiryDate) return 0;
-            if (!a.expiryDate) return 1;
-            if (!b.expiryDate) return -1;
-            return a.expiryDate.localeCompare(b.expiryDate);
-          });
+        const productBatches = batchesByProduct.get(item.productId) ?? [];
 
         if (productBatches.length > 0) {
-          // FEFO deduction across batches
-          const updated = fefoDeduct(productBatches, item.quantity);
-          for (const ub of updated) {
-            const orig = productBatches.find(b => b.id === ub.id);
-            if (orig && orig.quantity !== ub.quantity) {
-              updateBatch(ub.id, { quantity: ub.quantity });
-            }
+          const updates = fefoDeduct(productBatches, item.quantity);
+
+          for (const batch of updates) {
+            updateBatch(batch.id, {
+              quantity: batch.quantity,
+            });
           }
         }
 
-        // Always update product total quantity
-        updateInventory(product.id, { quantity: product.quantity - item.quantity });
+        updateInventory(product.id, {
+          quantity: product.quantity - item.quantity,
+        });
       }
 
       toast.success('Sale completed!');
 
       const tempSale: SaleInvoice = {
         ...saleRecord,
-        id: `temp-${Date.now()}`,
+        id: crypto.randomUUID(),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         deletedAt: null,
@@ -243,6 +357,7 @@ export default function SalesPos() {
       console.error(error);
     }
   };
+
 
   const selectedCustomer = customers.find(c => c.id === customerId);
 
@@ -303,10 +418,10 @@ export default function SalesPos() {
           {/* Quick Products Grid */}
           <div className="flex-1 overflow-y-auto hidden md:block">
             <h3 className="font-medium mb-3 text-muted-foreground text-sm">
-              Quick Add — {inventory.filter(i => i.quantity > 0).length} in stock
+              Quick Add — {availableProducts.length} in stock
             </h3>
             <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
-              {inventory.filter(i => i.quantity > 0).slice(0, 16).map(product => (
+              {availableProducts.slice(0, 16).map(product => (
                 <Card
                   key={product.id}
                   className="cursor-pointer hover:border-primary/60 hover:bg-primary/5 transition-all active:scale-95"

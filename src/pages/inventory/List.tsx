@@ -100,6 +100,20 @@ export default function InventoryList() {
     </button>
   );
 
+  const batchesByProduct = useMemo(() => {
+    const map: Record<string, typeof batches> = {};
+
+    batches.forEach(batch => {
+      if (!map[batch.productId]) {
+        map[batch.productId] = [];
+      }
+
+      map[batch.productId].push(batch);
+    });
+
+    return map;
+  }, [batches]);
+
   return (
     <div className="p-4 md:p-6 space-y-4 max-w-7xl mx-auto pb-24 md:pb-6">
       {/* Header */}
@@ -183,7 +197,7 @@ export default function InventoryList() {
             const isLowStock = item.quantity <= item.minimumStock && item.quantity > 0;
             const isOutOfStock = item.quantity === 0;
             const expiryStatus = expiryStatusMap[item.id] ?? 'none';
-            const productBatches = batches.filter(b => b.productId === item.id);
+            const productBatches = batchesByProduct[item.id] ?? [];
             const nearestExpiry = productBatches
               .filter(b => b.expiryDate)
               .sort((a, b) => (a.expiryDate ?? '').localeCompare(b.expiryDate ?? ''))[0];
@@ -191,15 +205,17 @@ export default function InventoryList() {
             return (
               <Card
                 key={item.id}
-                className={`overflow-hidden transition-colors ${
-                  isOutOfStock ? 'border-destructive/40' :
+                className={`overflow-hidden transition-colors ${isOutOfStock ? 'border-destructive/40' :
                   expiryStatus === 'expired' ? 'border-destructive/40' :
-                  isLowStock || expiryStatus === 'expiring' ? 'border-orange-300/60' :
-                  'hover:border-primary/40'
-                }`}
+                    isLowStock || expiryStatus === 'expiring' ? 'border-orange-300/60' :
+                      'hover:border-primary/40'
+                  }`}
               >
                 <CardContent className="p-0">
-                  <div className="p-4 flex gap-3">
+                  <div
+                    className="p-4 flex gap-3 cursor-pointer hover:bg-muted/30 transition-colors"
+                    onClick={() => setLocation(`/inventory/${item.id}`)}
+                  >
                     {item.imageBase64 ? (
                       <div
                         className="h-14 w-14 rounded-md bg-muted flex-shrink-0"
@@ -212,9 +228,14 @@ export default function InventoryList() {
                     )}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-2">
-                        <div className="font-semibold text-sm leading-tight truncate">{item.name}</div>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
+                        <div className="font-semibold text-sm leading-tight truncate flex items-center gap-1">
+                          {item.name}
+                          <span className="text-[10px] text-muted-foreground">
+                            View
+                          </span>
+                        </div>
+                        <DropdownMenu onOpenChange={() => { }}>
+                          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
                             <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 -mt-1">
                               <MoreVertical className="h-4 w-4" />
                             </Button>
@@ -304,12 +325,26 @@ export default function InventoryList() {
 
                   {/* Actions */}
                   <div className="px-4 pb-3 flex gap-2">
-                    <Button variant="outline" size="sm" className="flex-1 h-8 text-xs"
-                      onClick={() => setAdjustProduct(item)}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1 h-8 text-xs"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setAdjustProduct(item);
+                      }}
+                    >
                       <SlidersHorizontal className="h-3 w-3 mr-1" /> Adjust Stock
                     </Button>
-                    <Button variant="outline" size="sm" className="h-8 text-xs"
-                      onClick={() => setLocation(`/inventory/${item.id}/edit`)}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setLocation(`/inventory/${item.id}/edit`);
+                      }}
+                    >
                       <Edit className="h-3 w-3 mr-1" /> Edit
                     </Button>
                   </div>
