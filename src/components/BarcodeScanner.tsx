@@ -1,8 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
-import { Html5Qrcode } from 'html5-qrcode';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Camera, X, Zap } from 'lucide-react';
+
+let Html5Qrcode: typeof import('html5-qrcode').Html5Qrcode | undefined;
+
+async function loadHtml5Qrcode() {
+  if (!Html5Qrcode) {
+    const module = await import('html5-qrcode');
+    Html5Qrcode = module.Html5Qrcode;
+  }
+  return Html5Qrcode;
+}
 
 interface BarcodeScannerProps {
   onScan: (barcode: string) => void;
@@ -20,7 +29,8 @@ export function BarcodeScanner({ onScan }: BarcodeScannerProps) {
     setScanning(false);
 
     try {
-      const cameras = await Html5Qrcode.getCameras();
+      const Html5QrcodeClass = await loadHtml5Qrcode();
+      const cameras = await Html5QrcodeClass.getCameras();
       if (!cameras || cameras.length === 0) {
         setError('No camera found on this device.');
         return;
@@ -33,7 +43,7 @@ export function BarcodeScanner({ onScan }: BarcodeScannerProps) {
         c.label.toLowerCase().includes('environment')
       ) || cameras[cameras.length - 1];
 
-      const scanner = new Html5Qrcode(containerRef.current);
+      const scanner = new Html5QrcodeClass(containerRef.current);
       scannerRef.current = scanner;
 
       await scanner.start(

@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, lazy, Suspense } from 'react';
 import { useInventory, useSales, useCustomers, useProductBatches } from '@/contexts/GlobalProviders';
 import { useCurrency } from '@/hooks/useCurrency';
 import { useApp } from '@/contexts/AppContext';
@@ -10,8 +10,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Search, Plus, Minus, Trash2, ShoppingCart, CreditCard, QrCode, Banknote, User, SplitSquareHorizontal } from 'lucide-react';
 import { toast } from 'sonner';
 import { PaymentMethod, ProductBatch, SaleInvoice } from '@/types';
-import { BarcodeScanner } from '@/components/BarcodeScanner';
-import { SaleBillPrint } from '@/components/SaleBillPrint';
+const BarcodeScanner = lazy(() => import('@/components/BarcodeScanner').then(module => ({ default: module.BarcodeScanner })));
+const SaleBillPrint = lazy(() => import('@/components/SaleBillPrint').then(module => ({ default: module.SaleBillPrint })));
 
 interface CartItem {
   productId: string;
@@ -295,7 +295,9 @@ export default function SalesPos() {
                 </div>
               )}
             </div>
-            <BarcodeScanner onScan={handleBarcodeScanned} />
+            <Suspense fallback={null}>
+              <BarcodeScanner onScan={handleBarcodeScanned} />
+            </Suspense>
           </div>
 
           {/* Quick Products Grid */}
@@ -512,13 +514,15 @@ export default function SalesPos() {
       </div>
 
       {printSale && (
-        <SaleBillPrint
-          sale={printSale}
-          settings={settings}
-          customerName={selectedCustomer?.name}
-          open={!!printSale}
-          onClose={() => setPrintSale(null)}
-        />
+        <Suspense fallback={null}>
+          <SaleBillPrint
+            sale={printSale}
+            settings={settings}
+            customerName={selectedCustomer?.name}
+            open={!!printSale}
+            onClose={() => setPrintSale(null)}
+          />
+        </Suspense>
       )}
     </div>
   );
