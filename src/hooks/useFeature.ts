@@ -12,6 +12,6 @@ type FeatureKey<D extends FeatureDomain> = keyof FeatureConfig[D];
  */
 export function useFeature<D extends FeatureDomain>(domain: D, feature: FeatureKey<D>): boolean {
   const { settings } = useApp();
-  const features = settings.features as Record<string, Record<string, boolean>> | undefined;
-  return !!features?.[domain]?.[feature as string];
+  const features = settings.features;
+  return !!features?.[domain]?.[feature];
 }
