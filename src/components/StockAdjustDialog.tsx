@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Plus, Minus, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { Product } from '@/types';
+import { useBackModal } from '@/contexts/NavigationContext';
 
 interface StockAdjustDialogProps {
   product: Product | null;
@@ -19,6 +20,8 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
   const [mode, setMode] = useState<'add' | 'remove' | 'set'>('add');
   const [amount, setAmount] = useState('');
   const [reason, setReason] = useState('');
+
+  useBackModal(open, onClose, 'stock-adjust-dialog');
 
   if (!product) return null;
 

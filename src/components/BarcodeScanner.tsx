@@ -2,16 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Camera, X, Zap } from 'lucide-react';
-
-let Html5Qrcode: typeof import('html5-qrcode').Html5Qrcode | undefined;
-
-async function loadHtml5Qrcode() {
-  if (!Html5Qrcode) {
-    const module = await import('html5-qrcode');
-    Html5Qrcode = module.Html5Qrcode;
-  }
-  return Html5Qrcode;
-}
+import { useBackModal } from '@/contexts/NavigationContext';
+import { BarcodeService } from '@/services/BarcodeService';
 
 interface BarcodeScannerProps {
   onScan: (barcode: string) => void;
@@ -21,63 +13,61 @@ export function BarcodeScanner({ onScan }: BarcodeScannerProps) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
-  const scannerRef = useRef<Html5Qrcode | null>(null);
   const containerRef = useRef<string>('barcode-scanner-container');
+
+  useBackModal(open, () => setOpen(false), 'barcode-scanner-dialog');
 
   const startScanner = async () => {
     setError(null);
     setScanning(false);
 
-    try {
-      const Html5QrcodeClass = await loadHtml5Qrcode();
-      const cameras = await Html5QrcodeClass.getCameras();
-      if (!cameras || cameras.length === 0) {
-        setError('No camera found on this device.');
+    const activeProvider = BarcodeService.getActiveProviderName();
+    
+    if (activeProvider === 'capacitor') {
+      try {
+        const barcode = await BarcodeService.scan({
+          onScan: (val) => {
+            onScan(val);
+            setOpen(false);
+          }
+        });
+        onScan(barcode);
+        setOpen(false);
         return;
+      } catch (err: any) {
+        console.warn('Native scanner not available, falling back to Web camera...', err);
+        // Fall through to Web scanner
       }
+    }
 
-      // Prefer back camera
-      const backCamera = cameras.find(c =>
-        c.label.toLowerCase().includes('back') ||
-        c.label.toLowerCase().includes('rear') ||
-        c.label.toLowerCase().includes('environment')
-      ) || cameras[cameras.length - 1];
-
-      const scanner = new Html5QrcodeClass(containerRef.current);
-      scannerRef.current = scanner;
-
-      await scanner.start(
-        backCamera.id,
-        {
-          fps: 10,
-          qrbox: { width: 250, height: 150 },
-          aspectRatio: 1.777,
-        },
-        (decodedText) => {
-          onScan(decodedText);
-          stopScanner();
+    try {
+      setScanning(true);
+      const webProvider = BarcodeService.getProviderByName('web');
+      await webProvider.scan({
+        containerId: containerRef.current,
+        onScan: (val) => {
+          onScan(val);
           setOpen(false);
         },
-        (_errorMessage) => {
-          // Scan error (no barcode in frame) — ignore
+        onError: (err) => {
+          setError(err);
+          setScanning(false);
         }
-      );
-      setScanning(true);
+      });
     } catch (err: any) {
-      setError(err?.message || 'Camera access denied. Please allow camera permissions.');
+      setError(err?.message || 'Scanning could not be initialized.');
       setScanning(false);
     }
   };
 
   const stopScanner = () => {
-    if (scannerRef.current && scanning) {
-      scannerRef.current.stop().catch(() => {});
-      scannerRef.current = null;
-    }
+    BarcodeService.stop().catch(() => {});
     setScanning(false);
   };
 
-  const handleOpen = () => {
+  const handleOpen = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
     setOpen(true);
   };
 
@@ -89,20 +79,16 @@ export function BarcodeScanner({ onScan }: BarcodeScannerProps) {
 
   useEffect(() => {
     if (open) {
-      // Small delay to let DOM render the container
       const t = setTimeout(() => startScanner(), 300);
       return () => clearTimeout(t);
     } else {
       stopScanner();
       return undefined;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => { stopScanner(); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useLocation } from 'wouter';
 import { useRestaurantBills, useInventory } from '@/contexts/GlobalProviders';
+import { useSmartBack } from '@/contexts/NavigationContext';
 import { useCurrency } from '@/hooks/useCurrency';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,6 +10,7 @@ import { ArrowLeft, Save, Plus, Trash2, Search } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function RestaurantBillingForm() {
+  const goBack = useSmartBack('/restaurant');
   const [, setLocation] = useLocation();
   const { add } = useRestaurantBills();
   const { items: inventory } = useInventory();
@@ -76,7 +78,7 @@ export default function RestaurantBillingForm() {
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-4xl mx-auto pb-24 md:pb-6">
       <div className="flex items-center gap-4 mb-6">
-        <Button variant="ghost" size="icon" onClick={() => setLocation('/restaurant')}>
+        <Button variant="ghost" size="icon" onClick={goBack}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <h1 className="text-2xl font-bold">New Restaurant Bill / KOT</h1>
@@ -136,33 +138,46 @@ export default function RestaurantBillingForm() {
                 ) : (
                   <div className="space-y-2">
                     {items.map((item, index) => (
-                      <div key={index} className="flex gap-2 items-center bg-muted/30 p-2 rounded-lg border">
+                      <div key={index} className="flex flex-col md:flex-row gap-3 md:gap-2 bg-muted/30 p-3 md:p-2 rounded-lg border">
+                        {/* Item Name */}
                         <Input 
                           placeholder="Item name" 
                           value={item.name}
                           onChange={e => updateItem(index, 'name', e.target.value)}
-                          className="flex-1 bg-transparent border-0"
+                          className="w-full md:flex-1 bg-transparent border-0 md:border font-semibold md:font-normal"
                         />
-                        <Input 
-                          type="number" 
-                          placeholder="Qty" 
-                          value={item.quantity || ''}
-                          onChange={e => updateItem(index, 'quantity', e.target.value)}
-                          className="w-16 bg-transparent"
-                        />
-                        <Input 
-                          type="number" 
-                          placeholder="Rate" 
-                          value={item.rate || ''}
-                          onChange={e => updateItem(index, 'rate', e.target.value)}
-                          className="w-20 bg-transparent"
-                        />
-                        <div className="w-20 font-semibold text-right pr-2">
-                          {format(item.total)}
+                        
+                        {/* Qty & Rate wrapper */}
+                        <div className="flex gap-2 w-full md:w-auto">
+                          <div className="flex-1 md:flex-none">
+                            <Input 
+                              type="number" 
+                              placeholder="Qty" 
+                              value={item.quantity || ''}
+                              onChange={e => updateItem(index, 'quantity', e.target.value)}
+                              className="w-full md:w-16 bg-transparent"
+                            />
+                          </div>
+                          <div className="flex-1 md:flex-none">
+                            <Input 
+                              type="number" 
+                              placeholder="Rate" 
+                              value={item.rate || ''}
+                              onChange={e => updateItem(index, 'rate', e.target.value)}
+                              className="w-full md:w-20 bg-transparent"
+                            />
+                          </div>
+                          
+                          {/* Total and Actions */}
+                          <div className="flex items-center gap-2 pl-2 shrink-0">
+                            <div className="w-20 font-semibold text-right pr-2 text-sm md:text-base">
+                              {format(item.total)}
+                            </div>
+                            <Button type="button" variant="ghost" size="icon" onClick={() => setItems(items.filter((_, i) => i !== index))} className="h-8 w-8 text-destructive">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </div>
-                        <Button type="button" variant="ghost" size="icon" onClick={() => setItems(items.filter((_, i) => i !== index))}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
                       </div>
                     ))}
                   </div>

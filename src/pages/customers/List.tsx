@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useLocation } from 'wouter';
 import { useCustomers } from '@/contexts/GlobalProviders';
+import { useBackModal } from '@/contexts/NavigationContext';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,6 +15,8 @@ export default function CustomerList() {
   const { items, add, update, remove } = useCustomers();
   const [showAddForm, setShowAddForm] = useState(false);
   const [formData, setFormData] = useState({ name: '', phone: '', address: '', email: '', notes: '' });
+
+  useBackModal(showAddForm, () => setShowAddForm(false), 'add-customer-form');
 
   const { query, setQuery, filteredItems } = useSearch(items, ['name', 'phone', 'address']);
   const { sortedItems } = useSort(filteredItems, { key: 'name', direction: 'asc' });
@@ -67,21 +70,32 @@ export default function CustomerList() {
         />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {sortedItems.map(customer => (
-          <Card key={customer.id}>
-            <CardContent className="p-4">
-              <div className="flex justify-between items-start">
-                <div className="font-semibold text-lg">{customer.name}</div>
-              </div>
-              <div className="mt-3 space-y-2 text-sm text-muted-foreground">
-                <div className="flex items-center gap-2"><Phone className="h-4 w-4" /> {customer.phone || 'N/A'}</div>
-                <div className="flex items-center gap-2"><MapPin className="h-4 w-4" /> {customer.address || 'N/A'}</div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      {sortedItems.length === 0 ? (
+        <div className="text-center py-20 bg-card rounded-xl border border-dashed">
+          <User className="mx-auto h-12 w-12 text-muted-foreground/50 mb-4" />
+          <h3 className="text-lg font-semibold">{query ? 'No customers found' : 'No customers yet'}</h3>
+          {!query && <p className="text-muted-foreground mb-6">Add your first customer to get started.</p>}
+          {!query && (
+            <Button onClick={() => setShowAddForm(true)} variant="outline">Add First Customer</Button>
+          )}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {sortedItems.map(customer => (
+            <Card key={customer.id}>
+              <CardContent className="p-4">
+                <div className="flex justify-between items-start">
+                  <div className="font-semibold text-lg">{customer.name}</div>
+                </div>
+                <div className="mt-3 space-y-2 text-sm text-muted-foreground">
+                  <div className="flex items-center gap-2"><Phone className="h-4 w-4" /> {customer.phone || 'N/A'}</div>
+                  <div className="flex items-center gap-2"><MapPin className="h-4 w-4" /> {customer.address || 'N/A'}</div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { storageService } from '../storage/StorageService';
-import { AppSettings, AppUser } from '../types';
+import { useStorageProvider } from '../storage/StorageContext';
+import { AppSettings, AppUser, FeatureConfig } from '../types';
 
 interface AppContextType {
   settings: AppSettings;
@@ -10,6 +10,32 @@ interface AppContextType {
   theme: 'light' | 'dark' | 'system';
   setTheme: (theme: 'light' | 'dark' | 'system') => void;
 }
+
+const defaultFeatures: FeatureConfig = {
+  inventory: {
+    batches: true,
+    expiry: true,
+    variants: true,
+    serialNumbers: true,
+    barcodeSupport: true,
+    multiUnits: true,
+  },
+  sales: {
+    returns: true,
+    creditSales: true,
+    discounts: true,
+    layaway: true,
+    quotations: true,
+  },
+  customers: {
+    loyalty: true,
+    membership: true,
+  },
+  hospitality: {
+    hotelGrid: true,
+    restaurantBilling: true,
+  },
+};
 
 const defaultSettings: AppSettings = {
   businessName: 'Sohan Manager',
@@ -22,22 +48,31 @@ const defaultSettings: AppSettings = {
   taxRate: 13,
   lowStockThreshold: 10,
   theme: 'system',
-  language: 'en'
+  language: 'en',
+  features: defaultFeatures,
 };
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [settings, setSettingsState] = useState<AppSettings>(() => {
-    return storageService.getSettings() || defaultSettings;
-  });
+  const storage = useStorageProvider();
+
+  const [settings, setSettingsState] = useState<AppSettings>(defaultSettings);
   
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
 
-  const updateSettings = (newSettings: Partial<AppSettings>) => {
+  useEffect(() => {
+    storage.getSettings().then((loaded) => {
+      if (loaded) {
+        setSettingsState((prev) => ({ ...prev, ...loaded }));
+      }
+    });
+  }, [storage]);
+
+  const updateSettings = async (newSettings: Partial<AppSettings>) => {
     const updated = { ...settings, ...newSettings };
     setSettingsState(updated);
-    storageService.saveSettings(updated);
+    await storage.saveSettings(updated);
   };
 
   const setTheme = (theme: 'light' | 'dark' | 'system') => {

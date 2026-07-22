@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { CalendarDays, FlaskConical, Save, Wand2 } from 'lucide-react';
 import { ProductBatch, Supplier } from '@/types';
 import { addMonths, format as fmtDate, isAfter, isBefore, parseISO, startOfDay } from 'date-fns';
+import { useBackModal } from '@/contexts/NavigationContext';
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
 const batchSchema = z.object({
@@ -91,6 +92,8 @@ export function BatchFormDialog({
   open, onClose, onSave, suppliers, productId, editBatch, nextBatchNumber,
 }: BatchFormDialogProps) {
   const [previewExpiry, setPreviewExpiry] = useState<string | null>(null);
+
+  useBackModal(open, onClose, 'batch-form-dialog');
 
   const form = useForm<BatchFormValues>({
     resolver: zodResolver(batchSchema),

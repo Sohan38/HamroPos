@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useLocation } from 'wouter';
 import { useSuppliers, usePurchases, useInventory } from '@/contexts/GlobalProviders';
+import { useBackModal } from '@/contexts/NavigationContext';
 import { useCurrency } from '@/hooks/useCurrency';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -21,6 +22,8 @@ export default function SupplierList() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [formData, setFormData] = useState({ name: '', phone: '', address: '', email: '', vatPan: '', notes: '' });
+
+  useBackModal(showAddForm, () => setShowAddForm(false), 'add-supplier-form');
 
   const { query, setQuery, filteredItems } = useSearch(items, ['name', 'phone', 'address', 'vatPan']);
   const { sortedItems } = useSort(filteredItems, { key: 'name', direction: 'asc' });

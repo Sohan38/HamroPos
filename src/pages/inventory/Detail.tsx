@@ -1,4 +1,5 @@
 import { useParams, useLocation } from 'wouter';
+import { useSmartBack } from '@/contexts/NavigationContext';
 import {
   useInventory, useProductBatches, useSuppliers,
 } from '@/contexts/GlobalProviders';
@@ -15,7 +16,13 @@ import {
 import { ExpiryBadge, getBatchStatus } from '@/components/BatchFormDialog';
 import { useMemo } from 'react';
 
+import { useFeature } from '@/hooks/useFeature';
+
 export default function InventoryDetail() {
+  const isBatchesEnabled = useFeature('inventory', 'batches');
+  const isExpiryEnabled = useFeature('inventory', 'expiry');
+
+  const goBack = useSmartBack('/inventory');
   const { id } = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
   const { items: inventory } = useInventory();
@@ -112,7 +119,7 @@ export default function InventoryDetail() {
       {/* Header */}
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <Button variant="ghost" size="icon" onClick={() => setLocation('/inventory')}>
+          <Button variant="ghost" size="icon" onClick={goBack}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div className="min-w-0">
@@ -255,7 +262,7 @@ export default function InventoryDetail() {
       </Card>
 
       {/* Batches */}
-      {product.hasExpiry && (
+      {isBatchesEnabled && product.hasExpiry && (
         <Card>
           <CardHeader className="pb-2 pt-4">
             <CardTitle className="text-sm flex items-center gap-2">

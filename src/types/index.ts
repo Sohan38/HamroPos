@@ -4,6 +4,9 @@ export interface StorageRecord {
   updatedAt: string;
   deletedAt: string | null;
   version: number;
+  syncStatus?: 'synced' | 'pending_insert' | 'pending_update' | 'pending_delete';
+  lastSyncedAt?: string | null;
+  deviceId?: string;
 }
 
 export type ProductUnit = 'pcs' | 'packet' | 'box' | 'bottle' | 'kg' | 'gram' | 'litre' | 'ml' | 'plate' | 'cup' | 'glass' | 'meter' | 'roll' | 'dozen' | 'custom';
@@ -72,6 +75,7 @@ export interface PurchaseItem {
 export interface PurchaseInvoice extends StorageRecord {
   invoiceNumber: string;
   supplierId: string;
+  supplierName?: string | null;
   date: string;
   items: PurchaseItem[];
   discount: number;
@@ -91,6 +95,7 @@ export interface SaleItem {
 
 export interface SaleInvoice extends StorageRecord {
   customerId: string | null;
+  customerName?: string | null;
   date: string;
   items: SaleItem[];
   discount: number;
@@ -197,6 +202,32 @@ export interface Credit extends StorageRecord {
   notes: string;
 }
 
+export interface FeatureConfig {
+  inventory: {
+    batches: boolean;
+    expiry: boolean;
+    variants: boolean;
+    serialNumbers: boolean;
+    barcodeSupport: boolean;
+    multiUnits: boolean;
+  };
+  sales: {
+    returns: boolean;
+    creditSales: boolean;
+    discounts: boolean;
+    layaway: boolean;
+    quotations: boolean;
+  };
+  customers: {
+    loyalty: boolean;
+    membership: boolean;
+  };
+  hospitality: {
+    hotelGrid: boolean;
+    restaurantBilling: boolean;
+  };
+}
+
 export interface AppSettings {
   businessName: string;
   businessLogoBase64: string | null;
@@ -209,6 +240,7 @@ export interface AppSettings {
   lowStockThreshold: number;
   theme: 'light' | 'dark' | 'system';
   language: string;
+  features: FeatureConfig;
 }
 
 export type UserRole = 'admin' | 'manager' | 'cashier' | 'receptionist' | 'staff';

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useLocation } from 'wouter';
 import { usePurchases, useSuppliers, useInventory } from '@/contexts/GlobalProviders';
+import { useSmartBack } from '@/contexts/NavigationContext';
 import { useCurrency } from '@/hooks/useCurrency';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,7 +10,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ArrowLeft, Save, Plus, Trash2, Search } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { useFeature } from '@/hooks/useFeature';
+
 export default function PurchaseForm() {
+  const isDiscountsEnabled = useFeature('sales', 'discounts');
+  const goBack = useSmartBack('/purchases');
   const [, setLocation] = useLocation();
   const { add } = usePurchases();
   const { items: suppliers } = useSuppliers();
@@ -23,7 +28,7 @@ export default function PurchaseForm() {
   const [searchQuery, setSearchQuery] = useState('');
 
   const subtotal = items.reduce((sum, item) => sum + item.subtotal, 0);
-  const grandTotal = subtotal - Number(discount);
+  const grandTotal = subtotal - (isDiscountsEnabled ? Number(discount) || 0 : 0);
 
   const addItem = (product: any) => {
     setItems([...items, { 
@@ -55,12 +60,14 @@ export default function PurchaseForm() {
       return;
     }
 
+    const supplier = suppliers.find(s => s.id === supplierId);
     add({
       invoiceNumber,
       supplierId,
+      supplierName: supplier?.name || null,
       date: new Date().toISOString(),
       items,
-      discount: Number(discount),
+      discount: isDiscountsEnabled ? Number(discount) || 0 : 0,
       tax: 0,
       grandTotal,
       paymentMethod: 'cash',
@@ -90,7 +97,7 @@ export default function PurchaseForm() {
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-5xl mx-auto pb-24 md:pb-6">
       <div className="flex items-center gap-4 mb-6">
-        <Button variant="ghost" size="icon" onClick={() => setLocation('/purchases')}>
+        <Button variant="ghost" size="icon" onClick={goBack}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <h1 className="text-2xl font-bold">New Purchase Invoice</h1>
@@ -150,7 +157,8 @@ export default function PurchaseForm() {
               </div>
 
               <div className="mt-6 border rounded-lg overflow-hidden">
-                <div className="grid grid-cols-12 gap-2 bg-muted p-2 text-xs font-semibold text-muted-foreground uppercase">
+                {/* Headers: only visible on desktop */}
+                <div className="hidden md:grid grid-cols-12 gap-2 bg-muted p-2 text-xs font-semibold text-muted-foreground uppercase">
                   <div className="col-span-5">Product</div>
                   <div className="col-span-2">Qty</div>
                   <div className="col-span-2">Rate</div>
@@ -165,26 +173,51 @@ export default function PurchaseForm() {
                 ) : (
                   <div className="divide-y">
                     {items.map((item, index) => (
-                      <div key={index} className="grid grid-cols-12 gap-2 p-2 items-center">
-                        <div className="col-span-5 font-medium truncate pr-2">{item.productName}</div>
-                        <Input 
-                          type="number" 
-                          className="col-span-2 h-8"
-                          value={item.quantity || ''}
-                          onChange={e => updateItem(index, 'quantity', e.target.value)}
-                        />
-                        <Input 
-                          type="number" 
-                          className="col-span-2 h-8"
-                          value={item.purchaseRate || ''}
-                          onChange={e => updateItem(index, 'purchaseRate', e.target.value)}
-                        />
-                        <div className="col-span-2 font-semibold text-right pr-2">
-                          {format(item.subtotal)}
+                      <div key={index} className="flex flex-col md:grid md:grid-cols-12 gap-3 md:gap-2 p-3 md:p-2 items-start md:items-center">
+                        {/* Product Title */}
+                        <div className="w-full md:col-span-5 font-semibold md:font-medium truncate pr-2 text-sm md:text-base">
+                          {item.productName}
                         </div>
-                        <Button type="button" variant="ghost" size="icon" className="col-span-1 h-8 w-8" onClick={() => setItems(items.filter((_, i) => i !== index))}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
+
+                        {/* Inputs wrapper for mobile */}
+                        <div className="w-full md:contents grid grid-cols-2 md:grid-cols-none gap-2">
+                          <div className="flex flex-col md:col-span-2 gap-1 md:gap-0">
+                            <span className="text-[10px] uppercase font-semibold text-muted-foreground md:hidden">Qty</span>
+                            <Input 
+                              type="number" 
+                              className="h-8 w-full"
+                              value={item.quantity || ''}
+                              onChange={e => updateItem(index, 'quantity', e.target.value)}
+                            />
+                          </div>
+
+                          <div className="flex flex-col md:col-span-2 gap-1 md:gap-0">
+                            <span className="text-[10px] uppercase font-semibold text-muted-foreground md:hidden">Rate</span>
+                            <Input 
+                              type="number" 
+                              className="h-8 w-full"
+                              value={item.purchaseRate || ''}
+                              onChange={e => updateItem(index, 'purchaseRate', e.target.value)}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Total and Delete actions */}
+                        <div className="w-full md:contents flex justify-between items-center mt-2 md:mt-0 pt-2 md:pt-0 border-t md:border-t-0 border-border">
+                          <div className="md:col-span-2 font-semibold text-right pr-2">
+                            <span className="text-xs text-muted-foreground font-normal md:hidden mr-2">Total:</span>
+                            {format(item.subtotal)}
+                          </div>
+                          <Button 
+                            type="button" 
+                            variant="ghost" 
+                            size="icon" 
+                            className="md:col-span-1 h-8 w-8 text-destructive" 
+                            onClick={() => setItems(items.filter((_, i) => i !== index))}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -204,15 +237,17 @@ export default function PurchaseForm() {
                   <span className="text-muted-foreground">Subtotal</span>
                   <span>{format(subtotal)}</span>
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-muted-foreground">Discount</span>
-                  <Input 
-                    type="number" 
-                    className="w-24 h-8 text-right" 
-                    value={discount} 
-                    onChange={e => setDiscount(e.target.value)} 
-                  />
-                </div>
+                {isDiscountsEnabled && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">Discount</span>
+                    <Input 
+                      type="number" 
+                      className="w-24 h-8 text-right" 
+                      value={discount} 
+                      onChange={e => setDiscount(e.target.value)} 
+                    />
+                  </div>
+                )}
                 
                 <div className="border-t pt-4 mt-2 flex justify-between items-center">
                   <span className="font-bold text-lg">Grand Total</span>

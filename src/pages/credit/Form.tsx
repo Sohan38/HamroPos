@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useLocation } from 'wouter';
 import { useCredit } from '@/contexts/GlobalProviders';
+import { useSmartBack } from '@/contexts/NavigationContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,6 +10,7 @@ import { ArrowLeft, Save } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function CreditForm() {
+  const goBack = useSmartBack('/credit');
   const [, setLocation] = useLocation();
   const { add } = useCredit();
 
@@ -47,7 +49,7 @@ export default function CreditForm() {
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-2xl mx-auto pb-24 md:pb-6">
       <div className="flex items-center gap-4 mb-6">
-        <Button variant="ghost" size="icon" onClick={() => setLocation('/credit')}>
+        <Button variant="ghost" size="icon" onClick={goBack}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <h1 className="text-2xl font-bold">Add Credit (Udharo)</h1>

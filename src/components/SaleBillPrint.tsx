@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Printer, X } from 'lucide-react';
 import { SaleInvoice, AppSettings } from '@/types';
+import { useBackModal } from '@/contexts/NavigationContext';
 
 interface SaleBillPrintProps {
   sale: SaleInvoice;
@@ -15,6 +16,8 @@ interface SaleBillPrintProps {
 
 export function SaleBillPrint({ sale, settings, customerName, open, onClose }: SaleBillPrintProps) {
   const billRef = useRef<HTMLDivElement>(null);
+
+  useBackModal(open, onClose, 'sale-bill-print');
 
   const handlePrint = () => {
     const printContent = billRef.current;

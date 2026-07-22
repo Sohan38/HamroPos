@@ -17,6 +17,7 @@ import {
   ResponsiveContainer, BarChart, Bar, Legend,
 } from 'recharts';
 import { useApp } from '@/contexts/AppContext';
+import { useFeature } from '@/hooks/useFeature';
 
 // Compute cost-of-goods-sold for a set of sales using current inventory data for purchase rates
 function computeCOGS(
@@ -204,14 +205,17 @@ export default function Dashboard() {
     [expenses]
   );
 
+  const isHotelEnabled = useFeature('hospitality', 'hotelGrid');
+  const isRestaurantEnabled = useFeature('hospitality', 'restaurantBilling');
+
   const quickActions = [
-    { label: 'New Sale', icon: ShoppingCart, href: '/sales/new', color: 'bg-blue-500/10 text-blue-600' },
-    { label: 'Purchase', icon: Truck, href: '/purchases/new', color: 'bg-green-500/10 text-green-600' },
-    { label: 'Hotel Bill', icon: Hotel, href: '/hotel/billing/new', color: 'bg-purple-500/10 text-purple-600' },
-    { label: 'Restaurant', icon: UtensilsCrossed, href: '/restaurant/new', color: 'bg-orange-500/10 text-orange-600' },
-    { label: 'Expense', icon: Receipt, href: '/expenses/new', color: 'bg-red-500/10 text-red-600' },
-    { label: 'Credit', icon: Banknote, href: '/credit/new', color: 'bg-yellow-500/10 text-yellow-600' },
-  ];
+    { label: 'New Sale', icon: ShoppingCart, href: '/sales/new', color: 'bg-blue-500/10 text-blue-600', show: true },
+    { label: 'Purchase', icon: Truck, href: '/purchases/new', color: 'bg-green-500/10 text-green-600', show: true },
+    { label: 'Hotel Bill', icon: Hotel, href: '/hotel/billing/new', color: 'bg-purple-500/10 text-purple-600', show: isHotelEnabled },
+    { label: 'Restaurant', icon: UtensilsCrossed, href: '/restaurant/new', color: 'bg-orange-500/10 text-orange-600', show: isRestaurantEnabled },
+    { label: 'Expense', icon: Receipt, href: '/expenses/new', color: 'bg-red-500/10 text-red-600', show: true },
+    { label: 'Credit', icon: Banknote, href: '/credit/new', color: 'bg-yellow-500/10 text-yellow-600', show: true },
+  ].filter(action => action.show);
 
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto pb-24 md:pb-6">

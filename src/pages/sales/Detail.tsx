@@ -1,6 +1,7 @@
 import { useParams, useLocation } from 'wouter';
 import { useSales, useCustomers } from '@/contexts/GlobalProviders';
 import { useApp } from '@/contexts/AppContext';
+import { useSmartBack } from '@/contexts/NavigationContext';
 import { useCurrency } from '@/hooks/useCurrency';
 import { format as formatDate, parseISO } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,7 +11,11 @@ import { ArrowLeft, Printer, ShoppingCart, User, Calendar, CreditCard } from 'lu
 import { SaleBillPrint } from '@/components/SaleBillPrint';
 import { useMemo, useState } from 'react';
 
+import { useFeature } from '@/hooks/useFeature';
+
 export default function SaleDetail() {
+  const isDiscountsEnabled = useFeature('sales', 'discounts');
+  const goBack = useSmartBack('/sales');
   const { id } = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
   const { items: sales } = useSales();
@@ -35,7 +40,7 @@ export default function SaleDetail() {
     return (
       <div className="p-6 text-center">
         <p className="text-muted-foreground">Sale not found.</p>
-        <Button variant="outline" className="mt-4" onClick={() => setLocation('/sales')}>
+        <Button variant="outline" className="mt-4" onClick={goBack}>
           <ArrowLeft className="h-4 w-4 mr-2" /> Back to Sales
         </Button>
       </div>
@@ -73,7 +78,7 @@ export default function SaleDetail() {
     <div className="p-4 md:p-6 space-y-6 max-w-3xl mx-auto pb-24 md:pb-6">
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => setLocation('/sales')}>
+          <Button variant="ghost" size="icon" onClick={goBack}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
@@ -127,18 +132,26 @@ export default function SaleDetail() {
         </CardHeader>
         <CardContent className="p-0">
           <div className="divide-y">
-            <div className="grid grid-cols-12 px-4 py-2 text-xs font-semibold text-muted-foreground uppercase bg-muted/30">
+            <div className="hidden md:grid grid-cols-12 px-4 py-2 text-xs font-semibold text-muted-foreground uppercase bg-muted/30">
               <span className="col-span-6">Product</span>
               <span className="col-span-2 text-right">Qty</span>
               <span className="col-span-2 text-right">Rate</span>
               <span className="col-span-2 text-right">Total</span>
             </div>
             {sale.items.map((item, i) => (
-              <div key={i} className="grid grid-cols-12 px-4 py-3 text-sm">
-                <span className="col-span-6 font-medium">{item.productName}</span>
-                <span className="col-span-2 text-right text-muted-foreground">{item.quantity}</span>
-                <span className="col-span-2 text-right text-muted-foreground">{format(item.sellingRate)}</span>
-                <span className="col-span-2 text-right font-semibold">{format(item.subtotal)}</span>
+              <div key={i} className="flex flex-col md:grid md:grid-cols-12 px-4 py-3 gap-1 md:gap-0 text-sm">
+                <span className="col-span-6 font-medium truncate">{item.productName}</span>
+                <div className="flex justify-between items-center md:contents text-xs md:text-sm text-muted-foreground md:text-foreground">
+                  <span className="md:col-span-2 md:text-right">
+                    <span className="md:hidden">Qty: </span>{item.quantity}
+                  </span>
+                  <span className="md:col-span-2 md:text-right">
+                    <span className="md:hidden">Rate: </span>{format(item.sellingRate)}
+                  </span>
+                  <span className="md:col-span-2 md:text-right font-semibold text-foreground">
+                    <span className="md:hidden text-muted-foreground font-normal">Total: </span>{format(item.subtotal)}
+                  </span>
+                </div>
               </div>
             ))}
           </div>
@@ -151,7 +164,7 @@ export default function SaleDetail() {
           <div className="flex justify-between text-sm text-muted-foreground">
             <span>Subtotal</span><span>{format(subtotal)}</span>
           </div>
-          {sale.discount > 0 && (
+          {sale.discount > 0 && isDiscountsEnabled && (
             <div className="flex justify-between text-sm text-green-600">
               <span>Discount</span><span>– {format(sale.discount)}</span>
             </div>

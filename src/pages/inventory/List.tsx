@@ -16,13 +16,17 @@ import { ExpiryBadge, getBatchStatus } from '@/components/BatchFormDialog';
 import { Product } from '@/types';
 import { toast } from 'sonner';
 
+import { useFeature } from '@/hooks/useFeature';
+
 export default function InventoryList() {
+  const isBatchesEnabled = useFeature('inventory', 'batches');
+  const isExpiryEnabled = useFeature('inventory', 'expiry');
   const [, setLocation] = useLocation();
   const { items, remove, undoRemove, hardRemove, update } = useInventory();
   const { items: suppliers } = useSuppliers();
   const { items: batches } = useProductBatches();
   const { format } = useCurrency();
-  const showUndoToast = useUndoDelete(undoRemove, hardRemove);
+  const showUndoToast = useUndoDelete(undoRemove);
 
   const [nameQuery, setNameQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
@@ -124,8 +128,8 @@ export default function InventoryList() {
             <span>{items.length} products</span>
             {lowStockCount > 0 && <span className="text-orange-500 font-medium">• {lowStockCount} low stock</span>}
             {outOfStockCount > 0 && <span className="text-destructive font-medium">• {outOfStockCount} out of stock</span>}
-            {expiredCount > 0 && <span className="text-destructive font-medium">• {expiredCount} expired batch(es)</span>}
-            {expiringCount > 0 && <span className="text-orange-500 font-medium">• {expiringCount} expiring soon</span>}
+            {expiredCount > 0 && isExpiryEnabled && <span className="text-destructive font-medium">• {expiredCount} expired batch(es)</span>}
+            {expiringCount > 0 && isExpiryEnabled && <span className="text-orange-500 font-medium">• {expiringCount} expiring soon</span>}
           </p>
         </div>
         <Button onClick={() => setLocation('/inventory/new')} size="lg" className="w-full md:w-auto shadow-sm">
@@ -162,8 +166,8 @@ export default function InventoryList() {
               <SelectItem value="all">All Status</SelectItem>
               <SelectItem value="low">Low Stock</SelectItem>
               <SelectItem value="out">Out of Stock</SelectItem>
-              <SelectItem value="expiring">Expiring Soon</SelectItem>
-              <SelectItem value="expired">Expired</SelectItem>
+              {isExpiryEnabled && <SelectItem value="expiring">Expiring Soon</SelectItem>}
+              {isExpiryEnabled && <SelectItem value="expired">Expired</SelectItem>}
             </SelectContent>
           </Select>
         </div>
@@ -270,13 +274,13 @@ export default function InventoryList() {
                             <AlertTriangle className="h-2.5 w-2.5 mr-1" />Low
                           </Badge>
                         )}
-                        {nearestExpiry && <ExpiryBadge expiryDate={nearestExpiry.expiryDate} />}
+                        {nearestExpiry && isExpiryEnabled && <ExpiryBadge expiryDate={nearestExpiry.expiryDate} />}
                       </div>
                     </div>
                   </div>
 
                   {/* Batch expiry info */}
-                  {productBatches.length > 0 && (
+                  {isBatchesEnabled && productBatches.length > 0 && (
                     <div className="px-4 pb-2 flex flex-wrap gap-1">
                       {productBatches
                         .sort((a, b) => (a.expiryDate ?? '').localeCompare(b.expiryDate ?? ''))

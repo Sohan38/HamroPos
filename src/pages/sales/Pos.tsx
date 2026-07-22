@@ -2,12 +2,13 @@ import { useState, useMemo, useRef, lazy, Suspense } from 'react';
 import { useInventory, useSales, useCustomers, useProductBatches } from '@/contexts/GlobalProviders';
 import { useCurrency } from '@/hooks/useCurrency';
 import { useApp } from '@/contexts/AppContext';
+import { useBackModal, useSmartBack } from '@/contexts/NavigationContext';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Search, Plus, Minus, Trash2, ShoppingCart, CreditCard, QrCode, Banknote, User, SplitSquareHorizontal } from 'lucide-react';
+import { Search, Plus, Minus, Trash2, ShoppingCart, CreditCard, QrCode, Banknote, User, SplitSquareHorizontal, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { PaymentMethod, ProductBatch, SaleInvoice } from '@/types';
 const BarcodeScanner = lazy(() => import('@/components/BarcodeScanner').then(module => ({ default: module.BarcodeScanner })));
@@ -51,7 +52,11 @@ function fefoDeduct(
   return updates;
 }
 
+import { useFeature } from '@/hooks/useFeature';
+
 export default function SalesPos() {
+  const isDiscountsEnabled = useFeature('sales', 'discounts');
+  const goBack = useSmartBack('/sales');
   const { items: inventory, update: updateInventory } = useInventory();
   const { add: addSale } = useSales();
   const { items: customers } = useCustomers();
@@ -70,6 +75,8 @@ export default function SalesPos() {
   const [printSale, setPrintSale] = useState<SaleInvoice | null>(null);
   const [showResults, setShowResults] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
+
+  useBackModal(showCustomer, () => setShowCustomer(false), 'pos-customer-sheet');
 
   const availableProducts = useMemo(
     () => inventory.filter(product => product.quantity > 0),
@@ -289,6 +296,7 @@ export default function SalesPos() {
     try {
       const saleRecord: Omit<SaleInvoice, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt' | 'version'> = {
         customerId: customerId || null,
+        customerName: customerId ? (customers.find(c => c.id === customerId)?.name || null) : null,
         date: new Date().toISOString(),
         items: cart.map(i => ({
           productId: i.productId,
@@ -366,48 +374,61 @@ export default function SalesPos() {
       <div className="flex flex-col lg:flex-row flex-1 overflow-hidden">
 
         {/* Left — Search & Products */}
-        <div className="flex-1 flex flex-col p-3 lg:p-6 overflow-hidden">
-          <div className="flex items-center gap-2 mb-4">
+        <div className="flex-1 flex flex-col p-3 lg:p-6 overflow-hidden relative">
+          <div className="flex items-center gap-2 mb-4 relative z-50">
+            <Button variant="ghost" size="icon" onClick={goBack} className="shrink-0">
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
             <h1 className="text-xl font-bold hidden md:block shrink-0">Point of Sale</h1>
-            <div className="relative flex-1">
+            <div className="relative flex-1 z-50">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
               <Input
                 ref={searchRef}
                 autoFocus
                 placeholder="Search product by name..."
-                className="pl-10 h-12 text-base shadow-sm border-primary/20 focus-visible:ring-primary"
+                className="pl-10 h-12 text-base shadow-sm border-primary/20 focus-visible:ring-primary bg-background"
                 value={searchQuery}
                 onChange={e => { setSearchQuery(e.target.value); setShowResults(true); }}
-                onFocus={() => { if (searchQuery) setShowResults(true); }}
-                onBlur={() => setTimeout(() => setShowResults(false), 150)}
+                onFocus={() => setShowResults(true)}
               />
-              {showResults && searchResults.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-card border rounded-lg shadow-xl z-50 overflow-hidden">
-                  <div className="max-h-72 overflow-y-auto divide-y">
-                    {searchResults.map(product => (
-                      <button
-                        key={product.id}
-                        className="w-full flex items-center justify-between p-3 hover:bg-muted text-left transition-colors"
-                        onMouseDown={() => addToCart(product)}
-                      >
-                        <div>
-                          <div className="font-medium">{product.name}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {product.barcode && <span className="mr-2">#{product.barcode}</span>}
-                            <span className="text-green-600 font-medium">Stock: {product.quantity} {product.unit}</span>
-                            {product.category && <span className="ml-2">• {product.category}</span>}
-                          </div>
-                        </div>
-                        <div className="font-bold text-primary ml-2 shrink-0">{format(product.sellingRate)}</div>
-                      </button>
-                    ))}
+              {showResults && (
+                <>
+                  {/* Click-away backdrop */}
+                  <div 
+                    className="fixed inset-0 bg-black/5 md:bg-transparent z-40" 
+                    onClick={() => setShowResults(false)}
+                  />
+                  
+                  {/* Search Results Dropdown */}
+                  <div className="absolute top-[52px] left-0 right-0 bg-card border rounded-lg shadow-xl z-50 overflow-hidden max-h-[60dvh] md:max-h-80 flex flex-col">
+                    {searchResults.length > 0 ? (
+                      <div className="overflow-y-auto divide-y flex-1">
+                        {searchResults.map(product => (
+                          <button
+                            key={product.id}
+                            type="button"
+                            className="w-full flex items-center justify-between p-3.5 hover:bg-muted text-left transition-colors active:bg-muted"
+                            onClick={() => addToCart(product)}
+                          >
+                            <div className="min-w-0 flex-1 pr-2">
+                              <div className="font-semibold text-sm truncate">{product.name}</div>
+                              <div className="text-xs text-muted-foreground mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5">
+                                {product.barcode && <span>#{product.barcode}</span>}
+                                <span className="text-green-600 font-semibold">Stock: {product.quantity} {product.unit}</span>
+                                {product.category && <span>• {product.category}</span>}
+                              </div>
+                            </div>
+                            <div className="font-bold text-primary shrink-0 text-sm ml-2">{format(product.sellingRate)}</div>
+                          </button>
+                        ))}
+                      </div>
+                    ) : searchQuery.trim() ? (
+                      <div className="p-4 text-center text-sm text-muted-foreground">
+                        No products found for "{searchQuery}"
+                      </div>
+                    ) : null}
                   </div>
-                </div>
-              )}
-              {showResults && searchQuery.trim() && searchResults.length === 0 && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-card border rounded-lg shadow-xl z-50 p-4 text-center text-sm text-muted-foreground">
-                  No products found for "{searchQuery}"
-                </div>
+                </>
               )}
             </div>
             <Suspense fallback={null}>
@@ -536,17 +557,19 @@ export default function SalesPos() {
 
           {/* Checkout Panel */}
           <div className="p-3 border-t bg-muted/10 space-y-3">
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Discount ({symbol})</label>
-                <Input
-                  type="number" placeholder="0" className="h-9 text-sm"
-                  value={discount || ''}
-                  min={0}
-                  max={subtotal}
-                  onChange={e => setDiscount(Math.max(0, Math.min(subtotal, Number(e.target.value))))}
-                />
-              </div>
+            <div className={isDiscountsEnabled ? "grid grid-cols-2 gap-2" : "grid grid-cols-1"}>
+              {isDiscountsEnabled && (
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Discount ({symbol})</label>
+                  <Input
+                    type="number" placeholder="0" className="h-9 text-sm"
+                    value={discount || ''}
+                    min={0}
+                    max={subtotal}
+                    onChange={e => setDiscount(Math.max(0, Math.min(subtotal, Number(e.target.value))))}
+                  />
+                </div>
+              )}
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Tax %</label>
                 <Select value={taxPercent.toString()} onValueChange={v => setTaxPercent(Number(v))}>

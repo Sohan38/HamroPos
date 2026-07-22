@@ -11,11 +11,28 @@ export function hasSeedData(): boolean {
   return localStorage.getItem(SEED_KEY) === 'true';
 }
 
-export function seedDemoData(): void {
-  if (hasSeedData()) return;
+/**
+ * Seeds the application with demo data.
+ *
+ * This is a DEVELOPMENT UTILITY ONLY and must never be called automatically
+ * in production. It is exposed via the Settings page in dev mode.
+ *
+ * @param force - If true, re-seeds even if seed data was previously loaded.
+ */
+export function seedDemoData(force = false): void {
+  if (!force && hasSeedData()) return;
 
-  // Clear existing data
-  storageService.clearAll();
+  // Clear existing app data synchronously so seed is clean
+  const keysToRemove: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith('sohan_')) {
+      keysToRemove.push(k);
+    }
+  }
+  for (const k of keysToRemove) {
+    localStorage.removeItem(k);
+  }
 
   const collections: Record<string, any[]> = {
     suppliers: SEED_SUPPLIERS,
@@ -39,8 +56,11 @@ export function seedDemoData(): void {
   localStorage.setItem(SEED_KEY, 'true');
 }
 
+/**
+ * Clears the seed flag so that if seedDemoData is called again it will work.
+ * Also clears old versioned keys.
+ */
 export function clearSeedFlag(): void {
   localStorage.removeItem(SEED_KEY);
-  // Also clear old v1 key so fresh seed runs
   localStorage.removeItem('sohan_seeded_v1');
 }

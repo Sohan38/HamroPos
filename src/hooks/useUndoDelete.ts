@@ -3,7 +3,6 @@ import { toast } from 'sonner';
 
 export function useUndoDelete(
   undoAction: (id: string) => void,
-  hardDeleteAction: (id: string) => void,
   delayMs: number = 5000
 ) {
   const showUndoToast = useCallback((title: string, id: string) => {
@@ -12,11 +11,9 @@ export function useUndoDelete(
         label: 'Undo',
         onClick: () => undoAction(id),
       },
-      duration: delayMs,
-      onAutoClose: () => hardDeleteAction(id),
-      onDismiss: () => hardDeleteAction(id)
+      duration: delayMs
     });
-  }, [undoAction, hardDeleteAction, delayMs]);
+  }, [undoAction, delayMs]);
 
   return showUndoToast;
 }

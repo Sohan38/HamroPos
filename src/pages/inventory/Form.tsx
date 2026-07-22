@@ -44,8 +44,15 @@ type ProductFormValues = z.infer<typeof productSchema>;
 
 const UNITS: ProductUnit[] = ['pcs', 'packet', 'box', 'bottle', 'kg', 'gram', 'litre', 'ml', 'plate', 'cup', 'glass', 'meter', 'roll', 'dozen', 'custom'];
 
+import { useSmartBack } from '@/contexts/NavigationContext';
+
+import { useFeature } from '@/hooks/useFeature';
+
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function InventoryForm() {
+  const isBatchesEnabled = useFeature('inventory', 'batches');
+  const isExpiryEnabled = useFeature('inventory', 'expiry');
+  const goBack = useSmartBack('/inventory');
   const [, setLocation] = useLocation();
   const { id } = useParams();
   const { items, add, update } = useInventory();
@@ -87,7 +94,7 @@ export default function InventoryForm() {
 
   const watchedValues = form.watch();
   const imageBase64 = watchedValues.imageBase64 ?? '';
-  const hasExpiry = watchedValues.hasExpiry ?? false;
+  const hasExpiry = (isExpiryEnabled && isBatchesEnabled) ? (watchedValues.hasExpiry ?? false) : false;
 
   const selectedSupplierIds: string[] =
     watchedValues.supplierIds ?? [];
@@ -355,7 +362,7 @@ export default function InventoryForm() {
           variant="ghost"
           size="icon"
           className="-ml-2 shrink-0"
-          onClick={() => setLocation('/inventory')}
+          onClick={goBack}
         >
           <ArrowLeft className="h-5 w-5" />
         </Button>
@@ -481,40 +488,43 @@ export default function InventoryForm() {
 
             <Separator />
 
-            {/* ── 2. Expiry Tracking toggle ─────────────────────────── */}
-            <section className="px-4 py-4 space-y-2">
-              <FormField control={form.control} name="hasExpiry" render={({ field }) => (
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className={`p-1.5 rounded-lg shrink-0 ${hasExpiry ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
-                      <FlaskConical className="h-4 w-4" />
+            {isExpiryEnabled && isBatchesEnabled && (
+              <>
+                {/* ── 2. Expiry Tracking toggle ─────────────────────────── */}
+                <section className="px-4 py-4 space-y-2">
+                  <FormField control={form.control} name="hasExpiry" render={({ field }) => (
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className={`p-1.5 rounded-lg shrink-0 ${hasExpiry ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
+                          <FlaskConical className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium leading-tight">Track Expiry &amp; Batches</p>
+                          <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
+                            {hasExpiry
+                              ? 'Stock, cost & supplier per batch'
+                              : 'Enable for products with expiry dates'}
+                          </p>
+                        </div>
+                      </div>
+                      <Switch
+                        checked={field.value ?? false}
+                        onCheckedChange={field.onChange}
+                        className="shrink-0"
+                      />
                     </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium leading-tight">Track Expiry &amp; Batches</p>
-                      <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
-                        {hasExpiry
-                          ? 'Stock, cost & supplier per batch'
-                          : 'Enable for products with expiry dates'}
-                      </p>
-                    </div>
-                  </div>
-                  <Switch
-                    checked={field.value ?? false}
-                    onCheckedChange={field.onChange}
-                    className="shrink-0"
-                  />
-                </div>
-              )} />
+                  )} />
 
-              {hasExpiry && (
-                <p className="text-xs text-muted-foreground flex items-start gap-1.5 pt-1 pl-0.5">
-                  <Info className="h-3.5 w-3.5 mt-0.5 text-blue-500 shrink-0" />
-                  Sold FEFO (earliest expiry first). Purchase cost is the weighted average across all batches.
-                </p>
-              )}
-            </section>
-
-            <Separator />
+                  {hasExpiry && (
+                    <p className="text-xs text-muted-foreground flex items-start gap-1.5 pt-1 pl-0.5">
+                      <Info className="h-3.5 w-3.5 mt-0.5 text-blue-500 shrink-0" />
+                      Sold FEFO (earliest expiry first). Purchase cost is the weighted average across all batches.
+                    </p>
+                  )}
+                </section>
+                <Separator />
+              </>
+            )}
 
             {/* ── 3. Pricing ────────────────────────────────────────── */}
             <section className="px-4 py-4 space-y-3">

@@ -336,7 +336,7 @@ export default function Reports() {
             <div className="text-center py-8 text-muted-foreground text-sm">No sales data</div>
           ) : (
             <div className="divide-y">
-              <div className="grid grid-cols-12 px-4 py-2 text-xs font-semibold text-muted-foreground uppercase bg-muted/30">
+              <div className="hidden md:grid grid-cols-12 px-4 py-2 text-xs font-semibold text-muted-foreground uppercase bg-muted/30">
                 <span className="col-span-1">#</span>
                 <span className="col-span-5">Product</span>
                 <span className="col-span-2 text-right">Qty</span>
@@ -344,14 +344,25 @@ export default function Reports() {
                 <span className="col-span-2 text-right">Profit</span>
               </div>
               {stats.topProducts.map((p, i) => (
-                <div key={i} className="grid grid-cols-12 px-4 py-3 text-sm hover:bg-muted/30 transition-colors">
-                  <span className="col-span-1 text-muted-foreground">{i + 1}</span>
-                  <span className="col-span-5 font-medium truncate">{p.name}</span>
-                  <span className="col-span-2 text-right text-muted-foreground">{p.qty}</span>
-                  <span className="col-span-2 text-right font-semibold">{format(p.revenue)}</span>
-                  <span className={`col-span-2 text-right font-semibold ${p.profit >= 0 ? 'text-green-600' : 'text-destructive'}`}>
-                    {format(p.profit)}
-                  </span>
+                <div key={i} className="flex flex-col md:grid md:grid-cols-12 px-4 py-3 gap-2 md:gap-0 text-sm hover:bg-muted/30 transition-colors">
+                  <div className="flex items-center gap-2 col-span-6 min-w-0">
+                    <span className="text-xs font-bold text-muted-foreground w-5 h-5 rounded-full bg-muted flex items-center justify-center shrink-0">
+                      {i + 1}
+                    </span>
+                    <span className="font-medium truncate">{p.name}</span>
+                  </div>
+                  {/* Mobile details layout */}
+                  <div className="flex justify-between items-center md:contents text-xs md:text-sm text-muted-foreground">
+                    <span className="md:col-span-2 md:text-right">
+                      <span className="md:hidden">Qty: </span>{p.qty}
+                    </span>
+                    <span className="md:col-span-2 md:text-right font-semibold text-foreground">
+                      <span className="md:hidden text-muted-foreground font-normal">Revenue: </span>{format(p.revenue)}
+                    </span>
+                    <span className={`md:col-span-2 md:text-right font-semibold ${p.profit >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+                      <span className="md:hidden text-muted-foreground font-normal">Profit: </span>{format(p.profit)}
+                    </span>
+                  </div>
                 </div>
               ))}
             </div>

@@ -4,11 +4,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Spinner } from '@/components/ui/spinner';
+import { useFeature } from '@/hooks/useFeature';
 
 import { AppProvider } from '@/contexts/AppContext';
 import { GlobalProviders } from '@/contexts/GlobalProviders';
+import { NavigationProvider } from '@/contexts/NavigationContext';
 import { Shell } from '@/components/layout/Shell';
-import { seedDemoData } from '@/utils/seedHelper';
 
 const Dashboard = lazy(() => import('@/pages/Dashboard'));
 const InventoryList = lazy(() => import('@/pages/inventory/List'));
@@ -44,7 +45,7 @@ const queryClient = new QueryClient();
 function Router() {
   return (
     <Shell>
-      <Suspense fallback={<div className="flex min-h-[40vh] items-center justify-center"><Spinner /></div>}>
+      <Suspense fallback={<div className="flex min-h-[40vh] items-center justify-center opacity-0 animate-[fadeIn_0.15s_ease-in_0.15s_forwards]"><Spinner className="size-5 text-muted-foreground" /></div>}>
         <Switch>
           <Route path="/" component={Dashboard} />
 
@@ -60,14 +61,49 @@ function Router() {
           <Route path="/purchases" component={PurchaseList} />
           <Route path="/purchases/new" component={PurchaseForm} />
 
-          <Route path="/hotel" component={HotelGrid} />
-          <Route path="/hotel/rooms/new" component={HotelRoomForm} />
-          <Route path="/hotel/rooms/:id" component={HotelRoomForm} />
-          <Route path="/hotel/billing" component={HotelBillingList} />
-          <Route path="/hotel/billing/new" component={HotelBillingForm} />
+          <Route path="/hotel">
+            {() => {
+              const isEnabled = useFeature('hospitality', 'hotelGrid');
+              return isEnabled ? <Suspense fallback={<div className="flex min-h-[40vh] items-center justify-center"><Spinner /></div>}><HotelGrid /></Suspense> : <Suspense fallback={<div className="flex min-h-[40vh] items-center justify-center"><Spinner /></div>}><NotFound /></Suspense>;
+            }}
+          </Route>
+          <Route path="/hotel/rooms/new">
+            {() => {
+              const isEnabled = useFeature('hospitality', 'hotelGrid');
+              return isEnabled ? <Suspense fallback={<div className="flex min-h-[40vh] items-center justify-center"><Spinner /></div>}><HotelRoomForm /></Suspense> : <Suspense fallback={<div className="flex min-h-[40vh] items-center justify-center"><Spinner /></div>}><NotFound /></Suspense>;
+            }}
+          </Route>
+          <Route path="/hotel/rooms/:id">
+            {() => {
+              const isEnabled = useFeature('hospitality', 'hotelGrid');
+              return isEnabled ? <Suspense fallback={<div className="flex min-h-[40vh] items-center justify-center"><Spinner /></div>}><HotelRoomForm /></Suspense> : <Suspense fallback={<div className="flex min-h-[40vh] items-center justify-center"><Spinner /></div>}><NotFound /></Suspense>;
+            }}
+          </Route>
+          <Route path="/hotel/billing">
+            {() => {
+              const isEnabled = useFeature('hospitality', 'hotelGrid');
+              return isEnabled ? <Suspense fallback={<div className="flex min-h-[40vh] items-center justify-center"><Spinner /></div>}><HotelBillingList /></Suspense> : <Suspense fallback={<div className="flex min-h-[40vh] items-center justify-center"><Spinner /></div>}><NotFound /></Suspense>;
+            }}
+          </Route>
+          <Route path="/hotel/billing/new">
+            {() => {
+              const isEnabled = useFeature('hospitality', 'hotelGrid');
+              return isEnabled ? <Suspense fallback={<div className="flex min-h-[40vh] items-center justify-center"><Spinner /></div>}><HotelBillingForm /></Suspense> : <Suspense fallback={<div className="flex min-h-[40vh] items-center justify-center"><Spinner /></div>}><NotFound /></Suspense>;
+            }}
+          </Route>
 
-          <Route path="/restaurant" component={RestaurantBillingList} />
-          <Route path="/restaurant/new" component={RestaurantBillingForm} />
+          <Route path="/restaurant">
+            {() => {
+              const isEnabled = useFeature('hospitality', 'restaurantBilling');
+              return isEnabled ? <Suspense fallback={<div className="flex min-h-[40vh] items-center justify-center"><Spinner /></div>}><RestaurantBillingList /></Suspense> : <Suspense fallback={<div className="flex min-h-[40vh] items-center justify-center"><Spinner /></div>}><NotFound /></Suspense>;
+            }}
+          </Route>
+          <Route path="/restaurant/new">
+            {() => {
+              const isEnabled = useFeature('hospitality', 'restaurantBilling');
+              return isEnabled ? <Suspense fallback={<div className="flex min-h-[40vh] items-center justify-center"><Spinner /></div>}><RestaurantBillingForm /></Suspense> : <Suspense fallback={<div className="flex min-h-[40vh] items-center justify-center"><Spinner /></div>}><NotFound /></Suspense>;
+            }}
+          </Route>
 
           <Route path="/expenses" component={ExpenseList} />
           <Route path="/expenses/new" component={ExpenseForm} />
@@ -92,10 +128,6 @@ function Router() {
   );
 }
 
-// Run once on module load (before React renders) so seed data is in localStorage
-// before any context reads it.
-seedDemoData();
-
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -103,7 +135,9 @@ function App() {
         <GlobalProviders>
           <TooltipProvider>
             <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
-              <Router />
+              <NavigationProvider>
+                <Router />
+              </NavigationProvider>
             </WouterRouter>
             <Toaster />
           </TooltipProvider>

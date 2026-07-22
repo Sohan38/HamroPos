@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useLocation } from 'wouter';
 import { useHotelRooms, useHotelBills } from '@/contexts/GlobalProviders';
+import { useSmartBack } from '@/contexts/NavigationContext';
 import { useCurrency } from '@/hooks/useCurrency';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,6 +11,7 @@ import { ArrowLeft, Save, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function HotelBillingForm() {
+  const goBack = useSmartBack('/hotel/billing');
   const [, setLocation] = useLocation();
   const searchParams = new URLSearchParams(window.location.search);
   const roomIdQuery = searchParams.get('room');
@@ -105,7 +107,7 @@ export default function HotelBillingForm() {
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-4xl mx-auto pb-24 md:pb-6">
       <div className="flex items-center gap-4 mb-6">
-        <Button variant="ghost" size="icon" onClick={() => setLocation('/hotel')}>
+        <Button variant="ghost" size="icon" onClick={goBack}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <h1 className="text-2xl font-bold">Hotel Billing / Check In</h1>
@@ -178,7 +180,7 @@ export default function HotelBillingForm() {
                   </Button>
                 </div>
                 {additionalItems.map((item, index) => (
-                  <div key={index} className="flex gap-2">
+                  <div key={index} className="flex flex-col sm:flex-row gap-2 bg-muted/10 p-2 rounded-lg border sm:border-0 sm:p-0 sm:bg-transparent">
                     <Input 
                       placeholder="Description" 
                       value={item.desc}
@@ -187,23 +189,26 @@ export default function HotelBillingForm() {
                         newItems[index].desc = e.target.value;
                         setAdditionalItems(newItems);
                       }}
+                      className="w-full sm:flex-1"
                     />
-                    <Input 
-                      type="number" 
-                      placeholder="Amount" 
-                      className="w-24"
-                      value={item.amount || ''}
-                      onChange={e => {
-                        const newItems = [...additionalItems];
-                        newItems[index].amount = Number(e.target.value);
-                        setAdditionalItems(newItems);
-                      }}
-                    />
-                    <Button type="button" variant="ghost" size="icon" onClick={() => {
-                      setAdditionalItems(additionalItems.filter((_, i) => i !== index));
-                    }}>
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
+                    <div className="flex gap-2 w-full sm:w-auto">
+                      <Input 
+                        type="number" 
+                        placeholder="Amount" 
+                        className="w-full sm:w-24"
+                        value={item.amount || ''}
+                        onChange={e => {
+                          const newItems = [...additionalItems];
+                          newItems[index].amount = Number(e.target.value);
+                          setAdditionalItems(newItems);
+                        }}
+                      />
+                      <Button type="button" variant="ghost" size="icon" className="shrink-0 text-destructive" onClick={() => {
+                        setAdditionalItems(additionalItems.filter((_, i) => i !== index));
+                      }}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </CardContent>

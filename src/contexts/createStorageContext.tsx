@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { storageService } from '../storage/StorageService';
+import { useStorageProvider } from '../storage/StorageContext';
 import { v4 as uuidv4 } from 'uuid';
+import { toast } from 'sonner';
+import { validateDeletionConstraints } from '../utils/relationshipValidator';
 
 export function createStorageContext<T extends { id: string }>(key: string) {
   interface ContextType {
@@ -17,51 +19,90 @@ export function createStorageContext<T extends { id: string }>(key: string) {
   const Context = createContext<ContextType | undefined>(undefined);
 
   function Provider({ children }: { children: React.ReactNode }) {
+    const storage = useStorageProvider();
     const [items, setItems] = useState<T[]>([]);
     const [loading, setLoading] = useState(true);
 
     const refresh = useCallback(() => {
-      const data = storageService.get<any>(key);
-      setItems(data.filter((i: any) => !i.deletedAt));
-      setLoading(false);
-    }, []);
+      storage.get<any>(key).then((data) => {
+        setItems(data.filter((i: any) => !i.deletedAt));
+        setLoading(false);
+      });
+    }, [storage]);
 
     useEffect(() => {
       refresh();
     }, [refresh]);
 
-    const add = useCallback((item: any) => {
+    const add = useCallback(async (item: any) => {
       const newItem = {
         id: uuidv4(),
         ...item,
-
       };
-      storageService.save(key, newItem);
+      await storage.save(key, newItem);
       refresh();
-    }, [refresh]);
+    }, [storage, refresh]);
 
-    const update = useCallback((id: string, updates: Partial<T>) => {
-      const current = storageService.getById<any>(key, id);
+    const update = useCallback(async (id: string, updates: Partial<T>) => {
+      const current = await storage.getById<any>(key, id);
       if (current) {
-        storageService.save(key, { ...current, ...updates });
+        await storage.save(key, { ...current, ...updates });
         refresh();
       }
-    }, [refresh]);
+    }, [storage, refresh]);
 
-    const remove = useCallback((id: string) => {
-      storageService.softDelete(key, id);
+    const remove = useCallback(async (id: string) => {
+      const errorMsg = await validateDeletionConstraints(key, id, storage);
+      if (errorMsg) {
+        toast.error(errorMsg);
+        return;
+      }
+      await storage.softDelete(key, id);
+      
+      // Cascade delete batches if product is deleted
+      if (key === 'inventory') {
+        try {
+          const batches = await storage.get<any>('productBatches');
+          const productBatches = batches.filter((b: any) => b.productId === id);
+          for (const batch of productBatches) {
+            await storage.hardDelete('productBatches', batch.id);
+          }
+        } catch (err) {
+          console.error("Failed to cascade delete product batches:", err);
+        }
+      }
+      
       refresh();
-    }, [refresh]);
+    }, [storage, refresh]);
 
-    const undoRemove = useCallback((id: string) => {
-      storageService.undoSoftDelete(key, id);
+    const undoRemove = useCallback(async (id: string) => {
+      await storage.undoSoftDelete(key, id);
       refresh();
-    }, [refresh]);
+    }, [storage, refresh]);
 
-    const hardRemove = useCallback((id: string) => {
-      storageService.hardDelete(key, id);
+    const hardRemove = useCallback(async (id: string) => {
+      const errorMsg = await validateDeletionConstraints(key, id, storage);
+      if (errorMsg) {
+        toast.error(errorMsg);
+        return;
+      }
+      await storage.hardDelete(key, id);
+      
+      // Cascade delete batches if product is deleted
+      if (key === 'inventory') {
+        try {
+          const batches = await storage.get<any>('productBatches');
+          const productBatches = batches.filter((b: any) => b.productId === id);
+          for (const batch of productBatches) {
+            await storage.hardDelete('productBatches', batch.id);
+          }
+        } catch (err) {
+          console.error("Failed to cascade delete product batches:", err);
+        }
+      }
+      
       refresh();
-    }, [refresh]);
+    }, [storage, refresh]);
 
     return (
       <Context.Provider value={{ items, loading, add, update, remove, undoRemove, hardRemove, refresh }}>

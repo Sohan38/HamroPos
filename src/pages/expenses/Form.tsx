@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useLocation } from 'wouter';
 import { useExpenses } from '@/contexts/GlobalProviders';
+import { useSmartBack } from '@/contexts/NavigationContext';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,6 +12,7 @@ import { toast } from 'sonner';
 const CATEGORIES = ['salary', 'electricity', 'water', 'internet', 'food', 'fuel', 'maintenance', 'tax', 'miscellaneous'];
 
 export default function ExpenseForm() {
+  const goBack = useSmartBack('/expenses');
   const [, setLocation] = useLocation();
   const { add } = useExpenses();
 
@@ -44,7 +46,7 @@ export default function ExpenseForm() {
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-2xl mx-auto pb-24 md:pb-6">
       <div className="flex items-center gap-4 mb-6">
-        <Button variant="ghost" size="icon" onClick={() => setLocation('/expenses')}>
+        <Button variant="ghost" size="icon" onClick={goBack}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <h1 className="text-2xl font-bold">Add Expense</h1>
