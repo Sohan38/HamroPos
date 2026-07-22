@@ -38,14 +38,23 @@ export default function Settings() {
     setFormData(prev => {
       const domainKey = domain as keyof FeatureConfig;
       const domainFeatures = prev.features[domainKey] as Record<string, boolean>;
+      const updated = { ...domainFeatures, [feature]: checked };
+
+      // Mutual exclusion: variants ↔ batches/expiry
+      if (domainKey === 'inventory' && checked) {
+        if (feature === 'variants') {
+          updated['batches'] = false;
+          updated['expiry'] = false;
+        } else if (feature === 'batches' || feature === 'expiry') {
+          updated['variants'] = false;
+        }
+      }
+
       return {
         ...prev,
         features: {
           ...prev.features,
-          [domainKey]: {
-            ...domainFeatures,
-            [feature]: checked
-          }
+          [domainKey]: updated
         }
       };
     });

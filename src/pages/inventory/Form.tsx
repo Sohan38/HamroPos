@@ -17,11 +17,13 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import {
   ArrowLeft, ImagePlus, Save, Plus, Trash2, FlaskConical,
-  AlertTriangle, CheckCircle2, Info, Pencil,
+  AlertTriangle, CheckCircle2, Info, Pencil, Layers,
 } from 'lucide-react';
 import { ProductUnit, ProductBatch } from '@/types';
 import { toast } from 'sonner';
 import { BatchFormDialog, ExpiryBadge, getBatchStatus } from '@/components/BatchFormDialog';
+import { lazy, Suspense } from 'react';
+const BarcodeScanner = lazy(() => import('@/components/BarcodeScanner').then(m => ({ default: m.BarcodeScanner })));
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
 const productSchema = z.object({
@@ -36,6 +38,11 @@ const productSchema = z.object({
   purchaseRate: z.coerce.number({ invalid_type_error: 'Must be a number' }).min(0, 'Cannot be negative'),
   sellingRate: z.coerce.number({ invalid_type_error: 'Must be a number' }).min(0.01, 'Selling rate must be greater than 0'),
   hasExpiry: z.boolean().optional(),
+  hasVariants: z.boolean().optional(),
+  variants: z.array(z.object({
+    name: z.string().min(1, 'Variant name is required'),
+    quantity: z.coerce.number().min(0, 'Cannot be negative'),
+  })).optional(),
   notes: z.string().max(500, 'Notes too long').optional(),
   imageBase64: z.string().optional(),
 });
@@ -52,6 +59,7 @@ import { useFeature } from '@/hooks/useFeature';
 export default function InventoryForm() {
   const isBatchesEnabled = useFeature('inventory', 'batches');
   const isExpiryEnabled = useFeature('inventory', 'expiry');
+  const isVariantsEnabled = useFeature('inventory', 'variants');
   const goBack = useSmartBack('/inventory');
   const [, setLocation] = useLocation();
   const { id } = useParams();
@@ -80,6 +88,8 @@ export default function InventoryForm() {
       ...existingProduct,
       supplierIds: existingProduct.supplierIds ?? (existingProduct.supplierId ? [existingProduct.supplierId] : []),
       hasExpiry: existingProduct.hasExpiry ?? false,
+      hasVariants: existingProduct.hasVariants ?? false,
+      variants: existingProduct.variants ?? [],
       brand: existingProduct.brand ?? '',
       notes: existingProduct.notes ?? '',
       imageBase64: existingProduct.imageBase64 ?? '',
@@ -88,13 +98,15 @@ export default function InventoryForm() {
       supplierIds: [], unit: 'pcs',
       quantity: 0, minimumStock: 5,
       purchaseRate: 0, sellingRate: 0,
-      hasExpiry: false, notes: '', imageBase64: '',
+      hasExpiry: false, hasVariants: false, variants: [], notes: '', imageBase64: '',
     },
   });
 
   const watchedValues = form.watch();
   const imageBase64 = watchedValues.imageBase64 ?? '';
   const hasExpiry = (isExpiryEnabled && isBatchesEnabled) ? (watchedValues.hasExpiry ?? false) : false;
+  const hasVariants = isVariantsEnabled ? (watchedValues.hasVariants ?? false) : false;
+  const watchedVariants = form.watch('variants') || [];
 
   const selectedSupplierIds: string[] =
     watchedValues.supplierIds ?? [];
@@ -190,7 +202,9 @@ export default function InventoryForm() {
 
       const calculatedStock = data.hasExpiry
         ? localBatches.reduce((total, batch) => total + batch.quantity, 0)
-        : data.quantity;
+        : data.hasVariants
+          ? (data.variants || []).reduce((total, v) => total + v.quantity, 0)
+          : data.quantity;
 
       const productData = {
         ...data,
@@ -201,6 +215,8 @@ export default function InventoryForm() {
         supplierIds: data.supplierIds ?? [],
         notes: data.notes ?? '',
         hasExpiry: data.hasExpiry ?? false,
+        hasVariants: data.hasVariants ?? false,
+        variants: data.variants ?? [],
         profitPerUnit: data.sellingRate - averagePurchaseRate,
         unit: data.unit as ProductUnit,
         imageBase64: data.imageBase64 ?? '',
@@ -468,9 +484,17 @@ export default function InventoryForm() {
                 <FormField control={form.control} name="barcode" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Barcode</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Scan or type" {...field} />
-                    </FormControl>
+                    <div className="flex items-center gap-1.5">
+                      <FormControl>
+                        <Input placeholder="Scan or type" {...field} />
+                      </FormControl>
+                      <Suspense fallback={null}>
+                        <BarcodeScanner
+                          className="h-9 w-9"
+                          onScan={(code) => form.setValue('barcode', code, { shouldValidate: true })}
+                        />
+                      </Suspense>
+                    </div>
                     <FormMessage />
                   </FormItem>
                 )} />
@@ -520,6 +544,110 @@ export default function InventoryForm() {
                       <Info className="h-3.5 w-3.5 mt-0.5 text-blue-500 shrink-0" />
                       Sold FEFO (earliest expiry first). Purchase cost is the weighted average across all batches.
                     </p>
+                  )}
+                </section>
+                <Separator />
+              </>
+            )}
+
+            {isVariantsEnabled && (
+              <>
+                {/* ── 2.5 Variants toggle ─────────────────────────── */}
+                <section className="px-4 py-4 space-y-4">
+                  <FormField control={form.control} name="hasVariants" render={({ field }) => (
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className={`p-1.5 rounded-lg shrink-0 ${hasVariants ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
+                          <Layers className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium leading-tight">Product Variants</p>
+                          <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
+                            {hasVariants
+                              ? 'Stock options like sizes, colors'
+                              : 'Enable to specify different sizes or colors'}
+                          </p>
+                        </div>
+                      </div>
+                      <Switch
+                        checked={field.value ?? false}
+                        onCheckedChange={field.onChange}
+                        className="shrink-0"
+                      />
+                    </div>
+                  )} />
+
+                  {hasVariants && (
+                    <div className="space-y-4 pt-2 border-t border-dashed">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Variants &amp; Stock</span>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-xs gap-1"
+                          onClick={() => {
+                            const current = form.getValues('variants') || [];
+                            form.setValue('variants', [...current, { name: '', quantity: 0 }], { shouldValidate: true });
+                          }}
+                        >
+                          <Plus className="h-3.5 w-3.5" /> Add Variant
+                        </Button>
+                      </div>
+
+                      {watchedVariants.length === 0 ? (
+                        <p className="text-xs text-muted-foreground text-center py-2">No variants added yet. Tap "Add Variant" to begin.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {watchedVariants.map((variant, index) => (
+                            <div key={index} className="flex items-center gap-2 p-2 border rounded-lg bg-muted/20 relative pr-10">
+                              <div className="flex-1 min-w-0">
+                                <Input
+                                  placeholder="e.g. XL, Red, Blue"
+                                  className="h-8 text-sm"
+                                  value={variant.name}
+                                  onChange={(e) => {
+                                    const current = form.getValues('variants') || [];
+                                    const updated = [...current];
+                                    updated[index] = { ...updated[index], name: e.target.value };
+                                    form.setValue('variants', updated, { shouldValidate: true });
+                                  }}
+                                />
+                              </div>
+                              <div className="flex items-center gap-1 w-[80px] shrink-0">
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  placeholder="Qty"
+                                  className="h-8 text-right text-sm font-medium"
+                                  value={variant.quantity}
+                                  onChange={(e) => {
+                                    const val = parseInt(e.target.value) || 0;
+                                    const current = form.getValues('variants') || [];
+                                    const updated = [...current];
+                                    updated[index] = { ...updated[index], quantity: val };
+                                    form.setValue('variants', updated, { shouldValidate: true });
+                                  }}
+                                />
+                                <span className="text-xs text-muted-foreground">{watchedValues.unit}</span>
+                              </div>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-destructive absolute right-1 top-1/2 -translate-y-1/2 hover:bg-destructive/10 shrink-0"
+                                onClick={() => {
+                                  const current = form.getValues('variants') || [];
+                                  form.setValue('variants', current.filter((_, i) => i !== index), { shouldValidate: true });
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   )}
                 </section>
                 <Separator />
@@ -617,6 +745,26 @@ export default function InventoryForm() {
                       <p className="text-xs text-muted-foreground mt-1">
                         Alert when total batch stock falls to this level.
                       </p>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                </div>
+              ) : hasVariants ? (
+                /* Variants mode: stock is read-only (sum of variants) + low-stock threshold */
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between bg-muted/50 rounded-lg px-3 py-2.5 text-sm">
+                    <span className="text-muted-foreground">Total stock (from variants)</span>
+                    <span className="font-semibold">
+                      {watchedVariants.reduce((sum, v) => sum + v.quantity, 0)}{' '}
+                      <span className="text-muted-foreground font-normal">{watchedValues.unit}</span>
+                    </span>
+                  </div>
+                  <FormField control={form.control} name="minimumStock" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Low Stock Alert</FormLabel>
+                      <FormControl>
+                        <Input type="number" min={0} {...field} />
+                      </FormControl>
                       <FormMessage />
                     </FormItem>
                   )} />

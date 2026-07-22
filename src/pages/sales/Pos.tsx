@@ -2,6 +2,7 @@ import { useState, useMemo, useRef, lazy, Suspense, useEffect, useCallback } fro
 import { useInventory, useSales, useCustomers, useProductBatches } from '@/contexts/GlobalProviders';
 import { useCurrency } from '@/hooks/useCurrency';
 import { useApp } from '@/contexts/AppContext';
+import { rankSearch } from '@/utils/search/rank';
 import { useBackModal, useSmartBack } from '@/contexts/NavigationContext';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -138,6 +139,21 @@ export default function SalesPos() {
     return map;
   }, [inventory]);
 
+  useEffect(() => {
+    const code = searchQuery.trim();
+
+    if (!code) return;
+
+    const product = barcodeMap.get(code);
+
+    if (!product) return;
+
+    addToCart(product);
+
+    setSearchQuery('');
+    setDebouncedSearch('');
+  }, [searchQuery, barcodeMap]);
+
   const customerMap = useMemo(() => {
     const map = new Map<string, typeof customers[number]>();
 
@@ -149,22 +165,16 @@ export default function SalesPos() {
   }, [customers]);
 
   const searchResults = useMemo(() => {
-    const q = debouncedSearch.trim().toLowerCase();
-    if (!q) return [];
-    return availableProducts
-      .filter(p =>
-        p._search.includes(q)
-      )
-      .sort((a, b) => {
-        const an = a.name.toLowerCase(), bn = b.name.toLowerCase();
-        if (an === q) return -1;
-        if (bn === q) return 1;
-        if (an.startsWith(q) && !bn.startsWith(q)) return -1;
-        if (!an.startsWith(q) && bn.startsWith(q)) return 1;
-        return b.quantity - a.quantity;
-      })
-      .slice(0, 20);
-  }, [availableProducts, searchQuery]);
+    const q = debouncedSearch.trim();
+
+    // Barcode scans are handled separately
+    if (/^\d{8,}$/.test(q)) return [];
+
+    // Wait until user types at least 2 characters
+    if (q.length < 2) return [];
+
+    return rankSearch(availableProducts, q, 20);
+  }, [availableProducts, debouncedSearch]);
 
   const addToCart = (product: typeof inventory[0]) => {
     setCart(cur => {
@@ -196,13 +206,27 @@ export default function SalesPos() {
 
   const handleBarcodeScanned = (barcode: string) => {
     const code = barcode.trim();
+
     const exact = barcodeMap.get(code);
-    if (exact) { addToCart(exact); toast.success(`Added ${exact.name}`); return; }
-    const partial = inventory.find(p => p.quantity > 0 && (p.barcode?.includes(code) || code.includes(p.barcode ?? '')));
-    if (partial) { addToCart(partial); toast.success(`Added ${partial.name}`); return; }
+    if (exact) {
+      addToCart(exact);
+      return;
+    }
+
+    const partial = inventory.find(
+      p =>
+        p.quantity > 0 &&
+        (p.barcode?.includes(code) || code.includes(p.barcode ?? ''))
+    );
+
+    if (partial) {
+      addToCart(partial);
+      return;
+    }
+
     setSearchQuery(code);
     setSearchOpen(true);
-    toast.error('Product not found');
+    toast.error("Product not found");
   };
 
   const updateCartQuantity = (productId: string, delta: number) => {
@@ -560,31 +584,24 @@ export default function SalesPos() {
           {/* Results — fills remaining space above keyboard */}
           <div className="flex-1 overflow-y-auto overscroll-contain">
             {searchQuery.trim() === '' ? (
-              /* All products when no query */
-              <div>
-                <p className="text-xs text-muted-foreground px-4 py-2 font-medium">
-                  All products ({availableProducts.length} in stock)
+              <div className="flex flex-col items-center justify-center h-full px-6 text-center text-muted-foreground">
+                <Search className="h-12 w-12 mb-4 opacity-20" />
+
+                <h3 className="text-base font-semibold text-foreground">
+                  Search Products
+                </h3>
+
+                <p className="text-sm mt-2 max-w-xs">
+                  Type a product name, barcode, or scan an item to begin.
                 </p>
-                {availableProducts.slice(0, 40).map(product => (
-                  <button
-                    key={product.id}
-                    type="button"
-                    className="w-full flex items-center gap-3 px-4 py-3.5 border-b hover:bg-muted active:bg-muted/80 text-left transition-colors"
-                    onClick={() => addToCart(product)}
-                  >
-                    <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                      <Package className="h-4 w-4 text-primary" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-sm truncate">{product.name}</div>
-                      <div className="text-xs text-muted-foreground mt-0.5 flex gap-2">
-                        <span className="text-green-600 font-medium">{product.quantity} {product.unit}</span>
-                        {product.category && <span>• {product.category}</span>}
-                      </div>
-                    </div>
-                    <div className="font-bold text-primary shrink-0 text-sm tabular-nums">{format(product.sellingRate)}</div>
-                  </button>
-                ))}
+              </div>
+            ) : searchQuery.trim().length < 2 ? (
+              <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
+                <Search className="h-10 w-10 mb-3 opacity-20" />
+                <p className="text-sm font-medium">Keep typing…</p>
+                <p className="text-xs mt-1">
+                  Enter at least 2 characters
+                </p>
               </div>
             ) : searchResults.length > 0 ? (
               <div>

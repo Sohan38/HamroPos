@@ -41,6 +41,7 @@ export function NavigationProvider({ children }: { children: React.ReactNode }) 
   const modalStackRef = useRef<ModalHandler[]>([]);
   const internalHistoryCountRef = useRef<number>(1);
   const locationRef = useRef(location);
+  const programmaticPopsRef = useRef<number>(0);
 
   locationRef.current = location;
 
@@ -56,12 +57,17 @@ export function NavigationProvider({ children }: { children: React.ReactNode }) 
   // Global popstate handler for swipe-to-back and hardware back button
   useEffect(() => {
     const handlePopState = (e: PopStateEvent) => {
+      if (programmaticPopsRef.current > 0) {
+        programmaticPopsRef.current--;
+        return;
+      }
+
       // 1. If any modal/sheet/dialog/form is open, close it first and stop route change!
       if (modalStackRef.current.length > 0) {
-        const topModal = modalStackRef.current.pop();
-        if (topModal) {
-          topModal.onClose();
-        }
+        const topModal = modalStackRef.current[modalStackRef.current.length - 1];
+
+        topModal?.onClose();
+
         return;
       }
 
@@ -107,8 +113,12 @@ export function NavigationProvider({ children }: { children: React.ReactNode }) 
       modalStackRef.current = modalStackRef.current.filter(m => m !== handler);
 
       // Clean up browser history entry if modal was closed programmatically (e.g. Cancel button)
-      if (window.history.state && window.history.state.modalId === id) {
-        window.history.back();
+      if (
+        window.history.state?.isModal &&
+        window.history.state?.modalId === id
+      ) {
+        programmaticPopsRef.current++;
+        setTimeout(() => window.history.back(), 0);
       }
     };
   };

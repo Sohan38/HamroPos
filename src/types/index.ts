@@ -25,6 +25,8 @@ export interface Product extends StorageRecord {
   sellingRate: number;
   profitPerUnit: number;
   hasExpiry?: boolean;    // does this product have expiry dates?
+  hasVariants?: boolean;  // does this product have variants (size, color, etc)?
+  variants?: Array<{ name: string; quantity: number }>;
   notes: string;
   imageBase64?: string;
 }

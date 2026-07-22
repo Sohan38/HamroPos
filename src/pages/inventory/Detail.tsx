@@ -21,6 +21,7 @@ import { useFeature } from '@/hooks/useFeature';
 export default function InventoryDetail() {
   const isBatchesEnabled = useFeature('inventory', 'batches');
   const isExpiryEnabled = useFeature('inventory', 'expiry');
+  const isVariantsEnabled = useFeature('inventory', 'variants');
 
   const goBack = useSmartBack('/inventory');
   const { id } = useParams<{ id: string }>();
@@ -171,6 +172,29 @@ export default function InventoryDetail() {
               ⏱ {expiringSoonCount} expiring soon
             </Badge>
           )}
+          {isVariantsEnabled && product.hasVariants && product.variantStock && product.variantStock.length > 0 && (
+        <Card className="mt-4">
+          <CardHeader className="pb-2 pt-4">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Layers className="h-4 w-4 text-muted-foreground" />
+              Variant Stocks
+              <Badge variant="outline" className="text-xs ml-auto">{product.variantStock.length}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pb-4">
+            <div className="divide-y border rounded-lg overflow-hidden bg-card">
+              {product.variantStock.map((vs, idx) => (
+                <div key={idx} className="flex items-center justify-between px-3 py-2 text-sm hover:bg-muted/10 transition-colors">
+                  <span className="font-medium text-foreground">{vs.name}</span>
+                  <span className={`font-semibold ${vs.quantity === 0 ? 'text-destructive' : vs.quantity <= product.minimumStock ? 'text-amber-600' : 'text-green-600'}`}>
+                    {vs.quantity} <span className="text-xs font-normal text-muted-foreground">{product.unit}</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
         </div>
       </div>
 
@@ -246,6 +270,20 @@ export default function InventoryDetail() {
               <div className="flex flex-wrap gap-1.5">
                 {supplierNames.map(name => (
                   <Badge key={name} variant="outline" className="text-xs">{name}</Badge>
+                ))}
+              </div>
+            </div>
+          )}
+          {product.hasVariants && product.variants && product.variants.length > 0 && (
+            <div className="col-span-2 border-t pt-3 mt-1">
+              <p className="text-[10px] text-muted-foreground uppercase mb-2 flex items-center gap-1">
+                <Layers className="h-3 w-3" /> Product Variants
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {product.variants.map((v, idx) => (
+                  <Badge key={idx} variant="secondary" className="text-xs px-2 py-1 font-medium">
+                    {v.name} ({v.quantity} {product.unit})
+                  </Badge>
                 ))}
               </div>
             </div>
@@ -452,6 +490,30 @@ export default function InventoryDetail() {
             >
               <Edit className="h-3.5 w-3.5 mr-1" /> Manage Batches
             </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {isVariantsEnabled && product.hasVariants && product.variants && product.variants.length > 0 && (
+        <Card className="mt-4">
+          <CardHeader className="pb-2 pt-4">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Layers className="h-4 w-4 text-muted-foreground" />
+              Variant Stocks
+              <Badge variant="outline" className="text-xs ml-auto">{product.variants.length}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pb-4">
+            <div className="divide-y border rounded-lg overflow-hidden bg-card">
+              {product.variants.map((v, idx) => (
+                <div key={idx} className="flex items-center justify-between px-3 py-2 text-sm hover:bg-muted/10 transition-colors">
+                  <span className="font-medium text-foreground">{v.name}</span>
+                  <span className={`font-semibold ${v.quantity === 0 ? 'text-destructive' : v.quantity <= product.minimumStock ? 'text-amber-600' : 'text-green-600'}`}>
+                    {v.quantity} <span className="text-xs font-normal text-muted-foreground">{product.unit}</span>
+                  </span>
+                </div>
+              ))}
+            </div>
           </CardContent>
         </Card>
       )}
