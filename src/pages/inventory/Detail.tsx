@@ -172,18 +172,18 @@ export default function InventoryDetail() {
               ⏱ {expiringSoonCount} expiring soon
             </Badge>
           )}
-          {isVariantsEnabled && product.hasVariants && product.variantStock && product.variantStock.length > 0 && (
+          {isVariantsEnabled && product.hasVariants && product.variants && product.variants.length > 0 && (
         <Card className="mt-4">
           <CardHeader className="pb-2 pt-4">
             <CardTitle className="text-sm flex items-center gap-2">
               <Layers className="h-4 w-4 text-muted-foreground" />
               Variant Stocks
-              <Badge variant="outline" className="text-xs ml-auto">{product.variantStock.length}</Badge>
+              <Badge variant="outline" className="text-xs ml-auto">{product.variants.length}</Badge>
             </CardTitle>
           </CardHeader>
           <CardContent className="pb-4">
             <div className="divide-y border rounded-lg overflow-hidden bg-card">
-              {product.variantStock.map((vs, idx) => (
+              {product.variants.map((vs, idx) => (
                 <div key={idx} className="flex items-center justify-between px-3 py-2 text-sm hover:bg-muted/10 transition-colors">
                   <span className="font-medium text-foreground">{vs.name}</span>
                   <span className={`font-semibold ${vs.quantity === 0 ? 'text-destructive' : vs.quantity <= product.minimumStock ? 'text-amber-600' : 'text-green-600'}`}>

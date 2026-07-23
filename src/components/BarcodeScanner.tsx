@@ -44,6 +44,11 @@ export function BarcodeScanner({ onScan, className, autoClose = true }: BarcodeS
     }
   };
 
+  const onScanRef = useRef(onScan);
+  useEffect(() => {
+    onScanRef.current = onScan;
+  }, [onScan]);
+
   const stopScanner = async () => {
     await BarcodeService.stop().catch(() => { });
 
@@ -79,7 +84,7 @@ export function BarcodeScanner({ onScan, className, autoClose = true }: BarcodeS
       lastTimeRef.current = now;
 
       playBeep();
-      onScan(trimmed);
+      onScanRef.current(trimmed);
 
       if (autoClose) {
         startingRef.current = false;
@@ -87,26 +92,33 @@ export function BarcodeScanner({ onScan, className, autoClose = true }: BarcodeS
       }
     };
 
+    // --- Capacitor native path ---
     if (activeProvider === 'capacitor') {
       try {
         const barcode = await BarcodeService.scan();
 
         if (barcode) {
           await processScan(barcode);
+          // Successful native scan — don't fall through to web scanner
+          return;
         }
-
       } catch (err: any) {
-        startingRef.current = false;
         console.warn('Native scanner not available, falling back to Web camera...', err);
-        // Fall through to Web scanner
-      } finally {
-        startingRef.current = false;
+        // Fall through to web scanner below
       }
+      // Reset so web scanner path can proceed
+      startingRef.current = false;
     }
 
+    // --- Web camera path ---
     try {
-      setScanning(true);
       const webProvider = BarcodeService.getProviderByName('web');
+      if (!webProvider.supported()) {
+        throw new Error('Camera is not available on this device. Check browser permissions and try again.');
+      }
+
+      startingRef.current = true;
+      setScanning(true);
       await webProvider.scan({
         containerId,
         onScan: async (val) => {
@@ -119,10 +131,15 @@ export function BarcodeScanner({ onScan, className, autoClose = true }: BarcodeS
       });
     } catch (err: any) {
       startingRef.current = false;
-      setError(err?.message || 'Scanning could not be initialized.');
+      const msg = err?.message || String(err);
+      if (msg === 'Scanner stopped.') {
+        return;
+      }
+      console.error('[BarcodeScanner] Web scanner error:', msg);
+      setError(msg || 'Scanning could not be initialized.');
       setScanning(false);
     }
-  }, [onScan, autoClose]);
+  }, [autoClose]);
 
 
   const handleClose = async () => {
@@ -150,7 +167,8 @@ export function BarcodeScanner({ onScan, className, autoClose = true }: BarcodeS
     } else {
       stopScanner();
     }
-  }, [open, startScanner]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   useEffect(() => {
     return () => {

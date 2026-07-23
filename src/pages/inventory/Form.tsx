@@ -75,16 +75,16 @@ export default function InventoryForm() {
   });
 
   // Targeted watches — each only re-renders when that specific field changes
-  const rawHasExpiry  = useWatch({ control: form.control, name: 'hasExpiry' });
+  const rawHasExpiry = useWatch({ control: form.control, name: 'hasExpiry' });
   const rawHasVariants = useWatch({ control: form.control, name: 'hasVariants' });
   const watchedVariants = useWatch({ control: form.control, name: 'variants' }) || [];
   const purchaseRateWatch = useWatch({ control: form.control, name: 'purchaseRate' });
-  const sellingRateWatch  = useWatch({ control: form.control, name: 'sellingRate' });
-  const quantityWatch     = useWatch({ control: form.control, name: 'quantity' });
+  const sellingRateWatch = useWatch({ control: form.control, name: 'sellingRate' });
+  const quantityWatch = useWatch({ control: form.control, name: 'quantity' });
   const minimumStockWatch = useWatch({ control: form.control, name: 'minimumStock' });
 
-  const hasExpiry   = (isExpiryEnabled && isBatchesEnabled) ? (rawHasExpiry  ?? false) : false;
-  const hasVariants = isVariantsEnabled                     ? (rawHasVariants ?? false) : false;
+  const hasExpiry = (isExpiryEnabled && isBatchesEnabled) ? (rawHasExpiry ?? false) : false;
+  const hasVariants = isVariantsEnabled ? (rawHasVariants ?? false) : false;
 
   // Generate unique categories list with pre-defined fallbacks
   const existingCategories = useMemo(() => {
@@ -340,7 +340,7 @@ export default function InventoryForm() {
   };
 
   return (
-    <div className="p-4 md:p-6 space-y-6 max-w-4xl mx-auto pb-24 md:pb-6">
+    <div className="p-4 md:p-6 space-y-6 max-w-4xl mx-auto">
       {/* Header */}
       <div className="mb-4">
         <h1 className="text-2xl md:text-3xl font-bold text-foreground">
