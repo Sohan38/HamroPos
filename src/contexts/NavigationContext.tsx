@@ -1,6 +1,42 @@
 import React, { createContext, useContext, useEffect, useRef } from 'react';
 import { useLocation } from 'wouter';
 
+// ─── Capacitor App plugin (runtime-resolved, no extra npm package needed) ──────
+//     The App plugin is registered in window.Capacitor.Plugins by the native
+//     Capacitor bridge at runtime. We do NOT import @capacitor/app to keep the
+//     bundle lean and avoid the missing-package error on web/desktop builds.
+
+interface CapacitorAppPlugin {
+  addListener(
+    event: 'backButton',
+    handler: (data: { canGoBack: boolean }) => void
+  ): Promise<{ remove: () => void }>;
+  exitApp(): Promise<void>;
+}
+
+interface WindowWithCapacitor extends Window {
+  Capacitor?: {
+    isNativePlatform?: () => boolean;
+    Plugins?: {
+      App?: CapacitorAppPlugin;
+    };
+  };
+}
+
+/** Returns true only when running inside a Capacitor native shell (Android / iOS). */
+export function isNativePlatform(): boolean {
+  const win = window as unknown as WindowWithCapacitor;
+  return typeof window !== 'undefined' && !!win.Capacitor?.isNativePlatform?.();
+}
+
+/** Returns the runtime Capacitor App plugin or null when unavailable (web/desktop). */
+function getCapacitorApp(): CapacitorAppPlugin | null {
+  const win = window as unknown as WindowWithCapacitor;
+  return win.Capacitor?.Plugins?.App ?? null;
+}
+
+// ─── Modal stack ──────────────────────────────────────────────────────────────
+
 interface ModalHandler {
   id: string;
   onClose: () => void;
@@ -54,39 +90,41 @@ export function NavigationProvider({ children }: { children: React.ReactNode }) 
     }
   }, [location]);
 
-  // Global popstate handler for swipe-to-back and hardware back button
+  // ─── Browser popstate handler (web / desktop / browser back button) ──────
+  //     Handles browser swipe-to-back and the browser's native back button.
+  //     On Android Capacitor the backButton event below intercepts back
+  //     BEFORE it ever reaches popstate, so these two handlers don't conflict.
   useEffect(() => {
-    const handlePopState = (e: PopStateEvent) => {
+    const handlePopState = (_e: PopStateEvent) => {
       if (programmaticPopsRef.current > 0) {
         programmaticPopsRef.current--;
         return;
       }
 
-      // 1. If any modal/sheet/dialog/form is open, close it first and stop route change!
+      // 1. If any modal/sheet/dialog is open, close the top one and stop.
       if (modalStackRef.current.length > 0) {
         const topModal = modalStackRef.current[modalStackRef.current.length - 1];
-
         topModal?.onClose();
-
         return;
       }
 
-      // Decrement history count
+      // Decrement our internal route depth counter.
       internalHistoryCountRef.current = Math.max(1, internalHistoryCountRef.current - 1);
 
       const currentPath = locationRef.current;
       const parentPath = getParentRoute(currentPath);
 
-      // 2. If user is on a sub-route/form and history is exhausted (e.g. app launched on form route)
+      // 2. Sub-route launched cold (no prior history) — go to parent instead of exit.
       if (parentPath && internalHistoryCountRef.current <= 1) {
-        // Prevent app exit by navigating to parent route
         setLocation(parentPath);
         return;
       }
 
-      // 3. If user is on root '/' and popstate fires (attempting to exit app)
+      // 3. Root '/' with no history — web only guard.
+      //    Re-push a sentinel so the browser SPA never loses its entry point.
+      //    On native Capacitor this branch is never reached because the
+      //    Capacitor backButton handler calls App.exitApp() first.
       if (currentPath === '/' && internalHistoryCountRef.current <= 1) {
-        // Stay on '/' to prevent exiting app on accidental swipe back at root
         window.history.pushState({ appDepth: 1, path: '/' }, '', window.location.href);
       }
     };
@@ -96,6 +134,80 @@ export function NavigationProvider({ children }: { children: React.ReactNode }) 
       window.removeEventListener('popstate', handlePopState);
     };
   }, [setLocation]);
+
+  // ─── Capacitor native back button handler (Android only) ─────────────────
+  //
+  //  Priority order — exactly one action is taken per back press:
+  //
+  //    1. Modal / dialog / sheet open
+  //       → pop the dummy modal history entry which fires popstate
+  //         → existing popstate handler closes the top modal. ✓
+  //
+  //    2. History depth > 1 (user has visited more than one page)
+  //       → pop the real route history entry which fires popstate
+  //         → Wouter updates the route. ✓
+  //
+  //    3. At the root "/" with no dialogs open
+  //       → App.exitApp() — correct Android behavior. ✓
+  //
+  //  This effect runs once and cleans up the listener on unmount.
+  //  Refs are stable across renders so the empty dep-array is intentional.
+  useEffect(() => {
+    if (!isNativePlatform()) return; // no-op on web / desktop / Windows
+
+    const app = getCapacitorApp();
+    if (!app) {
+      // Capacitor bridge is present but the App plugin wasn't registered.
+      // This shouldn't happen with a standard Capacitor setup, but fail
+      // gracefully rather than crashing.
+      console.warn('[NavigationContext] Capacitor App plugin not found. Android back button will not be handled.');
+      return;
+    }
+
+    let listenerHandle: any = null;
+
+    const handleAndroidBack = async (_event: { canGoBack: boolean }) => {
+      // We intentionally ignore the canGoBack flag from Capacitor because it
+      // reflects WebView browser history depth which includes our dummy modal
+      // entries. We use our own internalHistoryCountRef which only counts
+      // real route navigations.
+
+      // ── Priority 1: close top modal ──────────────────────────────────────
+      if (modalStackRef.current.length > 0) {
+        // Popping the dummy modal history entry triggers popstate, which
+        // the existing handler uses to call topModal.onClose().
+        window.history.back();
+        return;
+      }
+
+      // ── Priority 2: navigate to previous page ────────────────────────────
+      if (internalHistoryCountRef.current > 1) {
+        window.history.back();
+        return;
+      }
+
+      // ── Priority 3: exit app (dashboard with no dialogs) ─────────────────
+      await app.exitApp();
+    };
+
+    // Register the listener and hold the removal handle for cleanup.
+    // Register the listener and hold the removal handle for cleanup.
+    const result = app.addListener('backButton', handleAndroidBack);
+
+    if (result && typeof (result as any).then === 'function') {
+      (result as Promise<any>).then((handle) => {
+        listenerHandle = handle;
+      });
+    } else {
+      listenerHandle = result;
+    }
+
+    return () => {
+      listenerHandle?.remove?.();
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ─── registerModal ────────────────────────────────────────────────────────
 
   const registerModal = (id: string, onClose: () => void) => {
     const handler: ModalHandler = { id, onClose };
@@ -112,7 +224,9 @@ export function NavigationProvider({ children }: { children: React.ReactNode }) 
       // Remove from stack
       modalStackRef.current = modalStackRef.current.filter(m => m !== handler);
 
-      // Clean up browser history entry if modal was closed programmatically (e.g. Cancel button)
+      // Clean up browser history entry only if the modal was closed
+      // programmatically (e.g. Cancel button) — not if back-navigation already
+      // popped the entry (in which case window.history.state has already changed).
       if (
         window.history.state?.isModal &&
         window.history.state?.modalId === id
@@ -123,8 +237,10 @@ export function NavigationProvider({ children }: { children: React.ReactNode }) 
     };
   };
 
+  // ─── goBack (used by back-arrow buttons in page headers) ─────────────────
+
   const goBack = (fallbackPath?: string) => {
-    // If a modal is open, close top modal
+    // If a modal is open, close it first
     if (modalStackRef.current.length > 0) {
       window.history.back();
       return;
@@ -174,7 +290,7 @@ export function useBackModal(isOpen: boolean, onClose: () => void, modalId: stri
 }
 
 /**
- * Reusable hook for smart back navigation (e.g. for header back arrows)
+ * Reusable hook for smart back navigation (e.g. for header back arrows).
  */
 export function useSmartBack(fallbackPath?: string) {
   const context = useContext(NavigationContext);
