@@ -1,61 +1,30 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useWatch, useForm } from 'react-hook-form';
 import { useLocation, useParams } from 'wouter';
-import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
 import { v4 as uuidv4 } from 'uuid';
-import { format as fmtDate, parseISO } from 'date-fns';
 import { useInventory, useSuppliers, useProductBatches } from '@/contexts/GlobalProviders';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
-import { Switch } from '@/components/ui/switch';
+import { Form } from '@/components/ui/form';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
-import {
-  ArrowLeft, ImagePlus, Save, Plus, Trash2, FlaskConical,
-  AlertTriangle, CheckCircle2, Info, Pencil, Layers,
-} from 'lucide-react';
-import { ProductUnit, ProductBatch } from '@/types';
+import { AlertTriangle } from 'lucide-react';
+import { ProductUnit, ProductBatch, BatchFormData } from '@/types';
 import { toast } from 'sonner';
-import { BatchFormDialog, ExpiryBadge, getBatchStatus } from '@/components/BatchFormDialog';
-import { lazy, Suspense } from 'react';
-const BarcodeScanner = lazy(() => import('@/components/BarcodeScanner').then(m => ({ default: m.BarcodeScanner })));
-
-// ─── Schema ───────────────────────────────────────────────────────────────────
-const productSchema = z.object({
-  name: z.string().min(2, 'Name must be at least 2 characters').max(100, 'Name too long'),
-  barcode: z.string().max(50, 'Barcode too long').optional(),
-  category: z.string().min(1, 'Category is required').max(50, 'Category too long'),
-  brand: z.string().max(50, 'Brand too long').optional(),
-  supplierIds: z.array(z.string()).optional(),
-  unit: z.string().min(1, 'Unit is required'),
-  quantity: z.coerce.number({ invalid_type_error: 'Must be a number' }).min(0, 'Cannot be negative').max(999999, 'Too large'),
-  minimumStock: z.coerce.number({ invalid_type_error: 'Must be a number' }).min(0, 'Cannot be negative').max(999999, 'Too large'),
-  purchaseRate: z.coerce.number({ invalid_type_error: 'Must be a number' }).min(0, 'Cannot be negative'),
-  sellingRate: z.coerce.number({ invalid_type_error: 'Must be a number' }).min(0.01, 'Selling rate must be greater than 0'),
-  hasExpiry: z.boolean().optional(),
-  hasVariants: z.boolean().optional(),
-  variants: z.array(z.object({
-    name: z.string().min(1, 'Variant name is required'),
-    quantity: z.coerce.number().min(0, 'Cannot be negative'),
-  })).optional(),
-  notes: z.string().max(500, 'Notes too long').optional(),
-  imageBase64: z.string().optional(),
-});
-
-type ProductFormValues = z.infer<typeof productSchema>;
-
-const UNITS: ProductUnit[] = ['pcs', 'packet', 'box', 'bottle', 'kg', 'gram', 'litre', 'ml', 'plate', 'cup', 'glass', 'meter', 'roll', 'dozen', 'custom'];
-
+import { BatchFormDialog, getBatchStatus } from '@/components/BatchFormDialog';
 import { useSmartBack } from '@/contexts/NavigationContext';
-
 import { useFeature } from '@/hooks/useFeature';
 
-// ─── Component ────────────────────────────────────────────────────────────────
+// Subcomponents
+import { productSchema, ProductFormValues } from './Form/types';
+import { ProductIdentitySection } from './Form/ProductIdentitySection';
+import { PricingSection } from './Form/PricingSection';
+import { StockSection } from './Form/StockSection';
+import { SupplierSection } from './Form/SupplierSection';
+import { VariantSection } from './Form/VariantSection';
+import { BatchSection } from './Form/BatchSection';
+import { NotesSection } from './Form/NotesSection';
+import { SaveBar } from './Form/SaveBar';
+
 export default function InventoryForm() {
   const isBatchesEnabled = useFeature('inventory', 'batches');
   const isExpiryEnabled = useFeature('inventory', 'expiry');
@@ -70,7 +39,7 @@ export default function InventoryForm() {
   const isNew = !id || id === 'new';
   const existingProduct = !isNew ? items.find(i => i.id === id) : null;
 
-  // Local batch list (not yet saved — saved on product save)
+  // Local batch list (saved to store on product save)
   const [localBatches, setLocalBatches] = useState<ProductBatch[]>([]);
   const [batchDialogOpen, setBatchDialogOpen] = useState(false);
   const [editingBatch, setEditingBatch] = useState<ProductBatch | null>(null);
@@ -84,6 +53,8 @@ export default function InventoryForm() {
 
   const form = useForm<ProductFormValues>({
     resolver: zodResolver(productSchema),
+    mode: 'onTouched',         // show errors only after user touches a field
+    reValidateMode: 'onChange', // re-validate live after first error is shown
     defaultValues: existingProduct ? {
       ...existingProduct,
       supplierIds: existingProduct.supplierIds ?? (existingProduct.supplierId ? [existingProduct.supplierId] : []),
@@ -98,56 +69,87 @@ export default function InventoryForm() {
       supplierIds: [], unit: 'pcs',
       quantity: 0, minimumStock: 5,
       purchaseRate: 0, sellingRate: 0,
-      hasExpiry: false, hasVariants: false, variants: [], notes: '', imageBase64: '',
+      hasExpiry: false, hasVariants: false,
+      variants: [], notes: '', imageBase64: '',
     },
   });
 
-  const watchedValues = form.watch();
-  const imageBase64 = watchedValues.imageBase64 ?? '';
-  const hasExpiry = (isExpiryEnabled && isBatchesEnabled) ? (watchedValues.hasExpiry ?? false) : false;
-  const hasVariants = isVariantsEnabled ? (watchedValues.hasVariants ?? false) : false;
-  const watchedVariants = form.watch('variants') || [];
+  // Targeted watches — each only re-renders when that specific field changes
+  const rawHasExpiry  = useWatch({ control: form.control, name: 'hasExpiry' });
+  const rawHasVariants = useWatch({ control: form.control, name: 'hasVariants' });
+  const watchedVariants = useWatch({ control: form.control, name: 'variants' }) || [];
+  const purchaseRateWatch = useWatch({ control: form.control, name: 'purchaseRate' });
+  const sellingRateWatch  = useWatch({ control: form.control, name: 'sellingRate' });
+  const quantityWatch     = useWatch({ control: form.control, name: 'quantity' });
+  const minimumStockWatch = useWatch({ control: form.control, name: 'minimumStock' });
 
-  const selectedSupplierIds: string[] =
-    watchedValues.supplierIds ?? [];
+  const hasExpiry   = (isExpiryEnabled && isBatchesEnabled) ? (rawHasExpiry  ?? false) : false;
+  const hasVariants = isVariantsEnabled                     ? (rawHasVariants ?? false) : false;
 
-  const averagePurchaseRate = useMemo(() => {
-    if (!hasExpiry || localBatches.length === 0) {
-      return watchedValues.purchaseRate || 0;
+  // Generate unique categories list with pre-defined fallbacks
+  const existingCategories = useMemo(() => {
+    const cats = new Set<string>([
+      'Beverages', 'Snacks', 'Groceries', 'Bakery', 'Electronics', 'Services'
+    ]);
+    for (const item of items) {
+      if (item.category) cats.add(item.category.trim());
     }
+    return Array.from(cats).sort().slice(0, 12);
+  }, [items]);
 
-    const totalQty = localBatches.reduce(
-      (sum, batch) => sum + batch.quantity,
-      0
-    );
-
+  // Compute average purchase cost dynamically
+  const averagePurchaseRate = useMemo(() => {
+    if (!hasExpiry || localBatches.length === 0) return purchaseRateWatch || 0;
+    const totalQty = localBatches.reduce((sum, b) => sum + b.quantity, 0);
     if (totalQty === 0) return 0;
-
-    const totalCost = localBatches.reduce(
-      (sum, batch) => sum + batch.purchaseRate * batch.quantity,
-      0
-    );
-
+    const totalCost = localBatches.reduce((sum, b) => sum + b.purchaseRate * b.quantity, 0);
     return totalCost / totalQty;
-  }, [hasExpiry, localBatches, watchedValues.purchaseRate]);
+  }, [hasExpiry, localBatches, purchaseRateWatch]);
 
-  const profitPerUnit =
-    (watchedValues.sellingRate || 0) - averagePurchaseRate;
+  // Real-time stock / quantity calculations
+  const totalBatchQuantity = useMemo(() => {
+    return localBatches.reduce((sum, b) => sum + b.quantity, 0);
+  }, [localBatches]);
 
-  const profitMargin =
-    watchedValues.sellingRate > 0
-      ? Math.round(
-        (profitPerUnit / watchedValues.sellingRate) * 100
-      )
-      : 0;
+  const totalVariantQuantity = useMemo(() => {
+    return watchedVariants.reduce((sum: number, v: { quantity: number }) => sum + (v.quantity || 0), 0);
+  }, [watchedVariants]);
 
-  // Validation warnings (non-blocking)
+  // 1. Real-time Quantity Sync
+  useEffect(() => {
+    if (hasExpiry) {
+      form.setValue('quantity', totalBatchQuantity, { shouldDirty: true });
+    } else if (hasVariants) {
+      form.setValue('quantity', totalVariantQuantity, { shouldDirty: true });
+    }
+  }, [hasExpiry, hasVariants, totalBatchQuantity, totalVariantQuantity, form]);
+
+  // Next batch number generator helper
+  const nextBatchNumber = useMemo(() => {
+    const all = isNew ? localBatches : allBatches.filter(b => b.productId === (existingProduct?.id ?? ''));
+    const year = new Date().getFullYear();
+    const n = all.length + 1;
+    return `B-${year}-${String(n).padStart(3, '0')}`;
+  }, [localBatches, allBatches, existingProduct, isNew]);
+
+  // Map barcodes for duplicates validation
+  const barcodeLookup = useMemo(() => {
+    const map = new Map<string, typeof items[number]>();
+    for (const item of items) {
+      if (item.barcode) {
+        map.set(item.barcode, item);
+      }
+    }
+    return map;
+  }, [items]);
+
+  // Warnings validation — only depends on the specific watched fields, not all of watchedValues
   const warnings = useMemo(() => {
     const w: string[] = [];
-    if (watchedValues.sellingRate > 0 && watchedValues.purchaseRate > 0 && watchedValues.sellingRate < watchedValues.purchaseRate) {
+    if (sellingRateWatch > 0 && purchaseRateWatch > 0 && sellingRateWatch < purchaseRateWatch) {
       w.push('Selling rate is below purchase rate — you will sell at a loss.');
     }
-    if (watchedValues.minimumStock > watchedValues.quantity && watchedValues.quantity > 0) {
+    if (minimumStockWatch > quantityWatch && quantityWatch > 0) {
       w.push('Minimum stock alert is higher than current stock — this product will immediately appear as low stock.');
     }
     if (hasExpiry && localBatches.length === 0 && isNew) {
@@ -158,40 +160,70 @@ export default function InventoryForm() {
       w.push(`${expiredBatches.length} batch(es) are already expired.`);
     }
     return w;
-  }, [watchedValues, hasExpiry, localBatches, isNew]);
+  }, [sellingRateWatch, purchaseRateWatch, minimumStockWatch, quantityWatch, hasExpiry, localBatches, isNew]);
 
-  // Next batch number generator
-  const nextBatchNumber = useMemo(() => {
-    const all = isNew ? localBatches : allBatches.filter(b => b.productId === (existingProduct?.id ?? ''));
-    const year = new Date().getFullYear();
-    const n = all.length + 1;
-    return `B-${year}-${String(n).padStart(3, '0')}`;
-  }, [localBatches, allBatches, existingProduct, isNew]);
+  // 2. Switching Expiry ON/OFF & Mutual Exclusion Toggles
+  const handleToggleExpiry = useCallback((checked: boolean) => {
+    if (checked) {
+      // Mutual exclusion
+      form.setValue('hasVariants', false, { shouldValidate: true, shouldDirty: true });
+      form.setValue('hasExpiry', true, { shouldValidate: true, shouldDirty: true });
 
-  const barcodeLookup = useMemo(() => {
-    const map = new Map<string, typeof items[number]>();
-
-    for (const item of items) {
-      if (item.barcode) {
-        map.set(item.barcode, item);
+      // Migration: Create Opening Batch if quantity already exists
+      const currentQty = form.getValues('quantity') || 0;
+      if (currentQty > 0) {
+        const purchaseRate = form.getValues('purchaseRate') || 0;
+        const supplierIds = form.getValues('supplierIds') || [];
+        const newBatch: ProductBatch = {
+          id: uuidv4(),
+          productId: existingProduct?.id || '',
+          batchNumber: nextBatchNumber,
+          quantity: currentQty,
+          purchaseRate: purchaseRate,
+          expiryDate: '',
+          supplierId: supplierIds[0] || '',
+          manufacturingDate: null,
+          expiryMonths: null,
+          initialQuantity: currentQty,
+          notes: '',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          deletedAt: null,
+          version: 1,
+        };
+        setLocalBatches([newBatch]);
+      }
+    } else {
+      // Disabling Expiry Migration Confirmation
+      const confirm = window.confirm(
+        'Are you sure you want to turn off expiry tracking? This will merge all batch stock into standard stock.'
+      );
+      if (confirm) {
+        form.setValue('hasExpiry', false, { shouldValidate: true, shouldDirty: true });
+        // Copy weighted average purchase cost & total quantity to standard stock
+        form.setValue('purchaseRate', averagePurchaseRate, { shouldValidate: true, shouldDirty: true });
+        form.setValue('quantity', totalBatchQuantity, { shouldValidate: true, shouldDirty: true });
+        setLocalBatches([]);
       }
     }
+  }, [form, nextBatchNumber, existingProduct, averagePurchaseRate, totalBatchQuantity]);
 
-    return map;
-  }, [items]);
+  const handleToggleVariants = useCallback((checked: boolean) => {
+    if (checked) {
+      // Mutual exclusion
+      form.setValue('hasExpiry', false, { shouldValidate: true, shouldDirty: true });
+      form.setValue('hasVariants', true, { shouldValidate: true, shouldDirty: true });
+      setLocalBatches([]);
+    } else {
+      form.setValue('hasVariants', false, { shouldValidate: true, shouldDirty: true });
+    }
+  }, [form]);
 
-  const sortedBatches = useMemo(() => {
-    return [...localBatches].sort(
-      (a, b) =>
-        (a.expiryDate ?? '').localeCompare(b.expiryDate ?? '')
-    );
-  }, [localBatches]);
-
+  // Save onSubmit handler
   const onSubmit = (data: ProductFormValues) => {
     try {
       if (data.barcode) {
         const duplicate = barcodeLookup.get(data.barcode);
-
         if (duplicate && duplicate.id !== existingProduct?.id) {
           form.setError('barcode', {
             message: `Barcode already used by "${duplicate.name}"`,
@@ -224,7 +256,6 @@ export default function InventoryForm() {
 
       if (isNew) {
         const newId = uuidv4();
-
         add({
           ...productData,
           id: newId,
@@ -241,13 +272,27 @@ export default function InventoryForm() {
       } else if (existingProduct) {
         update(existingProduct.id, productData);
 
-        for (const batch of localBatches) {
-          const exists = allBatches.some(ab => ab.id === batch.id);
+        // 3. Proper Synchronization of Saved/Deleted Batches
+        const currentSavedBatches = allBatches.filter(b => b.productId === existingProduct.id);
+        const localBatchIds = new Set(localBatches.map(b => b.id));
 
+        // Delete removed batches
+        for (const saved of currentSavedBatches) {
+          if (!localBatchIds.has(saved.id)) {
+            removeBatch(saved.id);
+          }
+        }
+
+        // Add or update current local batches
+        for (const batch of localBatches) {
+          const exists = currentSavedBatches.some(ab => ab.id === batch.id);
           if (exists) {
             updateBatch(batch.id, batch);
           } else {
-            addBatch(batch as any);
+            addBatch({
+              ...batch,
+              productId: existingProduct.id,
+            } as any);
           }
         }
 
@@ -261,142 +306,58 @@ export default function InventoryForm() {
     }
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 2 * 1024 * 1024) { toast.error('Image must be less than 2 MB'); return; }
-    const reader = new FileReader();
-    reader.onloadend = () => form.setValue('imageBase64', reader.result as string);
-    reader.readAsDataURL(file);
-  };
+  // Local batch handlers
+  const handleAddBatch = useCallback(() => {
+    setEditingBatch(null);
+    setBatchDialogOpen(true);
+  }, []);
 
-  // Supplier multi-select toggle
-  const toggleSupplier = (sid: string) => {
-    const current = form.getValues('supplierIds') ?? [];
-    if (current.includes(sid)) {
-      form.setValue('supplierIds', current.filter(s => s !== sid));
-    } else {
-      form.setValue('supplierIds', [...current, sid]);
-    }
-  };
+  const handleEditBatch = useCallback((batch: ProductBatch) => {
+    setEditingBatch(batch);
+    setBatchDialogOpen(true);
+  }, []);
 
-  // Batch handlers
-  const handleSaveBatch = (
-    batchData: Omit<ProductBatch, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt' | 'version'>
-  ) => {
-    let updatedBatches: ProductBatch[];
+  const handleDeleteBatch = useCallback((bid: string) => {
+    setLocalBatches(prev => prev.filter(b => b.id !== bid));
+  }, []);
 
+  const handleSaveBatch = (batchData: BatchFormData) => {
     if (editingBatch) {
-      const updated: ProductBatch = {
-        ...editingBatch,
-        ...batchData,
-        updatedAt: new Date().toISOString(),
-        version: editingBatch.version + 1,
-      };
-
-      updatedBatches = localBatches.map(b =>
-        b.id === editingBatch.id ? updated : b
-      );
-
-      setLocalBatches(updatedBatches);
-
-      if (!isNew) {
-        updateBatch(editingBatch.id, updated);
-      }
+      setLocalBatches(prev => prev.map(b => b.id === editingBatch.id ? { ...b, ...batchData } : b));
     } else {
-      const now = new Date().toISOString();
-
       const newBatch: ProductBatch = {
         ...batchData,
         id: uuidv4(),
-        createdAt: now,
-        updatedAt: now,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
         deletedAt: null,
         version: 1,
       };
-
-      updatedBatches = [...localBatches, newBatch];
-
-      setLocalBatches(updatedBatches);
-
-      if (!isNew && existingProduct) {
-        addBatch({
-          ...newBatch,
-          productId: existingProduct.id,
-        } as any);
-      }
+      setLocalBatches(prev => [...prev, newBatch]);
     }
-
-    if (!isNew && existingProduct && form.getValues('hasExpiry')) {
-      const totalStock = updatedBatches.reduce(
-        (sum, batch) => sum + batch.quantity,
-        0
-      );
-
-      update(existingProduct.id, {
-        quantity: totalStock,
-      });
-    }
-
+    setBatchDialogOpen(false);
     setEditingBatch(null);
   };
 
-  const handleDeleteBatch = (batchId: string) => {
-    if (!confirm('Remove this batch?')) return;
-
-    const updatedBatches = localBatches.filter(
-      batch => batch.id !== batchId
-    );
-
-    setLocalBatches(updatedBatches);
-
-    if (!isNew) {
-      removeBatch(batchId);
-
-      if (existingProduct && form.getValues('hasExpiry')) {
-        const totalStock = updatedBatches.reduce(
-          (sum, batch) => sum + batch.quantity,
-          0
-        );
-
-        update(existingProduct.id, {
-          quantity: totalStock,
-        });
-      }
-    }
-
-    toast.success('Batch removed');
-  };
-
-  // ─── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="p-4 md:p-6 max-w-3xl mx-auto pb-6">
-
-      {/* ── Header ────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-3 mb-4">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="-ml-2 shrink-0"
-          onClick={goBack}
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <div>
-          <h1 className="text-xl font-bold leading-tight">
-            {isNew ? 'Add Product' : 'Edit Product'}
-          </h1>
-          <p className="text-xs text-muted-foreground">Fields marked * are required.</p>
-        </div>
+    <div className="p-4 md:p-6 space-y-6 max-w-4xl mx-auto pb-24 md:pb-6">
+      {/* Header */}
+      <div className="mb-4">
+        <h1 className="text-2xl md:text-3xl font-bold text-foreground">
+          {isNew ? 'Add Product' : 'Edit Product'}
+        </h1>
+        <p className="text-muted-foreground">
+          {isNew ? 'Create a new item in your inventory catalog' : 'Modify existing product specifications'}
+        </p>
       </div>
 
-      {/* ── Warnings ──────────────────────────────────────────────── */}
+      {/* Warning Banners */}
       {warnings.length > 0 && (
-        <Alert className="mb-4 border-orange-300 bg-orange-50">
-          <AlertTriangle className="h-4 w-4 text-orange-500" />
-          <AlertDescription className="text-orange-700">
-            <ul className="list-disc list-inside space-y-0.5 text-sm">
-              {warnings.map((w, i) => <li key={i}>{w}</li>)}
+        <Alert variant="default" className="border-orange-200 bg-orange-50/50">
+          <AlertTriangle className="h-4 w-4 text-orange-600" />
+          <AlertDescription className="text-orange-950 font-medium">
+            <ul className="list-disc pl-4 space-y-1 text-xs">
+              {warnings.map((w, idx) => <li key={idx}>{w}</li>)}
             </ul>
           </AlertDescription>
         </Alert>
@@ -404,594 +365,91 @@ export default function InventoryForm() {
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)}>
-          {/* Card wrapper — gives desktop a clean grouped look */}
           <div className="md:rounded-2xl md:border md:bg-card md:overflow-hidden md:shadow-sm">
-
-            {/* ── 1. Product Identity ───────────────────────────────── */}
-            <section className="px-4 py-4 space-y-3">
-
-              {/* Image tap target + Name */}
-              <div className="flex items-start gap-3">
-                <div
-                  className="w-14 h-14 rounded-xl border-2 border-dashed border-muted-foreground/30 flex items-center justify-center bg-muted/40 overflow-hidden cursor-pointer hover:bg-muted/70 active:scale-95 transition-all shrink-0 mt-5"
-                  onClick={() => document.getElementById('image-upload')?.click()}
-                >
-                  {imageBase64 ? (
-                    <img src={imageBase64} alt="Product" className="w-full h-full object-cover" />
-                  ) : (
-                    <ImagePlus className="h-5 w-5 text-muted-foreground" />
-                  )}
-                  <input
-                    id="image-upload"
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={handleImageUpload}
-                  />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <FormField control={form.control} name="name" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Product Name *</FormLabel>
-                      <FormControl>
-                        <Input placeholder="e.g. Coca-Cola 500ml" autoFocus={isNew} {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
-                </div>
-              </div>
-
-              {imageBase64 && (
-                <button
-                  type="button"
-                  className="text-xs text-destructive ml-[68px] -mt-1"
-                  onClick={() => form.setValue('imageBase64', '')}
-                >
-                  Remove image
-                </button>
-              )}
-
-              {/* Category + Unit */}
-              <div className="grid grid-cols-2 gap-3">
-                <FormField control={form.control} name="category" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Category *</FormLabel>
-                    <FormControl>
-                      <Input placeholder="e.g. Beverages" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )} />
-                <FormField control={form.control} name="unit" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Unit *</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <FormControl>
-                        <SelectTrigger><SelectValue placeholder="Select unit" /></SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {UNITS.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )} />
-              </div>
-
-              {/* Barcode + Brand */}
-              <div className="grid grid-cols-2 gap-3">
-                <FormField control={form.control} name="barcode" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Barcode</FormLabel>
-                    <div className="flex items-center gap-1.5">
-                      <FormControl>
-                        <Input placeholder="Scan or type" {...field} />
-                      </FormControl>
-                      <Suspense fallback={null}>
-                        <BarcodeScanner
-                          className="h-9 w-9"
-                          onScan={(code) => form.setValue('barcode', code, { shouldValidate: true })}
-                        />
-                      </Suspense>
-                    </div>
-                    <FormMessage />
-                  </FormItem>
-                )} />
-                <FormField control={form.control} name="brand" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Brand</FormLabel>
-                    <FormControl>
-                      <Input placeholder="e.g. Coca-Cola" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )} />
-              </div>
-            </section>
+            {/* Identity */}
+            <ProductIdentitySection
+              form={form}
+              isNew={isNew}
+              existingCategories={existingCategories}
+            />
 
             <Separator />
 
-            {isExpiryEnabled && isBatchesEnabled && (
-              <>
-                {/* ── 2. Expiry Tracking toggle ─────────────────────────── */}
-                <section className="px-4 py-4 space-y-2">
-                  <FormField control={form.control} name="hasExpiry" render={({ field }) => (
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className={`p-1.5 rounded-lg shrink-0 ${hasExpiry ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
-                          <FlaskConical className="h-4 w-4" />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium leading-tight">Track Expiry &amp; Batches</p>
-                          <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
-                            {hasExpiry
-                              ? 'Stock, cost & supplier per batch'
-                              : 'Enable for products with expiry dates'}
-                          </p>
-                        </div>
-                      </div>
-                      <Switch
-                        checked={field.value ?? false}
-                        onCheckedChange={field.onChange}
-                        className="shrink-0"
-                      />
-                    </div>
-                  )} />
-
-                  {hasExpiry && (
-                    <p className="text-xs text-muted-foreground flex items-start gap-1.5 pt-1 pl-0.5">
-                      <Info className="h-3.5 w-3.5 mt-0.5 text-blue-500 shrink-0" />
-                      Sold FEFO (earliest expiry first). Purchase cost is the weighted average across all batches.
-                    </p>
-                  )}
-                </section>
-                <Separator />
-              </>
-            )}
-
-            {isVariantsEnabled && (
-              <>
-                {/* ── 2.5 Variants toggle ─────────────────────────── */}
-                <section className="px-4 py-4 space-y-4">
-                  <FormField control={form.control} name="hasVariants" render={({ field }) => (
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className={`p-1.5 rounded-lg shrink-0 ${hasVariants ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
-                          <Layers className="h-4 w-4" />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium leading-tight">Product Variants</p>
-                          <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
-                            {hasVariants
-                              ? 'Stock options like sizes, colors'
-                              : 'Enable to specify different sizes or colors'}
-                          </p>
-                        </div>
-                      </div>
-                      <Switch
-                        checked={field.value ?? false}
-                        onCheckedChange={field.onChange}
-                        className="shrink-0"
-                      />
-                    </div>
-                  )} />
-
-                  {hasVariants && (
-                    <div className="space-y-4 pt-2 border-t border-dashed">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Variants &amp; Stock</span>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-7 text-xs gap-1"
-                          onClick={() => {
-                            const current = form.getValues('variants') || [];
-                            form.setValue('variants', [...current, { name: '', quantity: 0 }], { shouldValidate: true });
-                          }}
-                        >
-                          <Plus className="h-3.5 w-3.5" /> Add Variant
-                        </Button>
-                      </div>
-
-                      {watchedVariants.length === 0 ? (
-                        <p className="text-xs text-muted-foreground text-center py-2">No variants added yet. Tap "Add Variant" to begin.</p>
-                      ) : (
-                        <div className="space-y-2">
-                          {watchedVariants.map((variant, index) => (
-                            <div key={index} className="flex items-center gap-2 p-2 border rounded-lg bg-muted/20 relative pr-10">
-                              <div className="flex-1 min-w-0">
-                                <Input
-                                  placeholder="e.g. XL, Red, Blue"
-                                  className="h-8 text-sm"
-                                  value={variant.name}
-                                  onChange={(e) => {
-                                    const current = form.getValues('variants') || [];
-                                    const updated = [...current];
-                                    updated[index] = { ...updated[index], name: e.target.value };
-                                    form.setValue('variants', updated, { shouldValidate: true });
-                                  }}
-                                />
-                              </div>
-                              <div className="flex items-center gap-1 w-[80px] shrink-0">
-                                <Input
-                                  type="number"
-                                  min={0}
-                                  placeholder="Qty"
-                                  className="h-8 text-right text-sm font-medium"
-                                  value={variant.quantity}
-                                  onChange={(e) => {
-                                    const val = parseInt(e.target.value) || 0;
-                                    const current = form.getValues('variants') || [];
-                                    const updated = [...current];
-                                    updated[index] = { ...updated[index], quantity: val };
-                                    form.setValue('variants', updated, { shouldValidate: true });
-                                  }}
-                                />
-                                <span className="text-xs text-muted-foreground">{watchedValues.unit}</span>
-                              </div>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 text-destructive absolute right-1 top-1/2 -translate-y-1/2 hover:bg-destructive/10 shrink-0"
-                                onClick={() => {
-                                  const current = form.getValues('variants') || [];
-                                  form.setValue('variants', current.filter((_, i) => i !== index), { shouldValidate: true });
-                                }}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </section>
-                <Separator />
-              </>
-            )}
-
-            {/* ── 3. Pricing ────────────────────────────────────────── */}
-            <section className="px-4 py-4 space-y-3">
-              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Pricing</p>
-
-              {hasExpiry ? (
-                /* Expiry mode: only selling rate; purchase cost read-only from batches */
-                <div className="space-y-2">
-                  <FormField control={form.control} name="sellingRate" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Selling Price (MRP) *</FormLabel>
-                      <FormControl>
-                        <Input type="number" step="0.01" min={0.01} {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
-                  {localBatches.length > 0 && (
-                    <div className="flex items-center justify-between bg-muted/50 rounded-lg px-3 py-2.5 text-sm">
-                      <span className="text-muted-foreground">Avg purchase cost (from batches)</span>
-                      <span className="font-semibold">{averagePurchaseRate.toFixed(2)}</span>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                /* Normal mode: purchase + selling side by side */
-                <div className="grid grid-cols-2 gap-3">
-                  <FormField control={form.control} name="purchaseRate" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Purchase Cost</FormLabel>
-                      <FormControl>
-                        <Input type="number" step="0.01" min={0} {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
-                  <FormField control={form.control} name="sellingRate" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Selling Price (MRP) *</FormLabel>
-                      <FormControl>
-                        <Input type="number" step="0.01" min={0.01} {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
-                </div>
-              )}
-
-              {/* Profit indicator — always visible once selling rate is set */}
-              {watchedValues.sellingRate > 0 && (
-                <div className={`flex items-center justify-between px-3 py-2.5 rounded-xl border text-sm ${profitPerUnit >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-                  <div className="flex items-center gap-2">
-                    {profitPerUnit >= 0
-                      ? <CheckCircle2 className="h-4 w-4 text-green-600" />
-                      : <AlertTriangle className="h-4 w-4 text-destructive" />}
-                    <span className="font-medium">Profit per unit</span>
-                  </div>
-                  <div className="text-right leading-tight">
-                    <span className={`font-bold ${profitPerUnit >= 0 ? 'text-green-700' : 'text-destructive'}`}>
-                      {profitPerUnit >= 0 ? '+' : ''}{profitPerUnit.toFixed(2)}
-                    </span>
-                    <span className="text-xs text-muted-foreground ml-1.5">({profitMargin}%)</span>
-                  </div>
-                </div>
-              )}
-            </section>
+            {/* Expiry Tracking */}
+            <BatchSection
+              form={form}
+              isExpiryEnabled={isExpiryEnabled}
+              isBatchesEnabled={isBatchesEnabled}
+              hasExpiry={hasExpiry}
+              onToggleExpiry={handleToggleExpiry}
+              localBatches={localBatches}
+              onAddBatch={handleAddBatch}
+              onEditBatch={handleEditBatch}
+              onDeleteBatch={handleDeleteBatch}
+            />
 
             <Separator />
 
-            {/* ── 4. Stock ──────────────────────────────────────────── */}
-            <section className="px-4 py-4 space-y-3">
-              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Stock</p>
-
-              {hasExpiry ? (
-                /* Expiry mode: stock is read-only (sum of batches) + low-stock threshold */
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between bg-muted/50 rounded-lg px-3 py-2.5 text-sm">
-                    <span className="text-muted-foreground">Total stock (from batches)</span>
-                    <span className="font-semibold">
-                      {localBatches.reduce((sum, b) => sum + b.quantity, 0)}{' '}
-                      <span className="text-muted-foreground font-normal">{watchedValues.unit}</span>
-                    </span>
-                  </div>
-                  <FormField control={form.control} name="minimumStock" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Low Stock Alert</FormLabel>
-                      <FormControl>
-                        <Input type="number" min={0} {...field} />
-                      </FormControl>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Alert when total batch stock falls to this level.
-                      </p>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
-                </div>
-              ) : hasVariants ? (
-                /* Variants mode: stock is read-only (sum of variants) + low-stock threshold */
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between bg-muted/50 rounded-lg px-3 py-2.5 text-sm">
-                    <span className="text-muted-foreground">Total stock (from variants)</span>
-                    <span className="font-semibold">
-                      {watchedVariants.reduce((sum, v) => sum + v.quantity, 0)}{' '}
-                      <span className="text-muted-foreground font-normal">{watchedValues.unit}</span>
-                    </span>
-                  </div>
-                  <FormField control={form.control} name="minimumStock" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Low Stock Alert</FormLabel>
-                      <FormControl>
-                        <Input type="number" min={0} {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
-                </div>
-              ) : (
-                /* Normal mode: current stock + low-stock threshold */
-                <div className="grid grid-cols-2 gap-3">
-                  <FormField control={form.control} name="quantity" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Current Stock</FormLabel>
-                      <FormControl>
-                        <Input type="number" min={0} {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
-                  <FormField control={form.control} name="minimumStock" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Low Stock Alert</FormLabel>
-                      <FormControl>
-                        <Input type="number" min={0} {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
-                </div>
-              )}
-            </section>
+            {/* Variants */}
+            <VariantSection
+              form={form}
+              isVariantsEnabled={isVariantsEnabled}
+              hasVariants={hasVariants}
+              onToggleVariants={handleToggleVariants}
+            />
 
             <Separator />
 
-            {/* ── 5a. Suppliers — only in non-expiry mode ───────────── */}
+            {/* Pricing */}
+            <PricingSection
+              form={form}
+              hasExpiry={hasExpiry}
+              averagePurchaseRate={averagePurchaseRate}
+            />
+
+            <Separator />
+
+            {/* Stock details */}
+            <StockSection
+              form={form}
+              hasExpiry={hasExpiry}
+              hasVariants={hasVariants}
+              totalBatchQuantity={totalBatchQuantity}
+              totalVariantQuantity={totalVariantQuantity}
+            />
+
+            <Separator />
+
+            {/* Suppliers */}
             {!hasExpiry && (
               <>
-                <section className="px-4 py-4 space-y-3">
-                  <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Suppliers</p>
-                  {suppliers.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">
-                      No suppliers yet.{' '}
-                      <button
-                        type="button"
-                        className="text-primary underline"
-                        onClick={() => setLocation('/suppliers/new')}
-                      >
-                        Add one
-                      </button>
-                    </p>
-                  ) : (
-                    <div className="flex flex-wrap gap-2">
-                      {suppliers.map(s => {
-                        const selected = selectedSupplierIds.includes(s.id);
-                        return (
-                          <button
-                            key={s.id}
-                            type="button"
-                            onClick={() => toggleSupplier(s.id)}
-                            className={`px-3 py-1.5 rounded-full border text-sm font-medium transition-colors ${selected
-                              ? 'bg-primary text-primary-foreground border-primary'
-                              : 'border-border hover:bg-muted'
-                              }`}
-                          >
-                            {s.name}
-                            {selected && <span className="ml-1 opacity-70">✓</span>}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                  {selectedSupplierIds.length > 0 && (
-                    <p className="text-xs text-muted-foreground">
-                      {selectedSupplierIds.length} supplier(s) selected — first is primary.
-                    </p>
-                  )}
-                </section>
+                <SupplierSection
+                  form={form}
+                  suppliers={suppliers}
+                  onSupplierNew={() => setLocation('/suppliers/new')}
+                />
                 <Separator />
               </>
             )}
 
-            {/* ── 5b. Batches — only in expiry mode ────────────────── */}
-            {hasExpiry && (
-              <>
-                <section className="px-4 py-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Batches</p>
-                    {localBatches.length > 0 && (
-                      <span className="text-xs text-muted-foreground">{localBatches.length} batch{localBatches.length !== 1 ? 'es' : ''}</span>
-                    )}
-                  </div>
-
-                  {localBatches.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-8 border-2 border-dashed rounded-xl text-muted-foreground gap-1.5">
-                      <FlaskConical className="h-6 w-6 opacity-40" />
-                      <p className="text-sm">No batches yet</p>
-                      <p className="text-xs opacity-70">Add the first batch below</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {sortedBatches.map(batch => {
-                        const supplier = suppliers.find(s => s.id === batch.supplierId);
-                        const status = getBatchStatus(batch.expiryDate);
-                        return (
-                          <div
-                            key={batch.id}
-                            className={`p-3 rounded-xl border ${status === 'expired'
-                              ? 'border-destructive/40 bg-red-50'
-                              : status === 'expiring'
-                                ? 'border-orange-300/60 bg-orange-50'
-                                : 'border-border bg-muted/20'
-                              }`}
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="space-y-1 min-w-0 flex-1">
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <span className="font-medium text-sm">{batch.batchNumber}</span>
-                                  <ExpiryBadge expiryDate={batch.expiryDate} />
-                                  {supplier && (
-                                    <Badge variant="outline" className="text-[10px] py-0 px-1.5">{supplier.name}</Badge>
-                                  )}
-                                </div>
-                                <div className="text-xs text-muted-foreground flex flex-wrap gap-x-3 gap-y-0.5">
-                                  {batch.expiryDate && (
-                                    <span>Exp: {fmtDate(parseISO(batch.expiryDate), 'dd MMM yyyy')}</span>
-                                  )}
-                                  <span>Qty: {batch.quantity}/{batch.initialQuantity}</span>
-                                  {batch.purchaseRate > 0 && (
-                                    <span>Cost: {batch.purchaseRate}</span>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="flex gap-1 shrink-0">
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8 text-muted-foreground"
-                                  onClick={() => { setEditingBatch(batch); setBatchDialogOpen(true); }}
-                                >
-                                  <Pencil className="h-3.5 w-3.5" />
-                                </Button>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8 text-destructive"
-                                  onClick={() => handleDeleteBatch(batch.id)}
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </Button>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => { setEditingBatch(null); setBatchDialogOpen(true); }}
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Batch
-                  </Button>
-                </section>
-                <Separator />
-              </>
-            )}
-
-            {/* ── 6. Notes ──────────────────────────────────────────── */}
-            <section className="px-4 py-4">
-              <FormField control={form.control} name="notes" render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-                    Notes
-                  </FormLabel>
-                  <FormControl>
-                    <Textarea
-                      placeholder="Internal notes about this product..."
-                      rows={2}
-                      className="resize-none"
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
-            </section>
-
-          </div>{/* end card wrapper */}
-
-          {/* ── Save bar ──────────────────────────────────────────── */}
-          {/* sticky bottom-16 clears the mobile bottom nav (h-16 / z-40);
-              md:bottom-0 sits flush on desktop where there's no bottom nav */}
-          <div className="sticky bottom-0 md:relative bg-background/80 backdrop-blur-sm p-4 md:p-0 border-t md:border-0 -mx-4 md:mx-0 z-10 flex justify-end gap-3">
-            <Button
-              type="button"
-              variant="outline"
-              className="flex-1"
-              onClick={() => {
-                if (form.formState.isDirty) {
-                  const discard = confirm('Discard all unsaved changes?');
-                  if (!discard) return;
-                }
-                setLocation('/inventory');
-              }}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" className="flex-1">
-              <Save className="mr-2 h-4 w-4" />
-              {isNew ? 'Add Product' : 'Save Changes'}
-            </Button>
+            {/* Notes */}
+            <NotesSection form={form} />
           </div>
+
+          {/* Action Bar */}
+          <SaveBar onBack={goBack} form={form} />
         </form>
       </Form>
 
       {/* Batch Dialog */}
       <BatchFormDialog
         open={batchDialogOpen}
-        onClose={() => { setBatchDialogOpen(false); setEditingBatch(null); }}
+        onClose={() => setBatchDialogOpen(false)}
         onSave={handleSaveBatch}
-        suppliers={suppliers}
-        productId={existingProduct?.id ?? 'new'}
         editBatch={editingBatch}
         nextBatchNumber={nextBatchNumber}
+        suppliers={suppliers}
+        productId={existingProduct?.id || ''}
       />
     </div>
   );

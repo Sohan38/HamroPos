@@ -8,14 +8,41 @@ import { BarcodeService } from '@/services/BarcodeService';
 interface BarcodeScannerProps {
   onScan: (barcode: string) => void;
   className?: string;
+  autoClose?: boolean;
 }
 
-export function BarcodeScanner({ onScan, className }: BarcodeScannerProps) {
+export function BarcodeScanner({ onScan, className, autoClose = true }: BarcodeScannerProps) {
   const startingRef = useRef(false);
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const containerId = 'barcode-scanner-container';
+  
+  // Track last scan to prevent rapid duplicate scanner triggers on same item
+  const lastCodeRef = useRef<string>('');
+  const lastTimeRef = useRef<number>(0);
+
+  const playBeep = () => {
+    try {
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(1200, audioCtx.currentTime); // Crisp, high confirm pitch
+      
+      gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.12); // Short beep
+      
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.12);
+    } catch (err) {
+      console.warn('Audio feedback failed:', err);
+    }
+  };
 
   const stopScanner = async () => {
     await BarcodeService.stop().catch(() => { });
@@ -29,6 +56,7 @@ export function BarcodeScanner({ onScan, className }: BarcodeScannerProps) {
     startingRef.current = false;
     setScanning(false);
   };
+
   const startScanner = useCallback(async () => {
     if (startingRef.current) return;
     startingRef.current = true;
@@ -37,13 +65,34 @@ export function BarcodeScanner({ onScan, className }: BarcodeScannerProps) {
 
     const activeProvider = BarcodeService.getActiveProviderName();
 
+    const processScan = async (barcode: string) => {
+      const trimmed = barcode.trim();
+      if (!trimmed) return;
+
+      // Prevent immediate duplicate scans of the SAME barcode (1.5s cooldown)
+      const now = Date.now();
+      if (!autoClose && trimmed === lastCodeRef.current && now - lastTimeRef.current < 1500) {
+        return;
+      }
+      
+      lastCodeRef.current = trimmed;
+      lastTimeRef.current = now;
+
+      playBeep();
+      onScan(trimmed);
+
+      if (autoClose) {
+        startingRef.current = false;
+        await handleClose();
+      }
+    };
+
     if (activeProvider === 'capacitor') {
       try {
         const barcode = await BarcodeService.scan();
 
         if (barcode) {
-          onScan(barcode);
-          await handleClose();
+          await processScan(barcode);
         }
 
       } catch (err: any) {
@@ -61,9 +110,7 @@ export function BarcodeScanner({ onScan, className }: BarcodeScannerProps) {
       await webProvider.scan({
         containerId,
         onScan: async (val) => {
-          onScan(val);
-          startingRef.current = false;
-          await handleClose();
+          await processScan(val);
         },
         onError: (err) => {
           setError(err);
@@ -75,13 +122,15 @@ export function BarcodeScanner({ onScan, className }: BarcodeScannerProps) {
       setError(err?.message || 'Scanning could not be initialized.');
       setScanning(false);
     }
-  }, [onScan]);
+  }, [onScan, autoClose]);
 
 
   const handleClose = async () => {
     await stopScanner();
     setOpen(false);
     setError(null);
+    lastCodeRef.current = '';
+    lastTimeRef.current = 0;
   };
 
   useBackModal(open, handleClose, 'barcode-scanner-dialog');
@@ -96,10 +145,8 @@ export function BarcodeScanner({ onScan, className }: BarcodeScannerProps) {
 
   useEffect(() => {
     if (open) {
-      const timer = setTimeout(() => {
-        startScanner();
-      }, 100);
-      return () => clearTimeout(timer);
+      // Start immediately — no artificial delay
+      startScanner();
     } else {
       stopScanner();
     }
@@ -173,7 +220,7 @@ export function BarcodeScanner({ onScan, className }: BarcodeScannerProps) {
             {/* Scanner renders into this div */}
             <div
               id={containerId}
-              className="mx-auto w-full max-w-[320px] aspect-video rounded-xl overflow-hidden bg-black"
+              className="mx-auto w-full max-w-[320px] aspect-square rounded-xl overflow-hidden bg-black"
 
             />
 

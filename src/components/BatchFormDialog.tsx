@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { CalendarDays, FlaskConical, Save, Wand2 } from 'lucide-react';
-import { ProductBatch, Supplier } from '@/types';
+import { ProductBatch, Supplier, BatchFormData } from '@/types';
 import { addMonths, format as fmtDate, isAfter, isBefore, parseISO, startOfDay } from 'date-fns';
 import { useBackModal } from '@/contexts/NavigationContext';
 
@@ -80,7 +80,7 @@ export function ExpiryBadge({ expiryDate }: { expiryDate: string | null }) {
 interface BatchFormDialogProps {
   open: boolean;
   onClose: () => void;
-  onSave: (batch: Omit<ProductBatch, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt' | 'version'>) => void;
+  onSave: (batch: BatchFormData) => void;
   suppliers: Supplier[];
   productId: string;
   editBatch?: ProductBatch | null;
@@ -168,6 +168,8 @@ export function BatchFormDialog({
       purchaseRate: data.purchaseRate,
       notes: data.notes ?? '',
     });
+
+
     onClose();
   };
 
@@ -234,22 +236,20 @@ export function BatchFormDialog({
                 <button
                   type="button"
                   onClick={() => form.setValue('expiryMode', 'months')}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${
-                    expiryMode === 'months'
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${expiryMode === 'months'
                       ? 'bg-primary text-primary-foreground border-primary'
                       : 'border-border hover:bg-muted'
-                  }`}
+                    }`}
                 >
                   <Wand2 className="h-3.5 w-3.5" /> Auto (months)
                 </button>
                 <button
                   type="button"
                   onClick={() => form.setValue('expiryMode', 'manual')}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${
-                    expiryMode === 'manual'
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${expiryMode === 'manual'
                       ? 'bg-primary text-primary-foreground border-primary'
                       : 'border-border hover:bg-muted'
-                  }`}
+                    }`}
                 >
                   <CalendarDays className="h-3.5 w-3.5" /> Manual date
                 </button>

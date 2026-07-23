@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useApp } from '@/contexts/AppContext';
 import { storageService } from '@/storage/StorageService';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -18,6 +18,13 @@ export default function Settings() {
   const { settings, updateSettings, theme, setTheme } = useApp();
   const [formData, setFormData] = useState(settings);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Sync state if settings are loaded/restored asynchronously
+  useEffect(() => {
+    if (settings) {
+      setFormData(settings);
+    }
+  }, [settings]);
 
   // Loading & Dialog States
   const [isExporting, setIsExporting] = useState(false);
@@ -171,6 +178,14 @@ export default function Settings() {
       setIsSeeding(false);
     }
   };
+
+  if (!formData || !formData.features) {
+    return (
+      <div className="flex h-[50vh] items-center justify-center">
+        <Spinner className="size-6 text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-4xl mx-auto pb-24 md:pb-6">

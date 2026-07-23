@@ -45,7 +45,13 @@ export interface ProductBatch extends StorageRecord {
   quantity: number;              // remaining stock in this batch
   purchaseRate: number;
   notes: string;
+
 }
+
+export type BatchFormData = Omit<
+  ProductBatch,
+  "id" | "createdAt" | "updatedAt" | "deletedAt" | "version"
+>;
 
 export interface Supplier extends StorageRecord {
   name: string;

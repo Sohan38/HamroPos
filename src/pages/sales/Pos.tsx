@@ -729,7 +729,7 @@ export default function SalesPos() {
             </div>
 
             <Suspense fallback={null}>
-              <BarcodeScanner onScan={handleBarcodeScanned} />
+              <BarcodeScanner onScan={handleBarcodeScanned} autoClose={false} />
             </Suspense>
           </div>
 
