@@ -40,6 +40,7 @@ export default function InventoryForm() {
   // Extract supplierId from query parameters
   const queryParams = new URLSearchParams(location.split('?')[1] || '');
   const supplierIdFromQuery = queryParams.get('supplierId');
+  const returnTo = queryParams.get('returnTo');
 
   const isNew = !id || id === 'new';
   const existingProduct = !isNew ? items.find(i => i.id === id) : null;
@@ -325,11 +326,11 @@ export default function InventoryForm() {
         imageBase64: data.imageBase64 ?? '',
       };
 
+      const newId = isNew ? uuidv4() : null;
       if (isNew) {
-        const newId = uuidv4();
         add({
           ...productData,
-          id: newId,
+          id: newId!,
         } as any);
 
         for (const batch of localBatches) {
@@ -370,7 +371,13 @@ export default function InventoryForm() {
         toast.success('Product updated successfully');
       }
 
-      setLocation('/inventory');
+      if (isNew && returnTo) {
+        const target = new URL(decodeURIComponent(returnTo), window.location.origin);
+        target.searchParams.set('productId', newId!);
+        setLocation(`${target.pathname}${target.search}`);
+      } else {
+        setLocation('/inventory');
+      }
     } catch (error) {
       console.error(error);
       toast.error('Failed to save product');

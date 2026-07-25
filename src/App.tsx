@@ -52,6 +52,7 @@ const ExpenseList = retryLazy(() => import('@/pages/expenses/List'));
 const ExpenseForm = retryLazy(() => import('@/pages/expenses/Form'));
 const PurchaseList = retryLazy(() => import('@/pages/purchases/List'));
 const PurchaseForm = retryLazy(() => import('@/pages/purchases/Form'));
+const PurchaseDetail = retryLazy(() => import('@/pages/purchases/Detail'));
 const CreditList = retryLazy(() => import('@/pages/credit/List'));
 const CreditForm = retryLazy(() => import('@/pages/credit/Form'));
 const CashBookList = retryLazy(() => import('@/pages/cash-book/List'));
@@ -84,6 +85,8 @@ function Router() {
 
             <Route path="/purchases" component={PurchaseList} />
             <Route path="/purchases/new" component={PurchaseForm} />
+            <Route path="/purchases/:id/edit" component={PurchaseForm} />
+            <Route path="/purchases/:id" component={PurchaseDetail} />
 
             <Route path="/hotel">
               {() => {

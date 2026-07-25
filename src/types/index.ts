@@ -92,7 +92,17 @@ export interface PurchaseItem {
   quantity: number;
   purchaseRate: number;
   subtotal: number;
+  /** Optional receiving information used when the product tracks batches. */
+  batchId?: string;
+  batchNumber?: string;
+  manufacturingDate?: string | null;
+  expiryMonths?: number | null;
+  expiryDate?: string | null;
+  notes?: string;
 }
+
+export type PurchaseStatus = 'draft' | 'received' | 'cancelled';
+export type PurchasePaymentStatus = 'unpaid' | 'partial' | 'paid';
 
 export interface PurchaseInvoice extends StorageRecord {
   invoiceNumber: string;
@@ -105,6 +115,10 @@ export interface PurchaseInvoice extends StorageRecord {
   grandTotal: number;
   paymentMethod: PaymentMethod;
   notes: string;
+  referenceNumber?: string;
+  status?: PurchaseStatus;
+  paymentStatus?: PurchasePaymentStatus;
+  paidAmount?: number;
 }
 
 export interface SaleItem {
