@@ -30,11 +30,16 @@ export default function InventoryForm() {
   const isExpiryEnabled = useFeature('inventory', 'expiry');
   const isVariantsEnabled = useFeature('inventory', 'variants');
   const goBack = useSmartBack('/inventory');
+  const [location] = useLocation();
   const [, setLocation] = useLocation();
   const { id } = useParams();
   const { items, add, update } = useInventory();
   const { items: suppliers } = useSuppliers();
   const { items: allBatches, add: addBatch, update: updateBatch, hardRemove: removeBatch } = useProductBatches();
+
+  // Extract supplierId from query parameters
+  const queryParams = new URLSearchParams(location.split('?')[1] || '');
+  const supplierIdFromQuery = queryParams.get('supplierId');
 
   const isNew = !id || id === 'new';
   const existingProduct = !isNew ? items.find(i => i.id === id) : null;
@@ -43,6 +48,7 @@ export default function InventoryForm() {
   const [localBatches, setLocalBatches] = useState<ProductBatch[]>([]);
   const [batchDialogOpen, setBatchDialogOpen] = useState(false);
   const [editingBatch, setEditingBatch] = useState<ProductBatch | null>(null);
+  const [supplierAutoSelected, setSupplierAutoSelected] = useState(false);
 
   // Populate local batches from storage when editing
   useEffect(() => {
@@ -67,7 +73,9 @@ export default function InventoryForm() {
       imageBase64: existingProduct.imageBase64 ?? '',
     } : {
       name: '', barcode: '', category: '', brand: '',
-      supplierIds: [], supplierStocks: [], unit: 'pcs',
+      supplierIds: supplierIdFromQuery ? [supplierIdFromQuery] : [],
+      supplierStocks: supplierIdFromQuery ? [{ supplierId: supplierIdFromQuery, cost: 0, stock: 0, supplierSku: '', reorderLevel: undefined, notes: '' }] : [],
+      unit: 'pcs',
       quantity: 0, minimumStock: 5,
       purchaseRate: 0, sellingRate: 0,
       hasExpiry: false, hasVariants: false,
@@ -85,6 +93,23 @@ export default function InventoryForm() {
   const minimumStockWatch = useWatch({ control: form.control, name: 'minimumStock' });
   const watchedSupplierIds = useWatch({ control: form.control, name: 'supplierIds' }) ?? [];
   const watchedSupplierStocks = useWatch({ control: form.control, name: 'supplierStocks' }) ?? [];
+
+  // Auto-select supplier from query parameter if provided and not already selected
+  useEffect(() => {
+    if (supplierIdFromQuery && isNew && !supplierAutoSelected) {
+      const currentSupplierIds = form.getValues('supplierIds') ?? [];
+      if (!currentSupplierIds.includes(supplierIdFromQuery)) {
+        const currentStocks = form.getValues('supplierStocks') ?? [];
+        const newStocks = [
+          ...currentStocks,
+          { supplierId: supplierIdFromQuery, cost: 0, stock: 0, supplierSku: '', reorderLevel: undefined, notes: '' }
+        ];
+        form.setValue('supplierIds', [...currentSupplierIds, supplierIdFromQuery], { shouldDirty: true });
+        form.setValue('supplierStocks', newStocks, { shouldDirty: true });
+        setSupplierAutoSelected(true);
+      }
+    }
+  }, [supplierIdFromQuery, isNew, form, supplierAutoSelected]);
 
   const hasExpiry = (isExpiryEnabled && isBatchesEnabled) ? (rawHasExpiry ?? false) : false;
   const hasVariants = isVariantsEnabled ? (rawHasVariants ?? false) : false;

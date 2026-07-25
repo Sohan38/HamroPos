@@ -221,7 +221,7 @@ export default function SupplierDetail() {
             <div className="flex gap-3">
                 <Button
                     className="flex-1 h-11 gap-2"
-                    onClick={() => setLocation('/purchases/new')}
+                    onClick={() => setLocation(`/purchases/new?supplierId=${id}`)}
                 >
                     <Truck className="h-4 w-4" />
                     New Purchase
@@ -229,7 +229,7 @@ export default function SupplierDetail() {
                 <Button
                     variant="outline"
                     className="flex-1 h-11 gap-2"
-                    onClick={() => setLocation(`/inventory/new`)}
+                    onClick={() => setLocation(`/inventory/new?supplierId=${id}`)}
                 >
                     <Plus className="h-4 w-4" />
                     Add Product
@@ -254,7 +254,8 @@ export default function SupplierDetail() {
                         <div className="text-center py-10 text-muted-foreground text-sm">
                             <Package className="mx-auto h-8 w-8 mb-3 opacity-20" />
                             No products linked to this supplier yet.
-                            <br />
+
+
                             <button
                                 className="text-primary underline text-xs mt-2"
                                 onClick={() => setLocation('/inventory/new')}
@@ -321,7 +322,8 @@ export default function SupplierDetail() {
                         <div className="text-center py-10 text-muted-foreground text-sm">
                             <ShoppingCart className="mx-auto h-8 w-8 mb-3 opacity-20" />
                             No purchases recorded yet.
-                            <br />
+
+
                             <button
                                 className="text-primary underline text-xs mt-2"
                                 onClick={() => setLocation('/purchases/new')}

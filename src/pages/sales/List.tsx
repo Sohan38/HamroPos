@@ -1,250 +1,644 @@
-import { useMemo, useState } from 'react';
-import { useLocation } from 'wouter';
-import { useSales } from '@/contexts/GlobalProviders';
-import { useSort } from '@/hooks/useSort';
-import { useCurrency } from '@/hooks/useCurrency';
-import { Card, CardContent } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+/**
+ * Sales History — refactored
+ *
+ * Performance strategy
+ * ────────────────────
+ * 1. Items are sorted once (by ISO date string — lexicographic, no parse needed).
+ * 2. Three successive useMemo filters (date preset → payment method → search)
+ *    each short-circuit immediately when their filter is inactive.
+ * 3. Date comparison uses ISO prefix strings ("2024-07-25") so parseISO is
+ *    called ONLY when formatting labels — never inside filter loops.
+ * 4. Only `displayCount` rows are rendered at a time; a "Load More" button
+ *    appends 30 more without unmounting existing rows.
+ * 5. Grouping and serial-number assignment happen on the already-sliced visible
+ *    list — O(visible) not O(total).
+ * 6. Search is debounced 200 ms and displayCount resets on any filter change.
+ *
+ * UX
+ * ──
+ * • Date preset chips: Today · Yesterday · This Week · This Month · All Time
+ * • Payment chips:     All · Cash · QR · Card · Bank
+ * • Debounced search across invoice ID, customer name, product names
+ * • Date-grouped rows with sticky group headers
+ * • Serial number badge (#1, #2 …) shown when list > 1 entry
+ * • Inline receipt preview / print without navigating away
+ * • Reactive summary card (count + revenue for current view)
+ */
+
 import {
-  Search,
-  Plus,
-  Calendar,
-  FileText,
-  ArrowUpRight,
-  Receipt,
+  useMemo,
+  useState,
+  useCallback,
+  useEffect,
+  lazy,
+  Suspense,
+} from 'react';
+import { useLocation } from 'wouter';
+import { format as formatDate, parseISO, subDays, startOfWeek, startOfMonth } from 'date-fns';
+import {
+  Search, Plus, Receipt, Calendar, Printer, X,
+  ChevronDown, Banknote, CreditCard, QrCode,
+  SplitSquareHorizontal, TrendingUp,
 } from 'lucide-react';
-import { format as formatDate, parseISO } from 'date-fns';
+
+import { useSales } from '@/contexts/GlobalProviders';
+import { useCurrency } from '@/hooks/useCurrency';
+import { useApp } from '@/contexts/AppContext';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
+import type { SaleInvoice, PaymentMethod } from '@/types';
+
+const SaleBillPrint = lazy(() =>
+  import('@/components/SaleBillPrint').then(m => ({ default: m.SaleBillPrint }))
+);
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const PAGE_SIZE = 30;
+
+type DatePreset = 'today' | 'yesterday' | 'week' | 'month' | 'all';
+
+interface DatePresetOption {
+  id: DatePreset;
+  label: string;
+}
+
+const DATE_PRESETS: DatePresetOption[] = [
+  { id: 'today', label: 'Today' },
+  { id: 'yesterday', label: 'Yesterday' },
+  { id: 'week', label: 'This Week' },
+  { id: 'month', label: 'This Month' },
+  { id: 'all', label: 'All Time' },
+];
+
+interface PaymentOption {
+  id: string;
+  label: string;
+  icon: React.ReactNode;
+}
+
+const PAYMENT_OPTIONS: PaymentOption[] = [
+  { id: 'all', label: 'All', icon: null },
+  { id: 'cash', label: 'Cash', icon: <Banknote className="h-3 w-3" /> },
+  { id: 'qr', label: 'QR', icon: <QrCode className="h-3 w-3" /> },
+  { id: 'card', label: 'Card', icon: <CreditCard className="h-3 w-3" /> },
+  { id: 'bank', label: 'Bank', icon: <SplitSquareHorizontal className="h-3 w-3" /> },
+];
+
+const PAYMENT_LABELS: Record<string, string> = {
+  cash: 'Cash',
+  qr: 'QR',
+  card: 'Card',
+  bank: 'Bank',
+  split: 'Split',
+};
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Returns "yyyy-MM-dd" prefix for today, yesterday, week-start, month-start */
+function getDateBoundaries() {
+  const now = new Date();
+  const fmt = (d: Date) => formatDate(d, 'yyyy-MM-dd');
+  return {
+    today: fmt(now),
+    yesterday: fmt(subDays(now, 1)),
+    weekStart: fmt(startOfWeek(now, { weekStartsOn: 0 })),
+    monthStart: fmt(startOfMonth(now)),
+  };
+}
+
+/** Human-readable group label from a "yyyy-MM-dd" string */
+function dayLabel(dayStr: string, today: string, yesterday: string): string {
+  if (dayStr === today) return 'Today';
+  if (dayStr === yesterday) return 'Yesterday';
+  try {
+    return formatDate(parseISO(dayStr), 'EEE, MMM d, yyyy');
+  } catch {
+    return dayStr;
+  }
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+interface ChipProps {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+  className?: string;
+}
+
+function Chip({ active, onClick, children, className = '' }: ChipProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        'inline-flex items-center gap-1 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-medium transition-colors shrink-0',
+        active
+          ? 'bg-primary text-primary-foreground shadow-sm'
+          : 'bg-muted text-muted-foreground hover:bg-muted/80',
+        className,
+      ].join(' ')}
+    >
+      {children}
+    </button>
+  );
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
 
 export default function SalesList() {
   const [, setLocation] = useLocation();
   const { items } = useSales();
   const { format } = useCurrency();
+  const { settings } = useApp();
 
+  // ── Filter state ───────────────────────────────────────────────────────────
+  const [datePreset, setDatePreset] = useState<DatePreset>('all');
+  const [paymentFilter, setPaymentFilter] = useState<string>('all');
   const [query, setQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [displayCount, setDisplayCount] = useState(PAGE_SIZE);
 
-  const filteredItems = useMemo(() => {
-    const q = query.trim().toLowerCase();
+  // Print dialog state
+  const [printSale, setPrintSale] = useState<SaleInvoice | null>(null);
 
-    if (!q) return items;
+  // ── Debounce search query ──────────────────────────────────────────────────
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(query), 200);
+    return () => clearTimeout(t);
+  }, [query]);
 
-    return items.filter((sale) => {
-      const searchableText = [
-        sale.id,
-        sale.paymentMethod,
-        sale.notes ?? '',
-        ...sale.items.map(item => item.productName),
-      ]
-        .join(' ')
-        .toLowerCase();
+  // Reset displayCount on any filter change so we start fresh each time
+  useEffect(() => {
+    setDisplayCount(PAGE_SIZE);
+  }, [datePreset, paymentFilter, debouncedQuery]);
 
-      return searchableText.includes(q);
+  // ── 1. Sort once by ISO date desc (no parseISO — string compare is valid) ──
+  const sortedSales = useMemo(
+    () => [...items].sort((a, b) => (a.date > b.date ? -1 : a.date < b.date ? 1 : 0)),
+    [items],
+  );
+
+  // ── 2. Date preset filter ──────────────────────────────────────────────────
+  const dateFilteredSales = useMemo(() => {
+    if (datePreset === 'all') return sortedSales;
+    const { today, yesterday, weekStart, monthStart } = getDateBoundaries();
+
+    return sortedSales.filter(sale => {
+      // Use first 10 chars of ISO string ("yyyy-MM-dd") — avoids parseISO
+      const day = sale.date.slice(0, 10);
+      switch (datePreset) {
+        case 'today': return day === today;
+        case 'yesterday': return day === yesterday;
+        case 'week': return day >= weekStart;
+        case 'month': return day >= monthStart;
+        default: return true;
+      }
     });
-  }, [items, query]);
+  }, [sortedSales, datePreset]);
 
-  const { sortedItems } = useSort(filteredItems, {
-    key: 'date',
-    direction: 'desc',
-  });
+  // ── 3. Payment method filter ───────────────────────────────────────────────
+  const paymentFilteredSales = useMemo(() => {
+    if (paymentFilter === 'all') return dateFilteredSales;
+    return dateFilteredSales.filter(s => s.paymentMethod === paymentFilter);
+  }, [dateFilteredSales, paymentFilter]);
 
+  // ── 4. Search filter ───────────────────────────────────────────────────────
+  const filteredSales = useMemo(() => {
+    const q = debouncedQuery.trim().toLowerCase();
+    if (!q) return paymentFilteredSales;
+
+    return paymentFilteredSales.filter(sale => {
+      // Short-circuit cheap checks first
+      if (sale.id.slice(-8).toLowerCase().includes(q)) return true;
+      if (sale.id.slice(-6).toLowerCase().includes(q)) return true;
+      if (sale.customerName?.toLowerCase().includes(q)) return true;
+      if (sale.paymentMethod.includes(q)) return true;
+      if (sale.notes?.toLowerCase().includes(q)) return true;
+      // More expensive: scan item names
+      return sale.items.some(i => i.productName.toLowerCase().includes(q));
+    });
+  }, [paymentFilteredSales, debouncedQuery]);
+
+  // ── 5. Summary stats for the current filtered view ────────────────────────
+  const stats = useMemo(() => ({
+    count: filteredSales.length,
+    revenue: filteredSales.reduce((s, sale) => s + sale.grandTotal, 0),
+  }), [filteredSales]);
+
+  // ── 6. Visible slice + grouping ───────────────────────────────────────────
   const visibleSales = useMemo(
-    () => sortedItems.slice(0, 100),
-    [sortedItems]
+    () => filteredSales.slice(0, displayCount),
+    [filteredSales, displayCount],
   );
 
-  const totalRevenue = useMemo(
-    () =>
-      sortedItems.reduce(
-        (sum, sale) => sum + sale.grandTotal,
-        0
-      ),
-    [sortedItems]
+  const { today, yesterday } = useMemo(getDateBoundaries, []);
+
+  /**
+   * Grouped structure for rendering.
+   * Each group carries its label and the sales within it,
+   * each annotated with its 1-based serial number in the *filtered* list.
+   */
+  const groupedVisible = useMemo(() => {
+    const groups: Array<{
+      label: string;
+      entries: Array<{ sale: SaleInvoice; serialNo: number }>;
+    }> = [];
+
+    let currentLabel = '';
+    let serialOffset = 0; // serial numbers are global across groups
+
+    for (let i = 0; i < visibleSales.length; i++) {
+      const sale = visibleSales[i];
+      const label = dayLabel(sale.date.slice(0, 10), today, yesterday);
+
+      if (label !== currentLabel) {
+        currentLabel = label;
+        groups.push({ label, entries: [] });
+      }
+
+      groups[groups.length - 1].entries.push({ sale, serialNo: i + 1 });
+    }
+
+    return groups;
+  }, [visibleSales, today, yesterday]);
+
+  const hasMore = displayCount < filteredSales.length;
+  const remaining = filteredSales.length - displayCount;
+  const showSerials = filteredSales.length > 1;
+  const hasActiveFilter = datePreset !== 'all' || paymentFilter !== 'all' || debouncedQuery !== '';
+
+  // ── Callbacks ──────────────────────────────────────────────────────────────
+  const loadMore = useCallback(
+    () => setDisplayCount(c => c + PAGE_SIZE),
+    [],
+  );
+  const clearFilters = useCallback(() => {
+    setDatePreset('all');
+    setPaymentFilter('all');
+    setQuery('');
+  }, []);
+
+  const handleDatePreset = useCallback((p: DatePreset) => {
+    setDatePreset(p);
+  }, []);
+
+  const handlePaymentFilter = useCallback((p: string) => {
+    setPaymentFilter(p);
+  }, []);
+
+  const handlePrint = useCallback(
+    (e: React.MouseEvent, sale: SaleInvoice) => {
+      e.stopPropagation(); // don't navigate to detail
+      setPrintSale(sale);
+    },
+    [],
   );
 
-  const getTotalQuantity = (sale: typeof items[0]) =>
-    sale.items.reduce((sum, item) => sum + item.quantity, 0);
-
+  // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div className="max-w-7xl mx-auto p-4 md:p-6 pb-24 md:pb-6 space-y-5">
+    <div className="max-w-3xl mx-auto p-4 md:p-6 pb-28 md:pb-8 space-y-4">
 
-      <div className="flex flex-col gap-4 md:flex-row md:justify-between md:items-center">
+      {/* ── Page header ─────────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold">
-            Sales History
-          </h1>
-
-          <p className="text-muted-foreground">
-            {sortedItems.length} sale{sortedItems.length !== 1 ? 's' : ''}
+          <h1 className="text-2xl font-bold">Sales History</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {items.length} total record{items.length !== 1 ? 's' : ''}
           </p>
         </div>
-
-        <Button
-          size="lg"
-          className="w-full md:w-auto"
-          onClick={() => setLocation('/sales/new')}
-        >
-          <Plus className="mr-2 h-5 w-5" />
+        <Button onClick={() => setLocation('/sales/new')} className="shrink-0">
+          <Plus className="h-4 w-4 mr-1.5" />
           New Sale
         </Button>
       </div>
 
+      {/* ── Date preset chips ────────────────────────────────────────────── */}
+      <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 md:mx-0 md:px-0 scrollbar-none">
+        {DATE_PRESETS.map(p => (
+          <Chip
+            key={p.id}
+            active={datePreset === p.id}
+            onClick={() => handleDatePreset(p.id)}
+          >
+            {p.id === 'today' || p.id === 'yesterday'
+              ? <Calendar className="h-3 w-3" />
+              : null}
+            {p.label}
+          </Chip>
+        ))}
+      </div>
+
+      {/* ── Payment filter chips ─────────────────────────────────────────── */}
+      <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 md:mx-0 md:px-0 scrollbar-none">
+        {PAYMENT_OPTIONS.map(p => (
+          <Chip
+            key={p.id}
+            active={paymentFilter === p.id}
+            onClick={() => handlePaymentFilter(p.id)}
+          >
+            {p.icon}
+            {p.label}
+          </Chip>
+        ))}
+      </div>
+
+      {/* ── Search ───────────────────────────────────────────────────────── */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+        <Input
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder="Search by invoice #, customer, product…"
+          className="pl-9 pr-9"
+        />
+        {query && (
+          <button
+            type="button"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+            onClick={() => setQuery('')}
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+
+      {/* ── Summary card ─────────────────────────────────────────────────── */}
       <Card>
-        <CardContent className="grid grid-cols-2 gap-4 p-4">
-
-          <div>
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">
-              Sales
-            </p>
-
-            <p className="text-2xl font-bold">
-              {sortedItems.length}
-            </p>
+        <CardContent className="p-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
+              <Receipt className="h-4 w-4 text-primary" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">
+                {hasActiveFilter ? 'Matching sales' : 'Total sales'}
+              </p>
+              <p className="font-bold text-lg leading-tight">{stats.count}</p>
+            </div>
           </div>
 
-          <div className="text-right">
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">
-              Revenue
-            </p>
-
-            <p className="text-2xl font-bold text-primary">
-              {format(totalRevenue)}
-            </p>
+          <div className="flex items-center gap-2 text-right">
+            <div>
+              <p className="text-xs text-muted-foreground">
+                {hasActiveFilter ? 'Filtered revenue' : 'Total revenue'}
+              </p>
+              <p className="font-bold text-lg leading-tight text-primary tabular-nums">
+                {format(stats.revenue)}
+              </p>
+            </div>
+            <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
+              <TrendingUp className="h-4 w-4 text-primary" />
+            </div>
           </div>
-
         </CardContent>
       </Card>
 
-      <div className="relative">
-
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-
-        <Input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search invoice, payment or product..."
-          className="pl-10"
+      {/* ── Results ──────────────────────────────────────────────────────── */}
+      {filteredSales.length === 0 ? (
+        <EmptyState
+          hasItems={items.length > 0}
+          hasFilter={hasActiveFilter}
+          onClear={clearFilters}
+          onNew={() => setLocation('/sales/new')}
         />
-
-      </div>
-
-      {sortedItems.length === 0 ? (
-
-        <Card>
-
-          <CardContent className="py-16 text-center">
-
-            <FileText className="mx-auto h-12 w-12 text-muted-foreground/40" />
-
-            <h3 className="mt-4 text-lg font-semibold">
-              No Sales Found
-            </h3>
-
-            <p className="text-muted-foreground mt-2">
-              Try another search or create a new sale.
-            </p>
-
-          </CardContent>
-
-        </Card>
-
-
       ) : (
+        <div className="space-y-5">
 
-        <div className="space-y-3">
+          {groupedVisible.map(group => (
+            <section key={group.label}>
+              {/* Date group header */}
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  {group.label}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  ({group.entries.length})
+                </span>
+                <div className="flex-1 h-px bg-border" />
+              </div>
 
+              {/* Sale rows */}
+              <div className="space-y-2">
+                {group.entries.map(({ sale, serialNo }) => (
+                  <SaleRow
+                    key={sale.id}
+                    sale={sale}
+                    serialNo={serialNo}
+                    showSerial={showSerials}
+                    format={format}
+                    onClick={() => setLocation(`/sales/${sale.id}`)}
+                    onPrint={handlePrint}
+                  />
+                ))}
+              </div>
+            </section>
+          ))}
 
-          {visibleSales.map((sale) => {
-
-            const totalQty = getTotalQuantity(sale);
-
-            return (
-
-              <Card
-                key={sale.id}
-                onClick={() => setLocation(`/sales/${sale.id}`)}
-                className="cursor-pointer active:scale-[0.99] transition-all hover:bg-muted/40"
+          {/* Load more */}
+          {hasMore && (
+            <div className="flex flex-col items-center gap-1 pt-2">
+              <Button
+                variant="outline"
+                className="w-full sm:w-auto gap-2"
+                onClick={loadMore}
               >
+                <ChevronDown className="h-4 w-4" />
+                Load {Math.min(PAGE_SIZE, remaining)} more
+                <span className="text-muted-foreground text-xs">
+                  ({remaining} remaining)
+                </span>
+              </Button>
+            </div>
+          )}
 
-                <CardContent className="p-4">
-
-                  <div className="flex justify-between gap-3">
-
-                    <div className="flex gap-3 min-w-0">
-
-                      <div className="h-11 w-11 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                        <Receipt className="h-5 w-5 text-primary" />
-                      </div>
-
-                      <div className="min-w-0">
-
-                        <div className="font-semibold truncate">
-                          INV-{sale.id.slice(-6).toUpperCase()}
-                        </div>
-
-                        <div className="text-sm text-muted-foreground truncate">
-
-                          {sale.items
-                            .slice(0, 2)
-                            .map((i) => i.productName)
-                            .join(', ')}
-
-                          {sale.items.length > 2 &&
-                            ` +${sale.items.length - 2}`}
-
-                        </div>
-
-                        <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
-
-                          <Calendar className="h-3 w-3" />
-
-                          {formatDate(
-                            parseISO(sale.date),
-                            'MMM d • h:mm a'
-                          )}
-
-                        </div>
-
-                      </div>
-
-                    </div>
-
-                    <div className="text-right shrink-0">
-
-                      <div className="font-bold text-lg">
-                        {format(sale.grandTotal)}
-                      </div>
-
-                      <Badge
-                        variant={
-                          sale.paymentMethod === 'cash'
-                            ? 'default'
-                            : 'secondary'
-                        }
-                        className="capitalize mt-1"
-                      >
-                        {sale.paymentMethod}
-                      </Badge>
-
-                      <div className="text-xs text-muted-foreground mt-2">
-                        {totalQty} item{totalQty !== 1 ? 's' : ''}
-                      </div>
-
-                    </div>
-
-                  </div>
-
-                </CardContent>
-
-              </Card>
-
-            );
-          })}
-
+          {/* End of list indicator */}
+          {!hasMore && filteredSales.length > PAGE_SIZE && (
+            <p className="text-center text-xs text-muted-foreground py-2">
+              All {filteredSales.length} sales shown
+            </p>
+          )}
         </div>
-
       )}
 
+      {/* ── Inline print dialog ───────────────────────────────────────────── */}
+      {printSale && (
+        <Suspense fallback={null}>
+          <SaleBillPrint
+            sale={printSale}
+            settings={settings}
+            customerName={printSale.customerName ?? undefined}
+            open={!!printSale}
+            onClose={() => setPrintSale(null)}
+          />
+        </Suspense>
+      )}
     </div>
+  );
+}
+
+// ─── SaleRow ──────────────────────────────────────────────────────────────────
+
+interface SaleRowProps {
+  sale: SaleInvoice;
+  serialNo: number;
+  showSerial: boolean;
+  format: (n: number) => string;
+  onClick: () => void;
+  onPrint: (e: React.MouseEvent, sale: SaleInvoice) => void;
+}
+
+function SaleRow({ sale, serialNo, showSerial, format, onClick, onPrint }: SaleRowProps) {
+  const totalQty = useMemo(
+    () => sale.items.reduce((s, i) => s + i.quantity, 0),
+    [sale.items],
+  );
+
+  const timeLabel = useMemo(() => {
+    try {
+      return formatDate(parseISO(sale.date), 'h:mm a');
+    } catch {
+      return '';
+    }
+  }, [sale.date]);
+
+  // Preview: first 2 product names
+  const itemPreview = useMemo(() => {
+    const names = sale.items.slice(0, 2).map(i => i.productName).join(', ');
+    return sale.items.length > 2 ? `${names} +${sale.items.length - 2}` : names;
+  }, [sale.items]);
+
+  const pmtLabel = PAYMENT_LABELS[sale.paymentMethod] ?? sale.paymentMethod;
+
+  const invoiceId = `INV-${sale.id.slice(-6).toUpperCase()}`;
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={e => e.key === 'Enter' && onClick()}
+      className="
+        group flex items-center gap-3 rounded-xl border bg-card
+        px-4 py-3 cursor-pointer
+        hover:bg-muted/40 active:scale-[0.99]
+        transition-all duration-100 select-none
+      "
+    >
+      {/* Serial number */}
+      {showSerial && (
+        <div className="text-xs text-muted-foreground tabular-nums w-6 text-center shrink-0 font-medium">
+          {serialNo}
+        </div>
+      )}
+
+      {/* Receipt icon */}
+      <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+        <Receipt className="h-4 w-4 text-primary" />
+      </div>
+
+      {/* Main info */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="font-semibold text-sm">{invoiceId}</span>
+          {sale.customerName && (
+            <span className="text-xs text-muted-foreground truncate hidden sm:inline">
+              · {sale.customerName}
+            </span>
+          )}
+        </div>
+
+        <p className="text-xs text-muted-foreground truncate mt-0.5">
+          {itemPreview || 'No items'}
+        </p>
+
+        <div className="flex items-center gap-2 mt-1">
+          <span className="text-xs text-muted-foreground tabular-nums">{timeLabel}</span>
+          <span className="text-muted-foreground/40 text-xs">·</span>
+          <span className="text-xs text-muted-foreground">{totalQty} item{totalQty !== 1 ? 's' : ''}</span>
+          <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 capitalize leading-4">
+            {pmtLabel}
+          </Badge>
+        </div>
+      </div>
+
+      {/* Amount + actions */}
+      <div className="flex items-center gap-2 shrink-0">
+        <div className="text-right">
+          <p className="font-bold tabular-nums text-sm">{format(sale.grandTotal)}</p>
+          {sale.discount > 0 && (
+            <p className="text-[10px] text-green-600 tabular-nums">
+              -{format(sale.discount)} off
+            </p>
+          )}
+        </div>
+
+        {/* Print button — visible on hover on desktop, always on mobile */}
+        <button
+          type="button"
+          aria-label="Print receipt"
+          onClick={e => onPrint(e, sale)}
+          className="
+            h-8 w-8 rounded-lg flex items-center justify-center
+            text-muted-foreground
+            hover:bg-primary/10 hover:text-primary
+            active:scale-95 transition-all
+            opacity-100 md:opacity-0 md:group-hover:opacity-100
+          "
+        >
+          <Printer className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── EmptyState ───────────────────────────────────────────────────────────────
+
+interface EmptyStateProps {
+  hasItems: boolean;
+  hasFilter: boolean;
+  onClear: () => void;
+  onNew: () => void;
+}
+
+function EmptyState({ hasItems, hasFilter, onClear, onNew }: EmptyStateProps) {
+  if (!hasItems) {
+    return (
+      <Card>
+        <CardContent className="py-16 text-center space-y-3">
+          <Receipt className="mx-auto h-12 w-12 text-muted-foreground/30" />
+          <h3 className="text-lg font-semibold">No sales yet</h3>
+          <p className="text-muted-foreground text-sm">Start recording sales to see them here.</p>
+          <Button onClick={onNew} className="mt-2">
+            <Plus className="h-4 w-4 mr-2" />
+            New Sale
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardContent className="py-12 text-center space-y-3">
+        <Search className="mx-auto h-10 w-10 text-muted-foreground/30" />
+        <h3 className="text-base font-semibold">No matching sales</h3>
+        <p className="text-muted-foreground text-sm">
+          {hasFilter
+            ? 'Try a different date range, payment method, or search term.'
+            : 'No sales found for your search.'}
+        </p>
+        {hasFilter && (
+          <Button variant="outline" size="sm" onClick={onClear} className="mt-1">
+            <X className="h-3.5 w-3.5 mr-1.5" />
+            Clear filters
+          </Button>
+        )}
+      </CardContent>
+    </Card>
   );
 }

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { usePurchases, useSuppliers, useInventory } from '@/contexts/GlobalProviders';
 import { useSmartBack } from '@/contexts/NavigationContext';
@@ -15,15 +15,27 @@ import { useFeature } from '@/hooks/useFeature';
 export default function PurchaseForm() {
   const isDiscountsEnabled = useFeature('sales', 'discounts');
   const goBack = useSmartBack('/purchases');
+  const [location] = useLocation();
   const [, setLocation] = useLocation();
   const { add } = usePurchases();
   const { items: suppliers } = useSuppliers();
   const { items: inventory, update: updateInventory } = useInventory();
   const { format } = useCurrency();
 
+  // Extract supplierId from query parameters
+  const queryParams = new URLSearchParams(location.split('?')[1] || '');
+  const supplierIdFromQuery = queryParams.get('supplierId');
+
   const [supplierId, setSupplierId] = useState('');
+
+  // Auto-select supplier from query parameter if provided
+  useEffect(() => {
+    if (supplierIdFromQuery && !supplierId) {
+      setSupplierId(supplierIdFromQuery);
+    }
+  }, [supplierIdFromQuery, supplierId]);
   const [invoiceNumber, setInvoiceNumber] = useState('');
-  const [items, setItems] = useState<{productId: string, productName: string, quantity: number, purchaseRate: number, subtotal: number}[]>([]);
+  const [items, setItems] = useState<{ productId: string, productName: string, quantity: number, purchaseRate: number, subtotal: number }[]>([]);
   const [discount, setDiscount] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -31,12 +43,12 @@ export default function PurchaseForm() {
   const grandTotal = subtotal - (isDiscountsEnabled ? Number(discount) || 0 : 0);
 
   const addItem = (product: any) => {
-    setItems([...items, { 
-      productId: product.id, 
-      productName: product.name, 
-      quantity: 1, 
-      purchaseRate: product.purchaseRate, 
-      subtotal: product.purchaseRate 
+    setItems([...items, {
+      productId: product.id,
+      productName: product.name,
+      quantity: 1,
+      purchaseRate: product.purchaseRate,
+      subtotal: product.purchaseRate
     }]);
     setSearchQuery('');
   };
@@ -45,11 +57,11 @@ export default function PurchaseForm() {
     const newItems = [...items];
     const item = newItems[index];
     (item as any)[field] = value;
-    
+
     if (field === 'quantity' || field === 'purchaseRate') {
       item.subtotal = Number(item.quantity) * Number(item.purchaseRate);
     }
-    
+
     setItems(newItems);
   };
 
@@ -89,8 +101,8 @@ export default function PurchaseForm() {
     setLocation('/purchases');
   };
 
-  const searchResults = inventory.filter(i => 
-    i.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+  const searchResults = inventory.filter(i =>
+    i.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     i.barcode.includes(searchQuery)
   ).slice(0, 5);
 
@@ -121,7 +133,7 @@ export default function PurchaseForm() {
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Invoice Number</label>
-                  <Input 
+                  <Input
                     value={invoiceNumber}
                     onChange={e => setInvoiceNumber(e.target.value)}
                     placeholder="e.g. INV-12345"
@@ -131,8 +143,8 @@ export default function PurchaseForm() {
 
               <div className="relative pt-4">
                 <Search className="absolute left-3 top-1/2 mt-2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input 
-                  placeholder="Search products to add..." 
+                <Input
+                  placeholder="Search products to add..."
                   className="pl-9"
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
@@ -140,8 +152,8 @@ export default function PurchaseForm() {
                 {searchQuery && searchResults.length > 0 && (
                   <div className="absolute top-full left-0 right-0 mt-1 bg-card border rounded-md shadow-lg z-10">
                     {searchResults.map(p => (
-                      <div 
-                        key={p.id} 
+                      <div
+                        key={p.id}
                         className="p-3 hover:bg-muted cursor-pointer flex justify-between"
                         onClick={() => addItem(p)}
                       >
@@ -165,7 +177,7 @@ export default function PurchaseForm() {
                   <div className="col-span-2">Total</div>
                   <div className="col-span-1"></div>
                 </div>
-                
+
                 {items.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground">
                     Search and add products to invoice
@@ -183,8 +195,8 @@ export default function PurchaseForm() {
                         <div className="w-full md:contents grid grid-cols-2 md:grid-cols-none gap-2">
                           <div className="flex flex-col md:col-span-2 gap-1 md:gap-0">
                             <span className="text-[10px] uppercase font-semibold text-muted-foreground md:hidden">Qty</span>
-                            <Input 
-                              type="number" 
+                            <Input
+                              type="number"
                               className="h-8 w-full"
                               value={item.quantity || ''}
                               onChange={e => updateItem(index, 'quantity', e.target.value)}
@@ -193,8 +205,8 @@ export default function PurchaseForm() {
 
                           <div className="flex flex-col md:col-span-2 gap-1 md:gap-0">
                             <span className="text-[10px] uppercase font-semibold text-muted-foreground md:hidden">Rate</span>
-                            <Input 
-                              type="number" 
+                            <Input
+                              type="number"
                               className="h-8 w-full"
                               value={item.purchaseRate || ''}
                               onChange={e => updateItem(index, 'purchaseRate', e.target.value)}
@@ -208,11 +220,11 @@ export default function PurchaseForm() {
                             <span className="text-xs text-muted-foreground font-normal md:hidden mr-2">Total:</span>
                             {format(item.subtotal)}
                           </div>
-                          <Button 
-                            type="button" 
-                            variant="ghost" 
-                            size="icon" 
-                            className="md:col-span-1 h-8 w-8 text-destructive" 
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="md:col-span-1 h-8 w-8 text-destructive"
                             onClick={() => setItems(items.filter((_, i) => i !== index))}
                           >
                             <Trash2 className="h-4 w-4" />
@@ -231,7 +243,7 @@ export default function PurchaseForm() {
           <Card className="sticky top-20 bg-muted/10">
             <CardContent className="p-6 space-y-4">
               <h3 className="font-bold text-lg border-b pb-2">Summary</h3>
-              
+
               <div className="space-y-3">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Subtotal</span>
@@ -240,15 +252,15 @@ export default function PurchaseForm() {
                 {isDiscountsEnabled && (
                   <div className="flex justify-between items-center">
                     <span className="text-muted-foreground">Discount</span>
-                    <Input 
-                      type="number" 
-                      className="w-24 h-8 text-right" 
-                      value={discount} 
-                      onChange={e => setDiscount(e.target.value)} 
+                    <Input
+                      type="number"
+                      className="w-24 h-8 text-right"
+                      value={discount}
+                      onChange={e => setDiscount(e.target.value)}
                     />
                   </div>
                 )}
-                
+
                 <div className="border-t pt-4 mt-2 flex justify-between items-center">
                   <span className="font-bold text-lg">Grand Total</span>
                   <span className="font-bold text-2xl text-green-600">{format(grandTotal)}</span>
