@@ -14,6 +14,8 @@ interface StockSectionProps extends SectionProps {
   hasVariants: boolean;
   totalBatchQuantity: number;
   totalVariantQuantity: number;
+  isMultiSupplier?: boolean;
+  totalSupplierStockQuantity?: number;
 }
 
 // Reusable numeric field with zero-clear and green valid state
@@ -52,8 +54,8 @@ const NumericField = ({
             onChange={e => field.onChange(e.target.value === '' ? 0 : Number(e.target.value))}
             className={cn(
               'transition-all',
-              error    && 'border-destructive focus-visible:ring-destructive/30',
-              isValid  && 'border-green-400 focus-visible:ring-green-400/30'
+              error && 'border-destructive focus-visible:ring-destructive/30',
+              isValid && 'border-green-400 focus-visible:ring-green-400/30'
             )}
           />
         </FormControl>
@@ -66,7 +68,7 @@ const NumericField = ({
   );
 };
 
-export const StockSection = React.memo(({ form, hasExpiry, hasVariants, totalBatchQuantity, totalVariantQuantity }: StockSectionProps) => {
+export const StockSection = React.memo(({ form, hasExpiry, hasVariants, totalBatchQuantity, totalVariantQuantity, isMultiSupplier, totalSupplierStockQuantity }: StockSectionProps) => {
   const watchedUnit = useWatch({ control: form.control, name: 'unit' }) || 'pcs';
 
   return (
@@ -126,8 +128,28 @@ export const StockSection = React.memo(({ form, hasExpiry, hasVariants, totalBat
           />
         </div>
 
+      ) : isMultiSupplier ? (
+        // Multi-supplier mode — stock summed from supplier entries (read-only here)
+        <div className="space-y-3">
+          <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-lg px-3 py-2.5 text-sm">
+            <span className="text-blue-700">Total stock (from all suppliers)</span>
+            <span className="font-semibold text-blue-900">
+              {totalSupplierStockQuantity ?? 0} <span className="font-normal text-blue-600">{watchedUnit}</span>
+            </span>
+          </div>
+          <p className="text-xs text-muted-foreground px-1">
+            Edit stock in the Suppliers section above — each supplier maintains its own stock level.
+          </p>
+          <NumericField
+            form={form}
+            name="minimumStock"
+            label="Low Stock Alert"
+            hint={`Notify when total stock drops to or below this number of ${watchedUnit}.`}
+          />
+        </div>
+
       ) : (
-        // Normal mode
+        // Normal single-supplier mode
         <div className="grid grid-cols-2 gap-3">
           <NumericField
             form={form}

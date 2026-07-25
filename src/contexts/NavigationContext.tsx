@@ -27,6 +27,7 @@ const NavigationContext = createContext<NavigationContextType | null>(null);
 // Map sub-routes to parent routes for intelligent back navigation
 const PARENT_ROUTE_MAP: Array<{ pattern: RegExp; parent: string }> = [
   { pattern: /^\/inventory\/.+$/, parent: '/inventory' },
+  { pattern: /^\/suppliers\/.+$/, parent: '/suppliers' },
   { pattern: /^\/sales\/.+$/, parent: '/sales' },
   { pattern: /^\/purchases\/.+$/, parent: '/purchases' },
   { pattern: /^\/expenses\/.+$/, parent: '/expenses' },

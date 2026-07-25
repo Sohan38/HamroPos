@@ -27,6 +27,7 @@ export interface Product extends StorageRecord {
   hasExpiry?: boolean;    // does this product have expiry dates?
   hasVariants?: boolean;  // does this product have variants (size, color, etc)?
   variants?: Array<{ name: string; quantity: number }>;
+  supplierStocks?: SupplierProductRecord[]; // per-supplier stock (drives total when multiple suppliers)
   notes: string;
   imageBase64?: string;
 }
@@ -53,13 +54,26 @@ export type BatchFormData = Omit<
   "id" | "createdAt" | "updatedAt" | "deletedAt" | "version"
 >;
 
+/** Per-supplier stock and cost data for a product */
+export interface SupplierProductRecord {
+  supplierId: string;
+  supplierSku?: string;     // supplier's own SKU for this product
+  cost: number;             // supplier-specific purchase cost
+  stock: number;            // stock from this supplier
+  reorderLevel?: number;    // trigger a restock alert at this level
+  lastPurchaseDate?: string;
+  notes?: string;
+}
+
 export interface Supplier extends StorageRecord {
   name: string;
+  contactPerson?: string;
   phone: string;
   email: string;
   address: string;
   vatPan: string;
   notes: string;
+  status?: 'active' | 'inactive';
 }
 
 export interface Customer extends StorageRecord {

@@ -26,6 +26,16 @@ export const productSchema = z.object({
 
   supplierIds: z.array(z.string()).optional(),
 
+  supplierStocks: z.array(z.object({
+    supplierId: z.string(),
+    supplierSku: z.string().optional(),
+    cost: z.coerce.number().min(0).default(0),
+    stock: z.coerce.number().min(0).default(0),
+    reorderLevel: z.coerce.number().min(0).optional(),
+    lastPurchaseDate: z.string().optional(),
+    notes: z.string().optional(),
+  })).optional(),
+
   unit: z.string().min(1, 'Please select a unit'),
 
   quantity: z.coerce

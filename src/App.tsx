@@ -46,6 +46,8 @@ const NotFound = retryLazy(() => import('@/pages/not-found'));
 const CustomerList = retryLazy(() => import('@/pages/customers/List'));
 const CustomerDetail = retryLazy(() => import('@/pages/customers/Detail'));
 const SupplierList = retryLazy(() => import('@/pages/suppliers/List'));
+const SupplierDetail = retryLazy(() => import('@/pages/suppliers/Detail'));
+const SupplierForm = retryLazy(() => import('@/pages/suppliers/Form'));
 const ExpenseList = retryLazy(() => import('@/pages/expenses/List'));
 const ExpenseForm = retryLazy(() => import('@/pages/expenses/Form'));
 const PurchaseList = retryLazy(() => import('@/pages/purchases/List'));
@@ -139,6 +141,9 @@ function Router() {
             <Route path="/customers" component={CustomerList} />
             <Route path="/customers/:id" component={CustomerDetail} />
             <Route path="/suppliers" component={SupplierList} />
+            <Route path="/suppliers/new" component={SupplierForm} />
+            <Route path="/suppliers/:id/edit" component={SupplierForm} />
+            <Route path="/suppliers/:id" component={SupplierDetail} />
 
             <Route path="/settings" component={Settings} />
             <Route path="/reports" component={Reports} />

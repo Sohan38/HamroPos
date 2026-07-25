@@ -58,6 +58,7 @@ export default function InventoryForm() {
     defaultValues: existingProduct ? {
       ...existingProduct,
       supplierIds: existingProduct.supplierIds ?? (existingProduct.supplierId ? [existingProduct.supplierId] : []),
+      supplierStocks: existingProduct.supplierStocks ?? [],
       hasExpiry: existingProduct.hasExpiry ?? false,
       hasVariants: existingProduct.hasVariants ?? false,
       variants: existingProduct.variants ?? [],
@@ -66,7 +67,7 @@ export default function InventoryForm() {
       imageBase64: existingProduct.imageBase64 ?? '',
     } : {
       name: '', barcode: '', category: '', brand: '',
-      supplierIds: [], unit: 'pcs',
+      supplierIds: [], supplierStocks: [], unit: 'pcs',
       quantity: 0, minimumStock: 5,
       purchaseRate: 0, sellingRate: 0,
       hasExpiry: false, hasVariants: false,
@@ -82,9 +83,20 @@ export default function InventoryForm() {
   const sellingRateWatch = useWatch({ control: form.control, name: 'sellingRate' });
   const quantityWatch = useWatch({ control: form.control, name: 'quantity' });
   const minimumStockWatch = useWatch({ control: form.control, name: 'minimumStock' });
+  const watchedSupplierIds = useWatch({ control: form.control, name: 'supplierIds' }) ?? [];
+  const watchedSupplierStocks = useWatch({ control: form.control, name: 'supplierStocks' }) ?? [];
 
   const hasExpiry = (isExpiryEnabled && isBatchesEnabled) ? (rawHasExpiry ?? false) : false;
   const hasVariants = isVariantsEnabled ? (rawHasVariants ?? false) : false;
+
+  // Multi-supplier mode: 2+ suppliers selected
+  const isMultiSupplier = !hasExpiry && !hasVariants && watchedSupplierIds.length >= 2;
+
+  // Total stock from all supplier entries (memoized)
+  const totalSupplierStockQuantity = useMemo(() => {
+    if (!isMultiSupplier) return 0;
+    return (watchedSupplierStocks as any[]).reduce((sum: number, ss: any) => sum + (Number(ss.stock) || 0), 0);
+  }, [isMultiSupplier, watchedSupplierStocks]);
 
   // Generate unique categories list with pre-defined fallbacks
   const existingCategories = useMemo(() => {
@@ -121,8 +133,10 @@ export default function InventoryForm() {
       form.setValue('quantity', totalBatchQuantity, { shouldDirty: true });
     } else if (hasVariants) {
       form.setValue('quantity', totalVariantQuantity, { shouldDirty: true });
+    } else if (isMultiSupplier) {
+      form.setValue('quantity', totalSupplierStockQuantity, { shouldDirty: true });
     }
-  }, [hasExpiry, hasVariants, totalBatchQuantity, totalVariantQuantity, form]);
+  }, [hasExpiry, hasVariants, isMultiSupplier, totalBatchQuantity, totalVariantQuantity, totalSupplierStockQuantity, form]);
 
   // Next batch number generator helper
   const nextBatchNumber = useMemo(() => {
@@ -232,24 +246,56 @@ export default function InventoryForm() {
         }
       }
 
+      const resolvedSupplierIds = data.supplierIds ?? [];
+      const resolvedSupplierStocks = data.supplierStocks ?? [];
+      const isMultiSup = !data.hasExpiry && !data.hasVariants && resolvedSupplierIds.length >= 2;
+
       const calculatedStock = data.hasExpiry
         ? localBatches.reduce((total, batch) => total + batch.quantity, 0)
         : data.hasVariants
           ? (data.variants || []).reduce((total, v) => total + v.quantity, 0)
-          : data.quantity;
+          : isMultiSup
+            ? resolvedSupplierStocks.reduce((sum: number, ss: any) => sum + (Number(ss.stock) || 0), 0)
+            : data.quantity;
+
+      // Weighted average purchase rate across supplier stocks (or existing purchaseRate)
+      const effectivePurchaseRate = (() => {
+        if (isMultiSup && resolvedSupplierStocks.length > 0) {
+          const totalStock = resolvedSupplierStocks.reduce((s: number, ss: any) => s + (Number(ss.stock) || 0), 0);
+          if (totalStock > 0) {
+            const weightedCost = resolvedSupplierStocks.reduce(
+              (s: number, ss: any) => s + (Number(ss.cost) || 0) * (Number(ss.stock) || 0),
+              0
+            );
+            return weightedCost / totalStock;
+          }
+        }
+        return averagePurchaseRate;
+      })();
+
+      // For single-supplier mode, keep supplierStocks entries but sync stock to match
+      // the real product quantity so supplier detail shows accurate data.
+      // For multi-supplier mode, use the per-supplier entries as-is (they drive the total).
+      const normalizedSupplierStocks = resolvedSupplierStocks.map((ss: any) =>
+        isMultiSup
+          ? ss
+          : { ...ss, stock: calculatedStock, cost: ss.cost || effectivePurchaseRate }
+      );
 
       const productData = {
         ...data,
         quantity: calculatedStock,
         barcode: data.barcode ?? '',
         brand: data.brand ?? '',
-        supplierId: data.supplierIds?.[0] ?? '',
-        supplierIds: data.supplierIds ?? [],
+        supplierId: resolvedSupplierIds[0] ?? '',
+        supplierIds: resolvedSupplierIds,
+        supplierStocks: normalizedSupplierStocks,
         notes: data.notes ?? '',
         hasExpiry: data.hasExpiry ?? false,
         hasVariants: data.hasVariants ?? false,
         variants: data.variants ?? [],
-        profitPerUnit: data.sellingRate - averagePurchaseRate,
+        purchaseRate: isMultiSup ? effectivePurchaseRate : data.purchaseRate,
+        profitPerUnit: data.sellingRate - effectivePurchaseRate,
         unit: data.unit as ProductUnit,
         imageBase64: data.imageBase64 ?? '',
       };
@@ -416,6 +462,8 @@ export default function InventoryForm() {
               hasVariants={hasVariants}
               totalBatchQuantity={totalBatchQuantity}
               totalVariantQuantity={totalVariantQuantity}
+              isMultiSupplier={isMultiSupplier}
+              totalSupplierStockQuantity={totalSupplierStockQuantity}
             />
 
             <Separator />
