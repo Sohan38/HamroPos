@@ -1,10 +1,34 @@
-import { useRef } from 'react';
+/**
+ * SaleBillPrint
+ * ─────────────
+ * Receipt preview dialog + print trigger.
+ *
+ * • Shows a professional thermal-receipt-style preview inside the dialog.
+ * • On Print: generates clean receipt HTML via receiptTemplate and dispatches
+ *   to printService, which picks the correct strategy (popup on web,
+ *   iframe on Capacitor mobile) automatically.
+ * • Existing web printing is fully preserved — web callers work identically.
+ * • Props are unchanged from the original component.
+ */
+
+import { useState, useCallback } from 'react';
 import { format as formatDate, parseISO } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Printer, X } from 'lucide-react';
-import { SaleInvoice, AppSettings } from '@/types';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Printer, X, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
+
+import type { SaleInvoice, AppSettings } from '@/types';
 import { useBackModal } from '@/contexts/NavigationContext';
+import { generateReceiptHTML } from '@/services/receiptTemplate';
+import { printHTMLDocument } from '@/services/printService';
+
+// ─── Props ────────────────────────────────────────────────────────────────────
 
 interface SaleBillPrintProps {
   sale: SaleInvoice;
@@ -14,163 +38,274 @@ interface SaleBillPrintProps {
   onClose: () => void;
 }
 
-export function SaleBillPrint({ sale, settings, customerName, open, onClose }: SaleBillPrintProps) {
-  const billRef = useRef<HTMLDivElement>(null);
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+const PAYMENT_LABELS: Record<string, string> = {
+  cash: 'Cash',
+  qr: 'QR / Mobile Pay',
+  card: 'Card',
+  bank: 'Bank Transfer',
+  split: 'Split Payment',
+};
+
+function parseSaleDate(dateStr: string): Date {
+  try {
+    return parseISO(dateStr);
+  } catch {
+    return new Date(dateStr);
+  }
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
+export function SaleBillPrint({
+  sale,
+  settings,
+  customerName,
+  open,
+  onClose,
+}: SaleBillPrintProps) {
+  const [isPrinting, setIsPrinting] = useState(false);
 
   useBackModal(open, onClose, 'sale-bill-print');
 
-  const handlePrint = () => {
-    const printContent = billRef.current;
-    if (!printContent) return;
+  // ── Print handler ──────────────────────────────────────────────────────────
+  const handlePrint = useCallback(async () => {
+    setIsPrinting(true);
+    try {
+      const html = generateReceiptHTML({ sale, settings, customerName });
+      await printHTMLDocument(html, { title: `Receipt #${sale.id.slice(-8).toUpperCase()}` });
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : 'Print failed. Please try again.';
+      toast.error(msg);
+    } finally {
+      setIsPrinting(false);
+    }
+  }, [sale, settings, customerName]);
 
-    const win = window.open('', '_blank', 'width=400,height=700');
-    if (!win) return;
-
-    win.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="utf-8" />
-          <title>Bill - ${sale.id.slice(-6).toUpperCase()}</title>
-          <style>
-            * { margin: 0; padding: 0; box-sizing: border-box; }
-            body { font-family: monospace; font-size: 12px; padding: 8px; width: 300px; }
-            .center { text-align: center; }
-            .right { text-align: right; }
-            .bold { font-weight: bold; }
-            .divider { border-top: 1px dashed #000; margin: 6px 0; }
-            .row { display: flex; justify-content: space-between; }
-            .item-name { flex: 1; }
-            .item-qty { width: 40px; text-align: center; }
-            .item-rate { width: 55px; text-align: right; }
-            .item-total { width: 60px; text-align: right; }
-            h1 { font-size: 16px; }
-            h2 { font-size: 13px; }
-            .total-row { font-weight: bold; font-size: 14px; }
-          </style>
-        </head>
-        <body>${printContent.innerHTML}</body>
-      </html>
-    `);
-    win.document.close();
-    win.focus();
-    setTimeout(() => { win.print(); win.close(); }, 300);
-  };
-
+  // ── Derived display values ─────────────────────────────────────────────────
   const subtotal = sale.items.reduce((s, i) => s + i.subtotal, 0);
-  const billDate = (() => {
-    try { return formatDate(parseISO(sale.date), 'dd/MM/yyyy h:mm a'); }
-    catch { return formatDate(new Date(sale.date), 'dd/MM/yyyy h:mm a'); }
-  })();
-  const billId = sale.id.slice(-6).toUpperCase();
-  const change = sale.paidAmount > sale.grandTotal ? sale.paidAmount - sale.grandTotal : 0;
+  const change =
+    sale.paidAmount > sale.grandTotal ? sale.paidAmount - sale.grandTotal : 0;
+  const billId = sale.id.slice(-8).toUpperCase();
+  const sym = settings.currencySymbol || 'Rs';
+  const fmt = (n: number) => `${sym}\u00a0${n.toFixed(2)}`;
+  const pmtLabel = PAYMENT_LABELS[sale.paymentMethod] ?? sale.paymentMethod;
 
+  const saleDate = parseSaleDate(sale.date);
+  const billDate = formatDate(saleDate, 'dd/MM/yyyy');
+  const billTime = formatDate(saleDate, 'hh:mm a');
+
+  // ─────────────────────────────────────────────────────────────────────────
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-sm w-[95vw]">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Printer className="h-4 w-4" /> Sale Bill
+      <DialogContent className="max-w-sm w-[95vw] p-0 gap-0 overflow-hidden">
+        {/* Header */}
+        <DialogHeader className="px-4 py-3 border-b shrink-0">
+          <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
+            <Printer className="h-4 w-4" />
+            Receipt Preview
           </DialogTitle>
         </DialogHeader>
 
-        {/* Printable content */}
-        <div
-          ref={billRef}
-          className="font-mono text-xs leading-relaxed border rounded-lg p-4 bg-white text-black max-h-[60vh] overflow-y-auto"
-        >
-          {/* Header */}
-          <div className="text-center mb-2">
-            <div className="font-bold text-base">{settings.businessName || 'Business Name'}</div>
-            {settings.address && <div>{settings.address}</div>}
-            {settings.phone && <div>Ph: {settings.phone}</div>}
-            {settings.vatNumber && <div>VAT/PAN: {settings.vatNumber}</div>}
-          </div>
-
-          <div className="border-t border-dashed border-gray-400 my-2" />
-
-          <div className="flex justify-between text-xs mb-1">
-            <span>Bill #: {billId}</span>
-            <span>{billDate}</span>
-          </div>
-          {customerName && (
-            <div className="text-xs mb-1">Customer: {customerName}</div>
-          )}
-          <div className="text-xs mb-1 capitalize">Payment: {sale.paymentMethod}</div>
-
-          <div className="border-t border-dashed border-gray-400 my-2" />
-
-          {/* Column headers */}
-          <div className="flex text-xs font-bold mb-1">
-            <span className="flex-1">Item</span>
-            <span className="w-10 text-center">Qty</span>
-            <span className="w-14 text-right">Rate</span>
-            <span className="w-16 text-right">Total</span>
-          </div>
-
-          <div className="border-t border-dashed border-gray-400 mb-1" />
-
-          {/* Items */}
-          {sale.items.map((item, i) => (
-            <div key={i} className="flex text-xs mb-1">
-              <span className="flex-1 truncate pr-1">{item.productName}</span>
-              <span className="w-10 text-center">{item.quantity}</span>
-              <span className="w-14 text-right">{item.sellingRate.toFixed(2)}</span>
-              <span className="w-16 text-right">{item.subtotal.toFixed(2)}</span>
+        {/* ── Scrollable receipt preview ─────────────────────────────────── */}
+        <div className="flex-1 overflow-y-auto bg-gray-100 dark:bg-neutral-800 p-3 min-h-0">
+          {/*
+           * The preview uses the same visual structure as the printed HTML
+           * but rendered with Tailwind / React for screen fidelity.
+           */}
+          <div
+            className="
+              bg-white text-black mx-auto rounded
+              shadow font-mono text-[10px] leading-[1.45]
+              border border-gray-200
+            "
+            style={{ maxWidth: '302px', padding: '12px 14px' }}
+          >
+            {/* ── Store header ─────────────────────────────────────────── */}
+            <div className="text-center mb-2">
+              <div className="font-black text-[13px] uppercase tracking-widest leading-tight">
+                {settings.businessName || 'Business Name'}
+              </div>
+              {settings.address && (
+                <div className="text-[9px] text-gray-500 mt-0.5">
+                  {settings.address}
+                </div>
+              )}
+              {settings.phone && (
+                <div className="text-[9px] text-gray-500">
+                  Tel: {settings.phone}
+                </div>
+              )}
+              {settings.vatNumber && (
+                <div className="text-[9px] text-gray-500">
+                  VAT/PAN: {settings.vatNumber}
+                </div>
+              )}
             </div>
-          ))}
 
-          <div className="border-t border-dashed border-gray-400 my-2" />
+            <Divider dashed />
 
-          {/* Totals */}
-          <div className="flex justify-between text-xs mb-1">
-            <span>Subtotal</span>
-            <span>{settings.currencySymbol} {subtotal.toFixed(2)}</span>
-          </div>
-          {sale.discount > 0 && (
-            <div className="flex justify-between text-xs mb-1">
-              <span>Discount</span>
-              <span>- {settings.currencySymbol} {sale.discount.toFixed(2)}</span>
+            {/* ── Transaction meta ──────────────────────────────────────── */}
+            <table className="w-full text-[9.5px]">
+              <tbody>
+                <MetaRow label="Receipt #" value={billId} />
+                <MetaRow label="Date" value={billDate} />
+                <MetaRow label="Time" value={billTime} />
+                {customerName && (
+                  <MetaRow label="Customer" value={customerName} />
+                )}
+                <MetaRow label="Payment" value={pmtLabel} />
+              </tbody>
+            </table>
+
+            <Divider dashed />
+
+            {/* ── Items table ───────────────────────────────────────────── */}
+            <table className="w-full border-collapse text-[9px]">
+              <thead>
+                <tr className="border-y border-dashed border-gray-400">
+                  <th className="text-left py-1 font-bold uppercase">Item</th>
+                  <th className="text-center py-1 font-bold uppercase w-6">Qty</th>
+                  <th className="text-right py-1 font-bold uppercase w-12">Price</th>
+                  <th className="text-right py-1 font-bold uppercase w-14">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sale.items.map((item, i) => (
+                  <tr key={i}>
+                    <td className="text-left py-0.5 pr-1 break-words align-top">
+                      {item.productName}
+                    </td>
+                    <td className="text-center w-6 align-top py-0.5">
+                      {item.quantity}
+                    </td>
+                    <td className="text-right w-12 align-top py-0.5">
+                      {item.sellingRate.toFixed(2)}
+                    </td>
+                    <td className="text-right w-14 font-bold align-top py-0.5">
+                      {item.subtotal.toFixed(2)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            <Divider dashed />
+
+            {/* ── Sub-totals ────────────────────────────────────────────── */}
+            <table className="w-full text-[9.5px]">
+              <tbody>
+                <TotalRow label="Subtotal" value={fmt(subtotal)} />
+                {sale.discount > 0 && (
+                  <TotalRow
+                    label="Discount"
+                    value={`- ${fmt(sale.discount)}`}
+                  />
+                )}
+                {sale.tax > 0 && (
+                  <TotalRow label="Tax" value={fmt(sale.tax)} />
+                )}
+              </tbody>
+            </table>
+
+            {/* Grand total */}
+            <div className="border-y-2 border-black my-1.5 py-1 flex justify-between font-black text-[13px]">
+              <span>TOTAL</span>
+              <span>{fmt(sale.grandTotal)}</span>
             </div>
-          )}
-          {sale.tax > 0 && (
-            <div className="flex justify-between text-xs mb-1">
-              <span>Tax</span>
-              <span>{settings.currencySymbol} {sale.tax.toFixed(2)}</span>
+
+            <Divider dashed />
+
+            {/* ── Payment / Change ──────────────────────────────────────── */}
+            <table className="w-full text-[9.5px]">
+              <tbody>
+                <TotalRow
+                  label={`Paid (${pmtLabel})`}
+                  value={fmt(sale.paidAmount)}
+                />
+                {change > 0 && (
+                  <tr>
+                    <td className="font-bold">Change</td>
+                    <td className="text-right font-bold">{fmt(change)}</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+
+            <Divider dashed />
+
+            {/* ── Footer ───────────────────────────────────────────────── */}
+            <div className="text-center text-[9px] text-gray-500 leading-[1.7]">
+              <div className="font-bold text-[10px] text-black">
+                Thank you for your purchase!
+              </div>
+              <div>Please visit us again</div>
+              {settings.phone && <div>Inquiries: {settings.phone}</div>}
             </div>
-          )}
-
-          <div className="border-t border-dashed border-gray-400 my-2" />
-
-          <div className="flex justify-between font-bold text-sm mb-1">
-            <span>TOTAL</span>
-            <span>{settings.currencySymbol} {sale.grandTotal.toFixed(2)}</span>
           </div>
-          <div className="flex justify-between text-xs mb-1">
-            <span>Paid</span>
-            <span>{settings.currencySymbol} {sale.paidAmount.toFixed(2)}</span>
-          </div>
-          {change > 0 && (
-            <div className="flex justify-between text-xs font-bold">
-              <span>Change</span>
-              <span>{settings.currencySymbol} {change.toFixed(2)}</span>
-            </div>
-          )}
-
-          <div className="border-t border-dashed border-gray-400 my-3" />
-          <div className="text-center text-xs">Thank you for shopping!</div>
-          <div className="text-center text-xs">Please come again.</div>
         </div>
 
-        <div className="flex gap-2 mt-2">
-          <Button variant="outline" className="flex-1" onClick={onClose}>
-            <X className="h-4 w-4 mr-2" /> Close
+        {/* ── Action buttons ─────────────────────────────────────────────── */}
+        <div className="flex gap-2 p-3 border-t bg-muted/10 shrink-0">
+          <Button
+            variant="outline"
+            className="flex-1"
+            onClick={onClose}
+            disabled={isPrinting}
+          >
+            <X className="h-4 w-4 mr-2" />
+            Close
           </Button>
-          <Button className="flex-1" onClick={handlePrint}>
-            <Printer className="h-4 w-4 mr-2" /> Print
+
+          <Button
+            className="flex-1"
+            onClick={handlePrint}
+            disabled={isPrinting}
+          >
+            {isPrinting ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Printing…
+              </>
+            ) : (
+              <>
+                <Printer className="h-4 w-4 mr-2" />
+                Print
+              </>
+            )}
           </Button>
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ─── Small sub-components ─────────────────────────────────────────────────────
+
+function Divider({ dashed = false }: { dashed?: boolean }) {
+  return (
+    <div
+      className={`my-1.5 border-t ${dashed ? 'border-dashed border-gray-400' : 'border-gray-300'}`}
+    />
+  );
+}
+
+function MetaRow({ label, value }: { label: string; value: string }) {
+  return (
+    <tr>
+      <td className="text-gray-500 py-[1px]">{label}</td>
+      <td className="text-right font-bold py-[1px]">{value}</td>
+    </tr>
+  );
+}
+
+function TotalRow({ label, value }: { label: string; value: string }) {
+  return (
+    <tr>
+      <td className="py-[1px]">{label}</td>
+      <td className="text-right font-semibold py-[1px]">{value}</td>
+    </tr>
   );
 }

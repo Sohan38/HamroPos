@@ -1,0 +1,184 @@
+/**
+ * printService.ts
+ * ───────────────
+ * Platform-aware printing service.
+ *
+ * ┌──────────────────────────────────────────────────────────────────┐
+ * │  Platform   │  Method                                            │
+ * ├──────────────────────────────────────────────────────────────────┤
+ * │  Web / PWA  │  window.open() popup → window.print() → close     │
+ * │  Capacitor  │  hidden <iframe> inject → iframe.print() → remove  │
+ * └──────────────────────────────────────────────────────────────────┘
+ *
+ * The iframe strategy works in Capacitor's WebView on Android because
+ * Android's WebView exposes the system Print Manager when
+ * contentWindow.print() is called — exactly like a native app.
+ *
+ * Architecture is intentionally kept modular so future strategies
+ * (Bluetooth ESC/POS, USB thermal, Wi-Fi, Star/Epson SDKs) can be
+ * plugged in by extending `PrintStrategy` without touching call sites.
+ */
+
+// ─── Platform detection ───────────────────────────────────────────────────────
+
+export type PrintPlatform = 'web' | 'mobile';
+
+/**
+ * Returns 'mobile' when running inside a Capacitor native WebView,
+ * 'web' otherwise (browser, PWA, SSR, test environment).
+ */
+export function getPrintPlatform(): PrintPlatform {
+    try {
+        // Capacitor sets this global before React hydrates.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const cap = (window as any).Capacitor;
+        if (cap && typeof cap.isNativePlatform === 'function') {
+            return cap.isNativePlatform() ? 'mobile' : 'web';
+        }
+    } catch {
+        // Not in a browser context at all (e.g. Jest) — treat as web.
+    }
+    return 'web';
+}
+
+/** Convenience boolean — true when running inside Android/iOS WebView */
+export function isNativeMobile(): boolean {
+    return getPrintPlatform() === 'mobile';
+}
+
+// ─── Public print API ─────────────────────────────────────────────────────────
+
+export interface PrintOptions {
+    title?: string;
+}
+
+/**
+ * Print a complete HTML document string.
+ * Automatically selects the correct strategy for the current platform.
+ *
+ * @param html    A full `<!DOCTYPE html>…</html>` string
+ * @param options Optional title and future strategy overrides
+ * @returns       Resolves when printing has been initiated (not necessarily finished)
+ */
+export function printHTMLDocument(
+    html: string,
+    options: PrintOptions = {},
+): Promise<void> {
+    const platform = getPrintPlatform();
+    if (platform === 'mobile') {
+        return printViaMobileIframe(html);
+    }
+    return printViaPopup(html, options.title);
+}
+
+// ─── Web strategy: popup window ───────────────────────────────────────────────
+
+function printViaPopup(html: string, title = 'Receipt'): Promise<void> {
+    return new Promise((resolve, reject) => {
+        try {
+            const win = window.open('', '_blank', 'width=420,height=720,menubar=no,toolbar=no');
+            if (!win) {
+                reject(
+                    new Error(
+                        'Popup blocked. Please allow popups for this site, then try again.',
+                    ),
+                );
+                return;
+            }
+            win.document.write(html);
+            win.document.close();
+            win.document.title = title;
+            win.focus();
+
+            // Brief delay lets the browser finish layout before the print dialog opens.
+            const timer = setTimeout(() => {
+                try {
+                    win.print();
+                    win.close();
+                    resolve();
+                } catch (err) {
+                    win.close();
+                    reject(err instanceof Error ? err : new Error('Print failed'));
+                }
+            }, 320);
+
+            // If the user closes the popup manually before the timer fires, clean up.
+            win.onbeforeunload = () => clearTimeout(timer);
+        } catch (err) {
+            reject(err instanceof Error ? err : new Error('Print failed'));
+        }
+    });
+}
+
+// ─── Mobile strategy: hidden iframe ──────────────────────────────────────────
+
+const FRAME_ID = '__pos_print_frame__';
+/** Extra delay (ms) for Capacitor WebView layout before calling print(). */
+const MOBILE_SETTLE_MS = 650;
+
+function printViaMobileIframe(html: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+        // Remove any leftover frame from a previous (possibly failed) print.
+        cleanupFrame();
+
+        const iframe = document.createElement('iframe');
+        iframe.id = FRAME_ID;
+        iframe.setAttribute('aria-hidden', 'true');
+        iframe.setAttribute('tabindex', '-1');
+        Object.assign(iframe.style, {
+            position: 'fixed',
+            top: '-9999px',
+            left: '-9999px',
+            width: '1px',
+            height: '1px',
+            border: 'none',
+            opacity: '0',
+            pointerEvents: 'none',
+        });
+
+        document.body.appendChild(iframe);
+
+        const iDoc = iframe.contentWindow?.document;
+        if (!iDoc) {
+            cleanupFrame();
+            reject(new Error('Could not create print frame. Please try again.'));
+            return;
+        }
+
+        // Write receipt HTML into the sandboxed frame document.
+        iDoc.open();
+        iDoc.write(html);
+        iDoc.close();
+
+        let didPrint = false;
+
+        const doPrint = () => {
+            if (didPrint) return;
+            didPrint = true;
+
+            try {
+                iframe.contentWindow?.print();
+                // Keep the frame alive long enough for Android's print chooser to open,
+                // then remove it so it doesn't accumulate in the DOM.
+                setTimeout(() => {
+                    cleanupFrame();
+                    resolve();
+                }, 1800);
+            } catch (err) {
+                cleanupFrame();
+                reject(err instanceof Error ? err : new Error('Mobile print failed'));
+            }
+        };
+
+        // Primary trigger: wait for iframe load event.
+        iframe.onload = () => setTimeout(doPrint, MOBILE_SETTLE_MS);
+
+        // Safety fallback: if onload never fires (can happen in some WebViews),
+        // trigger after a generous timeout.
+        setTimeout(doPrint, MOBILE_SETTLE_MS + 400);
+    });
+}
+
+function cleanupFrame() {
+    document.getElementById(FRAME_ID)?.remove();
+}
