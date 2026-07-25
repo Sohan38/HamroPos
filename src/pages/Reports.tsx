@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useLocation } from 'wouter';
-import { useSales, useExpenses, usePurchases, useInventory, useCredit } from '@/contexts/GlobalProviders';
+import { useSales, useExpenses, usePurchases, useInventory, useCredit, useCustomers } from '@/contexts/GlobalProviders';
 import { useCurrency } from '@/hooks/useCurrency';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -15,7 +15,7 @@ import {
   format as formatDate, subDays, startOfWeek, startOfMonth, startOfYear,
   startOfDay, parseISO, isAfter, isBefore, isToday, endOfDay,
 } from 'date-fns';
-import { TrendingUp, TrendingDown, Package, ArrowLeft } from 'lucide-react';
+import { TrendingUp, TrendingDown, Package, ArrowLeft, Users } from 'lucide-react';
 
 const COLORS = [
   'hsl(var(--chart-1))', 'hsl(var(--chart-2))', 'hsl(var(--chart-3))',
@@ -30,6 +30,7 @@ export default function Reports() {
   const { items: purchases } = usePurchases();
   const { items: inventory } = useInventory();
   const { items: credits } = useCredit();
+  const { items: customers } = useCustomers();
   const { format } = useCurrency();
 
   const [timeframe, setTimeframe] = useState('month');
@@ -127,13 +128,39 @@ export default function Reports() {
     const pendingCredit = filteredCredits.filter(c => c.status === 'pending').reduce((s, c) => s + c.amount, 0);
     const collectedCredit = filteredCredits.filter(c => c.status === 'paid').reduce((s, c) => s + c.amount, 0);
 
+    // Sales by customer (for filtered period)
+    const customerSalesMap: Record<string, { name: string; revenue: number; visits: number; avgOrder: number }> = {};
+    for (const sale of filteredSales) {
+      if (!sale.customerId) continue;
+      const existing = customerSalesMap[sale.customerId];
+      if (existing) {
+        existing.revenue += sale.grandTotal;
+        existing.visits += 1;
+      } else {
+        customerSalesMap[sale.customerId] = {
+          name: sale.customerName || customers.find(c => c.id === sale.customerId)?.name || 'Unknown',
+          revenue: sale.grandTotal,
+          visits: 1,
+          avgOrder: 0,
+        };
+      }
+    }
+    const topCustomers = Object.values(customerSalesMap)
+      .map(c => ({ ...c, avgOrder: c.visits > 0 ? c.revenue / c.visits : 0 }))
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 10);
+    const customerSalesCount = Object.keys(customerSalesMap).length;
+    const walkinSales = filteredSales.filter(s => !s.customerId);
+    const walkinRevenue = walkinSales.reduce((s, x) => s + x.grandTotal, 0);
+
     return {
       totalRevenue, totalExpenses, totalPurchases, totalDiscount, totalTax,
       cogs, grossProfit, netProfit, grossMargin,
       topProducts, expensePieData, paymentPieData, pendingCredit, collectedCredit,
       salesCount: filteredSales.length,
+      topCustomers, customerSalesCount, walkinRevenue,
     };
-  }, [filteredSales, filteredExpenses, filteredPurchases, filteredCredits, inventory]);
+  }, [filteredSales, filteredExpenses, filteredPurchases, filteredCredits, inventory, customers]);
 
   // Daily chart (last 30 days or filtered range)
   const dailyChart = useMemo(() => {
@@ -323,6 +350,59 @@ export default function Reports() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Sales by customer */}
+      {stats.topCustomers.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Users className="h-4 w-4" /> Sales by Customer
+              </CardTitle>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span>{stats.customerSalesCount} {stats.customerSalesCount === 1 ? 'customer' : 'customers'}</span>
+                {stats.walkinRevenue > 0 && (
+                  <Badge variant="outline" className="text-[10px]">
+                    Walk-in: {format(stats.walkinRevenue)}
+                  </Badge>
+                )}
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="divide-y">
+              <div className="hidden md:grid grid-cols-12 px-4 py-2 text-xs font-semibold text-muted-foreground uppercase bg-muted/30">
+                <span className="col-span-1">#</span>
+                <span className="col-span-5">Customer</span>
+                <span className="col-span-2 text-right">Visits</span>
+                <span className="col-span-2 text-right">Avg Order</span>
+                <span className="col-span-2 text-right">Revenue</span>
+              </div>
+              {stats.topCustomers.map((c, i) => (
+                <div key={i} className="flex flex-col md:grid md:grid-cols-12 px-4 py-3 gap-1 md:gap-0 text-sm hover:bg-muted/30 transition-colors">
+                  <div className="flex items-center gap-2 col-span-6 min-w-0">
+                    <span className="text-xs font-bold text-muted-foreground w-5 h-5 rounded-full bg-muted flex items-center justify-center shrink-0">
+                      {i + 1}
+                    </span>
+                    <span className="font-medium truncate">{c.name}</span>
+                  </div>
+                  <div className="flex justify-between items-center md:contents text-xs md:text-sm text-muted-foreground">
+                    <span className="md:col-span-2 md:text-right">
+                      <span className="md:hidden">Visits: </span>{c.visits}
+                    </span>
+                    <span className="md:col-span-2 md:text-right">
+                      <span className="md:hidden text-muted-foreground">Avg: </span>{format(c.avgOrder)}
+                    </span>
+                    <span className="md:col-span-2 md:text-right font-semibold text-primary">
+                      {format(c.revenue)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Top selling products */}
       <Card>

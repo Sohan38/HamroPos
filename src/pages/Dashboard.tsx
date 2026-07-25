@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useLocation } from 'wouter';
-import { useInventory, useSales, useExpenses, useCredit, usePurchases, useProductBatches } from '@/contexts/GlobalProviders';
+import { useInventory, useSales, useExpenses, useCredit, usePurchases, useProductBatches, useCustomers } from '@/contexts/GlobalProviders';
+import { useAllCustomerStats } from '@/hooks/useCustomerStats';
 import { useCurrency } from '@/hooks/useCurrency';
 import { format, isToday, parseISO, subDays, startOfDay } from 'date-fns';
 import { getBatchStatus } from '@/components/BatchFormDialog';
@@ -10,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import {
   ShoppingCart, Truck, UtensilsCrossed, Hotel, Receipt, Banknote,
   TrendingUp, TrendingDown, Package, AlertTriangle, Wallet,
-  BarChart3, ArrowUpRight,
+  BarChart3, ArrowUpRight, Users,
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -49,6 +50,8 @@ export default function Dashboard() {
   const { items: credits } = useCredit();
   const { items: purchases } = usePurchases();
   const { items: batches } = useProductBatches();
+  const { items: customers } = useCustomers();
+  const allCustomerStats = useAllCustomerStats();
   const { format: formatCurrency } = useCurrency();
   const { settings } = useApp();
   const inventoryMap = useMemo(
@@ -204,6 +207,24 @@ export default function Dashboard() {
         .slice(0, 3),
     [expenses]
   );
+
+  // Top customers by lifetime spending
+  const topCustomers = useMemo(() => {
+    return customers
+      .map(c => ({ ...c, stats: allCustomerStats.get(c.id) }))
+      .filter(c => c.stats && c.stats.visitCount > 0)
+      .sort((a, b) => (b.stats?.totalSpent ?? 0) - (a.stats?.totalSpent ?? 0))
+      .slice(0, 5);
+  }, [customers, allCustomerStats]);
+
+  // Customers who bought today
+  const customersToday = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const ids = new Set(
+      sales.filter(s => s.customerId && s.date.startsWith(today)).map(s => s.customerId!)
+    );
+    return ids.size;
+  }, [sales]);
 
   const isHotelEnabled = useFeature('hospitality', 'hotelGrid');
   const isRestaurantEnabled = useFeature('hospitality', 'restaurantBilling');
@@ -562,6 +583,74 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* ── Customer analytics ─────────────────────────────────────────────── */}
+      {customers.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-base font-semibold flex items-center gap-2">
+              <Users className="h-4 w-4" /> Customers
+            </h3>
+            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setLocation('/customers')}>
+              View All <ArrowUpRight className="h-3 w-3 ml-1" />
+            </Button>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {/* Summary cards */}
+            <div className="grid grid-cols-2 gap-3 lg:col-span-1">
+              <Card>
+                <CardContent className="p-4">
+                  <p className="text-xs text-muted-foreground">Total Customers</p>
+                  <p className="text-xl font-bold mt-1">{customers.length}</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-4">
+                  <p className="text-xs text-muted-foreground">Customers Today</p>
+                  <p className="text-xl font-bold mt-1 text-primary">{customersToday}</p>
+                </CardContent>
+              </Card>
+            </div>
+            {/* Top customers */}
+            <Card className="lg:col-span-2">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Top Customers</CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                {topCustomers.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-4 px-4">
+                    No customer purchase history yet
+                  </p>
+                ) : (
+                  <div className="divide-y">
+                    {topCustomers.map((c, i) => (
+                      <button
+                        key={c.id}
+                        onClick={() => setLocation(`/customers/${c.id}`)}
+                        className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-muted/40 active:bg-muted text-left transition-colors"
+                      >
+                        <span className={`text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center shrink-0
+                          ${i === 0 ? 'bg-yellow-400 text-yellow-900' : i === 1 ? 'bg-gray-300 text-gray-700' : i === 2 ? 'bg-orange-300 text-orange-900' : 'bg-muted text-muted-foreground'}`}>
+                          {i + 1}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium truncate">{c.name}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {c.stats!.visitCount} {c.stats!.visitCount === 1 ? 'visit' : 'visits'}
+                          </div>
+                        </div>
+                        <div className="text-sm font-semibold text-primary shrink-0">
+                          {formatCurrency(c.stats!.totalSpent)}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      )}
 
       {/* Recent activity */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

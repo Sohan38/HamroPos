@@ -1,38 +1,13 @@
 import React, { createContext, useContext, useEffect, useRef } from 'react';
 import { useLocation } from 'wouter';
+import { App } from '@capacitor/app';
+import { Capacitor } from '@capacitor/core';
 
-// ─── Capacitor App plugin (runtime-resolved, no extra npm package needed) ──────
-//     The App plugin is registered in window.Capacitor.Plugins by the native
-//     Capacitor bridge at runtime. We do NOT import @capacitor/app to keep the
-//     bundle lean and avoid the missing-package error on web/desktop builds.
-
-interface CapacitorAppPlugin {
-  addListener(
-    event: 'backButton',
-    handler: (data: { canGoBack: boolean }) => void
-  ): Promise<{ remove: () => void }>;
-  exitApp(): Promise<void>;
-}
-
-interface WindowWithCapacitor extends Window {
-  Capacitor?: {
-    isNativePlatform?: () => boolean;
-    Plugins?: {
-      App?: CapacitorAppPlugin;
-    };
-  };
-}
+// ─── Platform helper ───────────────────────────────────────────────────────────
 
 /** Returns true only when running inside a Capacitor native shell (Android / iOS). */
 export function isNativePlatform(): boolean {
-  const win = window as unknown as WindowWithCapacitor;
-  return typeof window !== 'undefined' && !!win.Capacitor?.isNativePlatform?.();
-}
-
-/** Returns the runtime Capacitor App plugin or null when unavailable (web/desktop). */
-function getCapacitorApp(): CapacitorAppPlugin | null {
-  const win = window as unknown as WindowWithCapacitor;
-  return win.Capacitor?.Plugins?.App ?? null;
+  return Capacitor.isNativePlatform();
 }
 
 // ─── Modal stack ──────────────────────────────────────────────────────────────
@@ -155,17 +130,6 @@ export function NavigationProvider({ children }: { children: React.ReactNode }) 
   useEffect(() => {
     if (!isNativePlatform()) return; // no-op on web / desktop / Windows
 
-    const app = getCapacitorApp();
-    if (!app) {
-      // Capacitor bridge is present but the App plugin wasn't registered.
-      // This shouldn't happen with a standard Capacitor setup, but fail
-      // gracefully rather than crashing.
-      console.warn('[NavigationContext] Capacitor App plugin not found. Android back button will not be handled.');
-      return;
-    }
-
-    let listenerHandle: any = null;
-
     const handleAndroidBack = async (_event: { canGoBack: boolean }) => {
       // We intentionally ignore the canGoBack flag from Capacitor because it
       // reflects WebView browser history depth which includes our dummy modal
@@ -187,23 +151,19 @@ export function NavigationProvider({ children }: { children: React.ReactNode }) 
       }
 
       // ── Priority 3: exit app (dashboard with no dialogs) ─────────────────
-      await app.exitApp();
+      await App.exitApp();
     };
 
-    // Register the listener and hold the removal handle for cleanup.
-    // Register the listener and hold the removal handle for cleanup.
-    const result = app.addListener('backButton', handleAndroidBack);
+    // Register the listener using the official @capacitor/app SDK.
+    // addListener returns a Promise<PluginListenerHandle> in Capacitor v4+.
+    let listenerHandle: { remove: () => Promise<void> } | null = null;
 
-    if (result && typeof (result as any).then === 'function') {
-      (result as Promise<any>).then((handle) => {
-        listenerHandle = handle;
-      });
-    } else {
-      listenerHandle = result;
-    }
+    App.addListener('backButton', handleAndroidBack).then((handle) => {
+      listenerHandle = handle;
+    });
 
     return () => {
-      listenerHandle?.remove?.();
+      listenerHandle?.remove();
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 

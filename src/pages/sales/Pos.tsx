@@ -41,6 +41,7 @@ function fefoDeduct(batches: ProductBatch[], needed: number): { id: string; quan
 
 import { useFeature } from '@/hooks/useFeature';
 import { ProductCard } from '@/components/pos/ProductCard';
+import { CustomerPicker } from '@/components/pos/CustomerPicker';
 
 export default function SalesPos() {
   const isDiscountsEnabled = useFeature('sales', 'discounts');
@@ -369,21 +370,13 @@ export default function SalesPos() {
         </div>
       </div>
 
-      {/* Customer picker */}
+      {/* Customer picker — rendered as full-screen overlay via portal-like fixed positioning */}
       {showCustomer && (
-        <div className="px-4 py-2 border-b bg-muted/10 shrink-0">
-          <Select value={customerId} onValueChange={setCustomerId}>
-            <SelectTrigger className="h-9 text-sm">
-              <SelectValue placeholder="Select customer (optional)" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="">Walk-in Customer</SelectItem>
-              {customers.map(c => (
-                <SelectItem key={c.id} value={c.id}>{c.name} — {c.phone}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <CustomerPicker
+          customerId={customerId}
+          onChange={setCustomerId}
+          onClose={() => setShowCustomer(false)}
+        />
       )}
 
       {/* Cart items */}

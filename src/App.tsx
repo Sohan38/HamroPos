@@ -44,6 +44,7 @@ const Search = retryLazy(() => import('@/pages/Search'));
 const NotFound = retryLazy(() => import('@/pages/not-found'));
 
 const CustomerList = retryLazy(() => import('@/pages/customers/List'));
+const CustomerDetail = retryLazy(() => import('@/pages/customers/Detail'));
 const SupplierList = retryLazy(() => import('@/pages/suppliers/List'));
 const ExpenseList = retryLazy(() => import('@/pages/expenses/List'));
 const ExpenseForm = retryLazy(() => import('@/pages/expenses/Form'));
@@ -136,6 +137,7 @@ function Router() {
             <Route path="/credit/new" component={CreditForm} />
 
             <Route path="/customers" component={CustomerList} />
+            <Route path="/customers/:id" component={CustomerDetail} />
             <Route path="/suppliers" component={SupplierList} />
 
             <Route path="/settings" component={Settings} />
