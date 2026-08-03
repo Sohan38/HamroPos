@@ -4,6 +4,7 @@ export interface SearchableItem {
     name: string;
     barcode?: string | null;
     category?: string | null;
+    phone?: string | null;
 }
 
 export function getSearchScore<T extends SearchableItem>(
@@ -19,9 +20,10 @@ export function getSearchScore<T extends SearchableItem>(
 
     const barcode = normalize(item.barcode);
     const category = normalize(item.category);
+    const phone = normalize(item.phone);
 
-    // Highest priority: exact barcode
-    if (barcode === q) return 100;
+    // Highest priority: exact barcode or phone
+    if (barcode === q || (phone && phone === q)) return 100;
 
     // Exact product name
     if (normalizedName === q) return 95;
@@ -41,6 +43,10 @@ export function getSearchScore<T extends SearchableItem>(
     // Only allow "contains" after 3+ characters
     if (q.length >= 3 && normalizedName.includes(q)) {
         return 60;
+    }
+
+    if (q.length >= 3 && phone && phone.includes(q)) {
+        return 50;
     }
 
     if (q.length >= 3 && category.startsWith(q)) {

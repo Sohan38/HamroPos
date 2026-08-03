@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useLocation } from 'wouter';
 import { useSuppliers, usePurchases, useInventory } from '@/contexts/GlobalProviders';
 import { useCurrency } from '@/hooks/useCurrency';
@@ -19,7 +19,14 @@ export default function SupplierList() {
   const [_unused] = useState(false);
 
   const { query, setQuery, filteredItems } = useSearch(items, ['name', 'phone', 'address', 'vatPan', 'contactPerson']);
-  const { sortedItems } = useSort(filteredItems, { key: 'name', direction: 'asc' });
+  const { sortedItems: baseSortedItems, sortConfig } = useSort(filteredItems, { key: 'name', direction: 'asc' });
+
+  const sortedItems = useMemo(() => {
+    if (query.trim() && sortConfig?.key === 'name') {
+      return filteredItems;
+    }
+    return baseSortedItems;
+  }, [query, sortConfig, filteredItems, baseSortedItems]);
 
   const getSupplierStats = (supplierId: string) => {
     const supplierPurchases = purchases.filter(p => p.supplierId === supplierId);

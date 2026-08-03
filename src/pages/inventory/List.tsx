@@ -15,6 +15,7 @@ import { StockAdjustDialog } from '@/components/StockAdjustDialog';
 import { ExpiryBadge, getBatchStatus } from '@/components/BatchFormDialog';
 import { Product } from '@/types';
 import { toast } from 'sonner';
+import { rankSearch } from '@/utils/search/rank';
 
 import { useFeature } from '@/hooks/useFeature';
 
@@ -52,9 +53,7 @@ export default function InventoryList() {
   }, [batches]);
 
   const filteredItems = useMemo(() => {
-    return items.filter(item => {
-      // Name-only search
-      if (nameQuery.trim() && !item.name.toLowerCase().includes(nameQuery.toLowerCase().trim())) return false;
+    const base = items.filter(item => {
       // Category filter
       if (categoryFilter !== 'all' && item.category !== categoryFilter) return false;
       // Stock filter
@@ -64,9 +63,21 @@ export default function InventoryList() {
       if (stockFilter === 'expired' && expiryStatusMap[item.id] !== 'expired') return false;
       return true;
     });
+
+    if (nameQuery.trim()) {
+      return rankSearch(base, nameQuery, base.length);
+    }
+    return base;
   }, [items, nameQuery, categoryFilter, stockFilter, expiryStatusMap]);
 
-  const { sortedItems, requestSort, sortConfig } = useSort(filteredItems, { key: 'name', direction: 'asc' });
+  const { sortedItems: baseSortedItems, requestSort, sortConfig } = useSort(filteredItems, { key: 'name', direction: 'asc' });
+
+  const sortedItems = useMemo(() => {
+    if (nameQuery.trim() && sortConfig?.key === 'name') {
+      return filteredItems;
+    }
+    return baseSortedItems;
+  }, [nameQuery, sortConfig, filteredItems, baseSortedItems]);
 
   const handleDelete = (id: string, name: string) => {
     if (confirm(`Delete "${name}"? This can be undone.`)) {

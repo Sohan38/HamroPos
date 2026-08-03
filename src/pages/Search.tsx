@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useLocation } from 'wouter';
-import { useInventory, useCustomers, useSuppliers, useCredit, useSales } from '@/contexts/GlobalProviders';
+import { useInventory, useCustomers, useSuppliers, useCredit } from '@/contexts/GlobalProviders';
 import { Input } from '@/components/ui/input';
-import { Search as SearchIcon, Package, Users, Truck, Banknote, ShoppingCart, ArrowRight } from 'lucide-react';
+import { Search as SearchIcon, Package, Users, Banknote, ArrowRight } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
+import { rankSearch } from '@/utils/search/rank';
 
 export default function Search() {
   const [, setLocation] = useLocation();
@@ -14,14 +15,14 @@ export default function Search() {
   const { items: suppliers } = useSuppliers();
   const { items: credits } = useCredit();
 
-  const q = query.toLowerCase().trim();
+  const q = query.trim();
 
-  // Search across multiple resources
+  // Search across multiple resources using rankSearch
   const results = q ? {
-    products: inventory.filter(i => i.name.toLowerCase().includes(q) || i.barcode.includes(q)).slice(0, 5),
-    customers: customers.filter(c => c.name.toLowerCase().includes(q) || c.phone.includes(q)).slice(0, 3),
-    suppliers: suppliers.filter(s => s.name.toLowerCase().includes(q) || s.phone.includes(q)).slice(0, 3),
-    credits: credits.filter(c => c.customerName.toLowerCase().includes(q)).slice(0, 3)
+    products: rankSearch(inventory, q, 5),
+    customers: rankSearch(customers, q, 3),
+    suppliers: rankSearch(suppliers, q, 3),
+    credits: rankSearch(credits.map(c => ({ ...c, name: c.customerName })), q, 3)
   } : { products: [], customers: [], suppliers: [], credits: [] };
 
   const hasResults = Object.values(results).some(arr => arr.length > 0);

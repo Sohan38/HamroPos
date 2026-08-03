@@ -24,7 +24,14 @@ export default function CustomerList() {
   useBackModal(showAddForm, () => setShowAddForm(false), 'add-customer-form');
 
   const { query, setQuery, filteredItems } = useSearch(items, ['name', 'phone', 'address']);
-  const { sortedItems } = useSort(filteredItems, { key: 'name', direction: 'asc' });
+  const { sortedItems: baseSortedItems, sortConfig } = useSort(filteredItems, { key: 'name', direction: 'asc' });
+
+  const sortedItems = useMemo(() => {
+    if (query.trim() && sortConfig?.key === 'name') {
+      return filteredItems;
+    }
+    return baseSortedItems;
+  }, [query, sortConfig, filteredItems, baseSortedItems]);
 
   // Enrich sorted items with stats for display
   const enriched = useMemo(() =>
