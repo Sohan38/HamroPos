@@ -287,3 +287,14 @@ export interface AppUser extends StorageRecord {
   role: UserRole;
   isActive: boolean;
 }
+
+
+/** Shared types for the POS cart subsystem. */
+export interface CartItem {
+  productId: string;
+  productName: string;
+  quantity: number;
+  sellingRate: number;
+  maxQuantity: number;
+  subtotal: number;
+}

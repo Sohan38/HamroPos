@@ -24,6 +24,7 @@ import { VariantSection } from './Form/VariantSection';
 import { BatchSection } from './Form/BatchSection';
 import { NotesSection } from './Form/NotesSection';
 import { SaveBar } from './Form/SaveBar';
+import { SupplierFormDialog } from '@/components/SupplierFormDialog';
 
 export default function InventoryForm() {
   const isBatchesEnabled = useFeature('inventory', 'batches');
@@ -50,6 +51,7 @@ export default function InventoryForm() {
   const [batchDialogOpen, setBatchDialogOpen] = useState(false);
   const [editingBatch, setEditingBatch] = useState<ProductBatch | null>(null);
   const [supplierAutoSelected, setSupplierAutoSelected] = useState(false);
+  const [supplierDialogOpen, setSupplierDialogOpen] = useState(false);
 
   // Populate local batches from storage when editing
   useEffect(() => {
@@ -506,7 +508,7 @@ export default function InventoryForm() {
                 <SupplierSection
                   form={form}
                   suppliers={suppliers}
-                  onSupplierNew={() => setLocation('/suppliers/new')}
+                  onSupplierNew={() => setSupplierDialogOpen(true)}
                 />
                 <Separator />
               </>
@@ -530,6 +532,25 @@ export default function InventoryForm() {
         nextBatchNumber={nextBatchNumber}
         suppliers={suppliers}
         productId={existingProduct?.id || ''}
+      />
+
+      {/* Supplier Dialog */}
+      <SupplierFormDialog
+        open={supplierDialogOpen}
+        onClose={() => setSupplierDialogOpen(false)}
+        onSuccess={(newSupplierId) => {
+          const currentSupplierIds = form.getValues('supplierIds') ?? [];
+          if (!currentSupplierIds.includes(newSupplierId)) {
+            const currentStocks = form.getValues('supplierStocks') ?? [];
+            const newStocks = [
+              ...currentStocks,
+              { supplierId: newSupplierId, cost: 0, stock: 0, supplierSku: '', reorderLevel: undefined, notes: '' }
+            ];
+            form.setValue('supplierIds', [...currentSupplierIds, newSupplierId], { shouldDirty: true });
+            form.setValue('supplierStocks', newStocks, { shouldDirty: true });
+          }
+          setSupplierDialogOpen(false);
+        }}
       />
     </div>
   );

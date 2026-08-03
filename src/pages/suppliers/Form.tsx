@@ -8,8 +8,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Save, Building2, Phone, Mail, MapPin, Hash, FileText, User } from 'lucide-react';
+import { ArrowLeft, Save, Building2, Phone, Mail, MapPin, Hash, FileText, User, AlertCircle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 
 type FormData = {
     name: string;
@@ -33,9 +34,17 @@ const EMPTY_FORM: FormData = {
     status: 'active',
 };
 
-export default function SupplierForm() {
+interface SupplierFormProps {
+    id?: string;
+    onSuccess?: (supplierId: string) => void;
+    onCancel?: () => void;
+    isModal?: boolean;
+}
+
+export default function SupplierForm({ id: propId, onSuccess, onCancel, isModal = false }: SupplierFormProps = {}) {
     const goBack = useSmartBack('/suppliers');
-    const { id } = useParams<{ id: string }>();
+    const { id: routeId } = useParams<{ id: string }>();
+    const id = propId !== undefined ? propId : routeId;
     const { items, add, update } = useSuppliers();
     const { format: _format } = useCurrency();
 
@@ -45,6 +54,7 @@ export default function SupplierForm() {
     const [form, setForm] = useState<FormData>(EMPTY_FORM);
     const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({});
     const [saving, setSaving] = useState(false);
+    const [isSubmitted, setIsSubmitted] = useState(false);
 
     useEffect(() => {
         if (existing) {
@@ -78,6 +88,7 @@ export default function SupplierForm() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        setIsSubmitted(true);
         if (!validate()) return;
         setSaving(true);
         try {
@@ -91,14 +102,21 @@ export default function SupplierForm() {
                 notes: form.notes.trim(),
                 status: form.status,
             };
+            let savedId = '';
             if (isNew) {
-                add(payload as any);
+                const res = await add(payload as any);
+                savedId = res?.id || '';
                 toast.success('Supplier added');
             } else if (existing) {
-                update(existing.id, payload);
+                await update(existing.id, payload);
+                savedId = existing.id;
                 toast.success('Supplier updated');
             }
-            goBack();
+            if (isModal && onSuccess) {
+                onSuccess(savedId);
+            } else {
+                goBack();
+            }
         } catch {
             toast.error('Failed to save supplier');
         } finally {
@@ -107,22 +125,24 @@ export default function SupplierForm() {
     };
 
     return (
-        <div className="p-4 md:p-6 max-w-2xl mx-auto pb-32">
+        <div className={isModal ? "space-y-4" : "p-4 md:p-6 max-w-2xl mx-auto pb-32"}>
             {/* Header */}
-            <div className="flex items-center gap-3 mb-6">
-                <Button variant="ghost" size="icon" onClick={goBack}>
-                    <ArrowLeft className="h-5 w-5" />
-                </Button>
-                <div>
-                    <h1 className="text-xl font-bold">{isNew ? 'Add Supplier' : 'Edit Supplier'}</h1>
-                    <p className="text-xs text-muted-foreground">
-                        {isNew ? 'Create a new supplier record' : `Editing ${existing?.name ?? ''}`}
-                    </p>
+            {!isModal && (
+                <div className="flex items-center gap-3 mb-6">
+                    <Button variant="ghost" size="icon" onClick={goBack}>
+                        <ArrowLeft className="h-5 w-5" />
+                    </Button>
+                    <div>
+                        <h1 className="text-xl font-bold">{isNew ? 'Add Supplier' : 'Edit Supplier'}</h1>
+                        <p className="text-xs text-muted-foreground">
+                            {isNew ? 'Create a new supplier record' : `Editing ${existing?.name ?? ''}`}
+                        </p>
+                    </div>
                 </div>
-            </div>
+            )}
 
             <form onSubmit={handleSubmit}>
-                <div className="md:rounded-2xl md:border md:bg-card md:overflow-hidden md:shadow-sm space-y-0">
+                <div className={isModal ? "space-y-4 max-h-[60vh] overflow-y-auto pr-1" : "md:rounded-2xl md:border md:bg-card md:overflow-hidden md:shadow-sm space-y-0"}>
 
                     {/* Business info */}
                     <section className="px-4 py-4 space-y-4">
@@ -187,10 +207,10 @@ export default function SupplierForm() {
                                         type="button"
                                         onClick={() => setForm(prev => ({ ...prev, status: s }))}
                                         className={`flex-1 py-2 rounded-lg border text-sm font-medium transition-all capitalize ${form.status === s
-                                                ? s === 'active'
-                                                    ? 'bg-green-50 border-green-400 text-green-700'
-                                                    : 'bg-muted border-border text-muted-foreground'
-                                                : 'border-border text-muted-foreground hover:bg-muted/50'
+                                            ? s === 'active'
+                                                ? 'bg-green-50 border-green-400 text-green-700'
+                                                : 'bg-muted border-border text-muted-foreground'
+                                            : 'border-border text-muted-foreground hover:bg-muted/50'
                                             }`}
                                     >
                                         {s}
@@ -277,15 +297,53 @@ export default function SupplierForm() {
                 </div>
 
                 {/* Sticky save bar */}
-                <div className="fixed left-0 right-0 bottom-0 md:static md:mt-4 bg-card border-t md:border md:rounded-xl p-4 flex gap-3 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] md:shadow-none z-40">
-                    <Button type="button" variant="outline" className="flex-1 md:flex-none md:w-28" onClick={goBack}>
-                        Cancel
-                    </Button>
-                    <Button type="submit" className="flex-1 gap-2" disabled={saving}>
-                        <Save className="h-4 w-4" />
-                        {isNew ? 'Add Supplier' : 'Save Changes'}
-                    </Button>
-                </div>
+                {(() => {
+                    const errorCount = isSubmitted ? Object.keys(errors).filter(k => !!errors[k as keyof FormData]).length : 0;
+                    return (
+                        <div className={isModal ? "mt-4 pt-4 border-t bg-background px-1 py-3" : "sticky bottom-0 left-0 right-0 z-40 -mx-4 -mb-4 md:-mx-6 md:-mb-6 border-t bg-background/95 px-4 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-[0_-8px_16px_-8px_rgba(0,0,0,0.1)] backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:px-6"}>
+                            <div className={isModal ? "mx-auto flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-end" : "mx-auto flex w-full max-w-2xl flex-col gap-3 md:flex-row md:items-center md:justify-end"}>
+                                {errorCount > 0 && (
+                                    <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive animate-in slide-in-from-bottom-2 duration-200 md:mr-auto md:max-w-sm">
+                                        <AlertCircle className="h-4 w-4 shrink-0" />
+                                        <span>
+                                            {errorCount === 1
+                                                ? 'Fix 1 field above to continue'
+                                                : `Fix ${errorCount} fields above to continue`}
+                                        </span>
+                                    </div>
+                                )}
+
+                                <div className="flex w-full items-center gap-3 md:w-auto">
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={isModal ? onCancel : goBack}
+                                        className="flex-1 md:flex-initial"
+                                        disabled={saving}
+                                    >
+                                        <ArrowLeft className="mr-2 h-4 w-4" /> Cancel
+                                    </Button>
+
+                                    <Button
+                                        type="submit"
+                                        className={cn(
+                                            'flex-1 transition-all md:flex-initial',
+                                            errorCount > 0 && 'opacity-80'
+                                        )}
+                                        disabled={saving}
+                                    >
+                                        {saving ? (
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        ) : (
+                                            <Save className="mr-2 h-4 w-4" />
+                                        )}
+                                        {saving ? 'Saving...' : (isNew ? 'Add Supplier' : 'Save Changes')}
+                                    </Button>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })()}
             </form>
         </div>
     );

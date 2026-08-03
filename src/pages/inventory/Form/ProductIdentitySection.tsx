@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useCallback } from 'react';
+import React, { useCallback } from 'react';
 import { FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { ImagePlus, CheckCircle2, X } from 'lucide-react';
@@ -6,10 +6,7 @@ import { SectionProps } from './types';
 import { toast } from 'sonner';
 import { useWatch } from 'react-hook-form';
 import { cn } from '@/lib/utils';
-
-const BarcodeScanner = lazy(() =>
-  import('@/components/BarcodeScanner').then(m => ({ default: m.BarcodeScanner }))
-);
+import { BarcodeScanner } from '@/components/BarcodeScanner';
 
 interface ProductIdentitySectionProps extends SectionProps {
   isNew: boolean;
@@ -177,12 +174,10 @@ export const ProductIdentitySection = React.memo(({ form, isNew, existingCategor
               <FormControl>
                 <Input placeholder="Scan or type" {...field} />
               </FormControl>
-              <Suspense fallback={null}>
-                <BarcodeScanner
-                  className="h-9 w-9"
-                  onScan={(code) => form.setValue('barcode', code, { shouldValidate: true })}
-                />
-              </Suspense>
+              <BarcodeScanner
+                className="h-9 w-9"
+                onScan={(code) => form.setValue('barcode', code, { shouldValidate: true })}
+              />
             </div>
             <FormMessage className="text-xs" />
           </FormItem>

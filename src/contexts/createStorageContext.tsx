@@ -8,7 +8,7 @@ export function createStorageContext<T extends { id: string }>(key: string) {
   interface ContextType {
     items: T[];
     loading: boolean;
-    add: (item: Omit<T, 'id' | 'createdAt' | 'updatedAt' | 'version' | 'deletedAt'>) => void;
+    add: (item: Omit<T, 'id' | 'createdAt' | 'updatedAt' | 'version' | 'deletedAt'>) => Promise<T>;
     update: (id: string, item: Partial<T>) => void;
     remove: (id: string) => void;
     undoRemove: (id: string) => void;
@@ -41,6 +41,7 @@ export function createStorageContext<T extends { id: string }>(key: string) {
       };
       await storage.save(key, newItem);
       refresh();
+      return newItem;
     }, [storage, refresh]);
 
     const update = useCallback(async (id: string, updates: Partial<T>) => {

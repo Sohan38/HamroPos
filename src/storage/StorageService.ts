@@ -11,27 +11,61 @@ export class LocalStorageProvider implements IStorageProvider {
   private readonly KEY_PREFIX = 'sohan_';
   private readonly SCHEMA_VERSION = 1;
 
+  /** In-memory write-through cache — keyed by storage key (without prefix). */
+  private readonly memCache = new Map<string, StorageRecord[]>();
+
+  /** Keys currently waiting for their deferred disk flush. */
+  private readonly pendingFlush = new Set<string>();
+
   private getFullKey(key: string): string {
     return `${this.KEY_PREFIX}${key}`;
   }
 
+  /**
+   * Read from in-memory cache; hydrate cache from disk on the first access
+   * only — subsequent reads within the same session cost zero disk I/O.
+   */
   async get<T extends StorageRecord>(key: string): Promise<T[]> {
+    if (this.memCache.has(key)) {
+      return this.memCache.get(key) as T[];
+    }
     try {
-      const data = localStorage.getItem(this.getFullKey(key));
-      if (!data) return [];
-      const parsed = JSON.parse(data);
-      return Array.isArray(parsed) ? parsed : [];
+      const raw = localStorage.getItem(this.getFullKey(key));
+      if (!raw) {
+        this.memCache.set(key, []);
+        return [];
+      }
+      const parsed = JSON.parse(raw);
+      const data: StorageRecord[] = Array.isArray(parsed) ? parsed : [];
+      this.memCache.set(key, data);
+      return data as T[];
     } catch (error) {
       console.error(`Error reading ${key} from storage:`, error);
       return [];
     }
   }
 
+  /**
+   * Update cache immediately, then schedule a single deferred flush to
+   * localStorage per key per event-loop tick — multiple rapid writes to
+   * the same key produce only one JSON.stringify + disk write.
+   */
   async set<T extends StorageRecord>(key: string, data: T[]): Promise<void> {
-    try {
-      localStorage.setItem(this.getFullKey(key), JSON.stringify(data));
-    } catch (error) {
-      console.error(`Error writing ${key} to storage:`, error);
+    this.memCache.set(key, data as StorageRecord[]);
+    if (!this.pendingFlush.has(key)) {
+      this.pendingFlush.add(key);
+      queueMicrotask(() => {
+        try {
+          const cached = this.memCache.get(key);
+          if (cached !== undefined) {
+            localStorage.setItem(this.getFullKey(key), JSON.stringify(cached));
+          }
+        } catch (error) {
+          console.error(`Error writing ${key} to storage:`, error);
+        } finally {
+          this.pendingFlush.delete(key);
+        }
+      });
     }
   }
 
@@ -190,7 +224,7 @@ export class LocalStorageProvider implements IStorageProvider {
       }
 
       // 5. Overwrite only after every validation succeeds
-      await this.clearAll();
+      await this.clearAll(); // also clears in-memory cache
       
       for (const [k, v] of Object.entries(collections)) {
         if (k.startsWith(this.KEY_PREFIX)) {
@@ -206,6 +240,7 @@ export class LocalStorageProvider implements IStorageProvider {
 
   async clearKey(key: string): Promise<void> {
     localStorage.removeItem(this.getFullKey(key));
+    this.memCache.delete(key);
   }
   
   async clearAll(): Promise<void> {
@@ -219,6 +254,9 @@ export class LocalStorageProvider implements IStorageProvider {
     for (const k of keysToRemove) {
       localStorage.removeItem(k);
     }
+    // Wipe the entire in-memory cache so nothing stale survives after a reset.
+    this.memCache.clear();
+    this.pendingFlush.clear();
     // Also clear the seed flag so demo data is not re-injected on reload
     const { clearSeedFlag } = await import('@/utils/seedHelper');
     clearSeedFlag();
