@@ -1,5 +1,6 @@
 import { useApp } from '@/contexts/AppContext';
 import { FeatureConfig } from '@/types';
+import { useLicense } from '@/license/LicenseContext';
 
 type FeatureDomain = keyof FeatureConfig;
 type FeatureKey<D extends FeatureDomain> = keyof FeatureConfig[D];
@@ -12,6 +13,11 @@ type FeatureKey<D extends FeatureDomain> = keyof FeatureConfig[D];
  */
 export function useFeature<D extends FeatureDomain>(domain: D, feature: FeatureKey<D>): boolean {
   const { settings } = useApp();
-  const features = settings.features;
-  return !!features?.[domain]?.[feature];
+  const { checkFeature } = useLicense();
+  
+  const adminEnabled = !!settings.features?.[domain]?.[feature];
+  const licenseAllows = checkFeature(String(domain), String(feature));
+  
+  return adminEnabled && licenseAllows;
 }
+

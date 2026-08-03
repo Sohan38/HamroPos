@@ -13,9 +13,12 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { seedDemoData } from '@/utils/seedHelper';
 
 import { FeatureConfig } from '@/types';
+import LicenseCard from './License';
+import { useLicense } from '@/license/LicenseContext';
 
 export default function Settings() {
   const { settings, updateSettings, theme, setTheme } = useApp();
+  const { checkFeature } = useLicense();
   const [formData, setFormData] = useState(settings);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -25,6 +28,7 @@ export default function Settings() {
       setFormData(settings);
     }
   }, [settings]);
+
 
   // Loading & Dialog States
   const [isExporting, setIsExporting] = useState(false);
@@ -195,6 +199,9 @@ export default function Settings() {
       </div>
 
       <div className="grid gap-6">
+        {/* Licensing card */}
+        <LicenseCard />
+
         {/* Business Profile */}
         <Card>
           <CardHeader>
@@ -293,6 +300,7 @@ export default function Settings() {
                   <Switch
                     checked={formData.features.inventory.batches}
                     onCheckedChange={c => handleFeatureToggle('inventory', 'batches', c)}
+                    disabled={!checkFeature('inventory', 'batches')}
                   />
                 </div>
                 <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/10">
@@ -303,6 +311,7 @@ export default function Settings() {
                   <Switch
                     checked={formData.features.inventory.expiry}
                     onCheckedChange={c => handleFeatureToggle('inventory', 'expiry', c)}
+                    disabled={!checkFeature('inventory', 'expiry')}
                   />
                 </div>
                 <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/10">
@@ -313,6 +322,7 @@ export default function Settings() {
                   <Switch
                     checked={formData.features.inventory.variants}
                     onCheckedChange={c => handleFeatureToggle('inventory', 'variants', c)}
+                    disabled={!checkFeature('inventory', 'variants')}
                   />
                 </div>
                 <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/10">
@@ -323,6 +333,7 @@ export default function Settings() {
                   <Switch
                     checked={formData.features.inventory.serialNumbers}
                     onCheckedChange={c => handleFeatureToggle('inventory', 'serialNumbers', c)}
+                    disabled={!checkFeature('inventory', 'serialNumbers')}
                   />
                 </div>
                 <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/10">
@@ -333,6 +344,7 @@ export default function Settings() {
                   <Switch
                     checked={formData.features.inventory.barcodeSupport}
                     onCheckedChange={c => handleFeatureToggle('inventory', 'barcodeSupport', c)}
+                    disabled={!checkFeature('inventory', 'barcodeSupport')}
                   />
                 </div>
                 <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/10">
@@ -343,6 +355,7 @@ export default function Settings() {
                   <Switch
                     checked={formData.features.inventory.multiUnits}
                     onCheckedChange={c => handleFeatureToggle('inventory', 'multiUnits', c)}
+                    disabled={!checkFeature('inventory', 'multiUnits')}
                   />
                 </div>
               </div>
@@ -360,6 +373,7 @@ export default function Settings() {
                   <Switch
                     checked={formData.features.sales.returns}
                     onCheckedChange={c => handleFeatureToggle('sales', 'returns', c)}
+                    disabled={!checkFeature('sales', 'returns')}
                   />
                 </div>
                 <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/10">
@@ -370,6 +384,7 @@ export default function Settings() {
                   <Switch
                     checked={formData.features.sales.creditSales}
                     onCheckedChange={c => handleFeatureToggle('sales', 'creditSales', c)}
+                    disabled={!checkFeature('sales', 'creditSales')}
                   />
                 </div>
                 <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/10">
@@ -380,6 +395,7 @@ export default function Settings() {
                   <Switch
                     checked={formData.features.sales.discounts}
                     onCheckedChange={c => handleFeatureToggle('sales', 'discounts', c)}
+                    disabled={!checkFeature('sales', 'discounts')}
                   />
                 </div>
                 <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/10">
@@ -390,6 +406,7 @@ export default function Settings() {
                   <Switch
                     checked={formData.features.sales.layaway}
                     onCheckedChange={c => handleFeatureToggle('sales', 'layaway', c)}
+                    disabled={!checkFeature('sales', 'layaway')}
                   />
                 </div>
                 <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/10">
@@ -400,6 +417,7 @@ export default function Settings() {
                   <Switch
                     checked={formData.features.sales.quotations}
                     onCheckedChange={c => handleFeatureToggle('sales', 'quotations', c)}
+                    disabled={!checkFeature('sales', 'quotations')}
                   />
                 </div>
               </div>
@@ -417,6 +435,7 @@ export default function Settings() {
                   <Switch
                     checked={formData.features.customers.loyalty}
                     onCheckedChange={c => handleFeatureToggle('customers', 'loyalty', c)}
+                    disabled={!checkFeature('customers', 'loyalty')}
                   />
                 </div>
                 <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/10">
@@ -427,6 +446,7 @@ export default function Settings() {
                   <Switch
                     checked={formData.features.customers.membership}
                     onCheckedChange={c => handleFeatureToggle('customers', 'membership', c)}
+                    disabled={!checkFeature('customers', 'membership')}
                   />
                 </div>
               </div>
@@ -444,6 +464,7 @@ export default function Settings() {
                   <Switch
                     checked={formData.features.hospitality.hotelGrid}
                     onCheckedChange={c => handleFeatureToggle('hospitality', 'hotelGrid', c)}
+                    disabled={!checkFeature('hospitality', 'hotelGrid')}
                   />
                 </div>
                 <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/10">
@@ -454,6 +475,7 @@ export default function Settings() {
                   <Switch
                     checked={formData.features.hospitality.restaurantBilling}
                     onCheckedChange={c => handleFeatureToggle('hospitality', 'restaurantBilling', c)}
+                    disabled={!checkFeature('hospitality', 'restaurantBilling')}
                   />
                 </div>
               </div>

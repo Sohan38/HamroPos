@@ -64,6 +64,8 @@ const HotelBillingForm = retryLazy(() => import('@/pages/hotel/BillingForm'));
 const RestaurantBillingList = retryLazy(() => import('@/pages/restaurant/BillingList'));
 const RestaurantBillingForm = retryLazy(() => import('@/pages/restaurant/BillingForm'));
 
+import { LicenseProvider } from '@/license/LicenseContext';
+
 const queryClient = new QueryClient();
 
 function Router() {
@@ -144,8 +146,12 @@ function Router() {
             <Route path="/customers" component={CustomerList} />
             <Route path="/customers/:id" component={CustomerDetail} />
             <Route path="/suppliers" component={SupplierList} />
-            <Route path="/suppliers/new" component={SupplierForm} />
-            <Route path="/suppliers/:id/edit" component={SupplierForm} />
+            <Route path="/suppliers/new">
+              {() => <SupplierForm />}
+            </Route>
+            <Route path="/suppliers/:id/edit">
+              {(params) => <SupplierForm id={params.id} />}
+            </Route>
             <Route path="/suppliers/:id" component={SupplierDetail} />
 
             <Route path="/settings" component={Settings} />
@@ -163,22 +169,25 @@ function Router() {
 function App() {
   return (
     <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
-        <AppProvider>
-          <GlobalProviders>
-            <TooltipProvider>
-              <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
-                <NavigationProvider>
-                  <Router />
-                </NavigationProvider>
-              </WouterRouter>
-              <Toaster />
-            </TooltipProvider>
-          </GlobalProviders>
-        </AppProvider>
-      </QueryClientProvider>
+      <LicenseProvider>
+        <QueryClientProvider client={queryClient}>
+          <AppProvider>
+            <GlobalProviders>
+              <TooltipProvider>
+                <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
+                  <NavigationProvider>
+                    <Router />
+                  </NavigationProvider>
+                </WouterRouter>
+                <Toaster />
+              </TooltipProvider>
+            </GlobalProviders>
+          </AppProvider>
+        </QueryClientProvider>
+      </LicenseProvider>
     </ErrorBoundary>
   );
 }
 
 export default App;
+
