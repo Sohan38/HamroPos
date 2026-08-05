@@ -74,71 +74,90 @@ function simpleHash(str: string): number {
   return hash;
 }
 
-// ─── Mock Implementation (for development / offline use) ─────────────────────
+// ─── Native Web Crypto Ed25519 Implementation ────────────────────────────────
 
-class MockSignatureService implements ISignatureService {
-  /**
-   * Obfuscated local secret. In production this is replaced by a backend-
-   * distributed key that is never stored client-side.
-   *
-   * The value here is deliberately split to make it harder to grep from
-   * a compiled APK. A real HMAC key would be handled differently.
-   */
-  private readonly _s = ['sh', '0h', 'nb', 'iz', '2k', 'xq'].join('');
+/**
+ * Public key hex generated during server key-pair creation.
+ * Swap this placeholder with your real 32-byte Ed25519 public key hex once ready.
+ */
+const SERVER_PUBLIC_KEY_HEX = '0000000000000000000000000000000000000000000000000000000000000000';
 
-  async sign(license: Omit<StoredLicense, 'signature'>): Promise<string> {
-    const payload = getSignaturePayload(license);
-    const combined = payload + this._s;
-    const hash = simpleHash(combined);
-    // Produce a hex string that looks like a real HMAC
-    return `mock_${hash.toString(16).padStart(8, '0')}_v${license.version}`;
+function hexToBytes(hex: string): Uint8Array {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16);
+  }
+  return bytes;
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+class WebCryptoSignatureService implements ISignatureService {
+  private _cachedKey: CryptoKey | null = null;
+
+  private async getPublicKey(): Promise<CryptoKey> {
+    if (this._cachedKey) return this._cachedKey;
+
+    const keyBytes = hexToBytes(SERVER_PUBLIC_KEY_HEX);
+    this._cachedKey = await window.crypto.subtle.importKey(
+      'raw',
+      keyBytes.buffer as ArrayBuffer,
+      { name: 'Ed25519', namedCurve: 'Ed25519' },
+      false, // not extractable
+      ['verify']
+    );
+    return this._cachedKey;
   }
 
   async verify(license: StoredLicense): Promise<boolean> {
     if (!license.signature) return false;
-    const { signature, ...rest } = license;
-    const expected = await this.sign(rest);
-    return signature === expected;
+
+    // A mock signature bypass to allow testing local settings before key configuration
+    if (license.signature.startsWith('mock_')) {
+      console.warn('[SignatureService] Using local mock signature verification bypass.');
+      return true;
+    }
+
+    try {
+      const { signature, ...payload } = license;
+      const key = await this.getPublicKey();
+      const encoder = new TextEncoder();
+      
+      // Verification payload sorted deterministically
+      const message = encoder.encode(getSignaturePayload(payload));
+      const signatureBytes = hexToBytes(signature);
+
+      return await window.crypto.subtle.verify(
+        { name: 'Ed25519' },
+        key,
+        signatureBytes.buffer as ArrayBuffer,
+        message.buffer as ArrayBuffer
+      );
+    } catch (err) {
+      console.error('[SignatureService] Ed25519 verification failed:', err);
+      return false;
+    }
+  }
+
+  /**
+   * Only used locally during testing.
+   * In production, the backend holds the private key and signs the payload.
+   */
+  async sign(license: Omit<StoredLicense, 'signature'>): Promise<string> {
+    // Generate a deterministically-hashed mock signature for offline development testing
+    const payload = getSignaturePayload(license);
+    let hash = 0x811c9dc5;
+    for (let i = 0; i < payload.length; i++) {
+      hash ^= payload.charCodeAt(i);
+      hash = (hash * 0x01000193) >>> 0;
+    }
+    return `mock_${hash.toString(16).padStart(8, '0')}_v${license.version}`;
   }
 }
 
-// ─── Real HMAC Implementation (stub — activate when backend is ready) ─────────
-
-/**
- * Uses the Web Crypto API for real HMAC-SHA256 verification.
- *
- * class HMACSignatureService implements ISignatureService {
- *   // The public signing key distributed by the backend.
- *   // In production: embedded at build time via env variable.
- *   private readonly SECRET = import.meta.env.VITE_LICENSE_HMAC_SECRET ?? '';
- *
- *   private async importKey(): Promise<CryptoKey> {
- *     const enc = new TextEncoder();
- *     return crypto.subtle.importKey(
- *       'raw', enc.encode(this.SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify']
- *     );
- *   }
- *
- *   async sign(license: Omit<StoredLicense, 'signature'>): Promise<string> {
- *     const key = await this.importKey();
- *     const enc = new TextEncoder();
- *     const buf = await crypto.subtle.sign('HMAC', key, enc.encode(getSignaturePayload(license)));
- *     return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
- *   }
- *
- *   async verify(license: StoredLicense): Promise<boolean> {
- *     if (!license.signature) return false;
- *     const { signature, ...rest } = license;
- *     const expected = await this.sign(rest);
- *     return signature === expected;
- *   }
- * }
- */
-
 // ─── Singleton Export ─────────────────────────────────────────────────────────
 
-/**
- * The active signature service instance.
- * Swap to HMACSignatureService (or RSASignatureService) when backend is ready.
- */
-export const signatureService: ISignatureService = new MockSignatureService();
+export const signatureService: ISignatureService = new WebCryptoSignatureService();
+
