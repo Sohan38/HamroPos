@@ -1,25 +1,26 @@
 import { useState, useRef, useEffect } from 'react';
 import { useApp } from '@/contexts/AppContext';
-import { storageService } from '@/storage/StorageService';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
-import { Save, Upload, Download, AlertTriangle, Monitor, Moon, Sun, Trash2, Database } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useStorageProvider } from '@/storage/StorageContext';
+import { FeatureConfig } from '@/types';
+import LicenseCard from './License';
+import { useLicense } from '@/license/LicenseContext';
+import { Save, Upload, Download, AlertTriangle, Monitor, Moon, Sun, Trash2, Database, Building, Globe, Key, Settings as SettingsIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { Spinner } from '@/components/ui/spinner';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { seedDemoData } from '@/utils/seedHelper';
 
-import { FeatureConfig } from '@/types';
-import LicenseCard from './License';
-import { useLicense } from '@/license/LicenseContext';
-
 export default function Settings() {
   const { settings, updateSettings, theme, setTheme } = useApp();
   const { checkFeature } = useLicense();
+  const storage = useStorageProvider();
   const [formData, setFormData] = useState(settings);
+  const [activeTab, setActiveTab] = useState('profile');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Sync state if settings are loaded/restored asynchronously
@@ -29,6 +30,8 @@ export default function Settings() {
     }
   }, [settings]);
 
+  // Check if settings have unsaved modifications
+  const isDirty = JSON.stringify(formData) !== JSON.stringify(settings);
 
   // Loading & Dialog States
   const [isExporting, setIsExporting] = useState(false);
@@ -45,37 +48,11 @@ export default function Settings() {
     toast.success('Settings saved successfully');
   };
 
-  const handleFeatureToggle = (domain: keyof FeatureConfig, feature: string, checked: boolean) => {
-    setFormData(prev => {
-      const domainKey = domain as keyof FeatureConfig;
-      const domainFeatures = prev.features[domainKey] as Record<string, boolean>;
-      const updated = { ...domainFeatures, [feature]: checked };
-
-      // Mutual exclusion: variants ↔ batches/expiry
-      if (domainKey === 'inventory' && checked) {
-        if (feature === 'variants') {
-          updated['batches'] = false;
-          updated['expiry'] = false;
-        } else if (feature === 'batches' || feature === 'expiry') {
-          updated['variants'] = false;
-        }
-      }
-
-      return {
-        ...prev,
-        features: {
-          ...prev.features,
-          [domainKey]: updated
-        }
-      };
-    });
-  };
-
   const handleExport = async () => {
     setIsExporting(true);
     try {
       await new Promise(r => setTimeout(r, 400));
-      const data = await storageService.exportAll();
+      const data = await storage.exportAll();
       const filename = `sohan_backup_${new Date().toISOString().split('T')[0]}.json`;
       const isNative = typeof window !== 'undefined' && !!(window as any).Capacitor?.isNativePlatform?.();
 
@@ -140,7 +117,7 @@ export default function Settings() {
     setIsImporting(true);
     try {
       await new Promise(r => setTimeout(r, 800));
-      const success = await storageService.importAll(pendingImportContent);
+      const success = await storage.importAll(pendingImportContent);
       if (success) {
         toast.success('Data imported successfully. App will reload.');
         setTimeout(() => window.location.reload(), 1500);
@@ -159,7 +136,7 @@ export default function Settings() {
     setIsResetting(true);
     try {
       await new Promise(r => setTimeout(r, 800));
-      await storageService.clearAll();
+      await storage.clearAll();
       toast.success('All data cleared. App will reload.');
       setTimeout(() => window.location.reload(), 1500);
     } catch (err) {
@@ -173,7 +150,7 @@ export default function Settings() {
     setIsSeeding(true);
     try {
       await new Promise(r => setTimeout(r, 800));
-      seedDemoData(true);
+      await seedDemoData(true);
       toast.success('Demo data restored successfully. App will reload.');
       setTimeout(() => window.location.reload(), 1500);
     } catch (err) {
@@ -183,7 +160,7 @@ export default function Settings() {
     }
   };
 
-  if (!formData || !formData.features) {
+  if (!formData) {
     return (
       <div className="flex h-[50vh] items-center justify-center">
         <Spinner className="size-6 text-muted-foreground" />
@@ -192,343 +169,230 @@ export default function Settings() {
   }
 
   return (
-    <div className="p-4 md:p-6 space-y-6 max-w-4xl mx-auto pb-24 md:pb-6">
-      <div className="mb-6">
-        <h1 className="text-2xl md:text-3xl font-bold text-foreground">Settings</h1>
-        <p className="text-muted-foreground">Configure your business details and app preferences</p>
-      </div>
-
-      <div className="grid gap-6">
-        {/* Licensing card */}
-        <LicenseCard />
-
-        {/* Business Profile */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Business Profile</CardTitle>
-            <CardDescription>This information appears on invoices and reports.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Business Name</label>
-              <Input
-                value={formData.businessName}
-                onChange={e => setFormData({ ...formData, businessName: e.target.value })}
-              />
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Phone</label>
-                <Input
-                  value={formData.phone}
-                  onChange={e => setFormData({ ...formData, phone: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">VAT / PAN Number</label>
-                <Input
-                  value={formData.vatNumber}
-                  onChange={e => setFormData({ ...formData, vatNumber: e.target.value })}
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Address</label>
-              <Input
-                value={formData.address}
-                onChange={e => setFormData({ ...formData, address: e.target.value })}
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Localization & Theme */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Localization & Defaults</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Currency Symbol</label>
-                <Input
-                  value={formData.currencySymbol}
-                  onChange={e => setFormData({ ...formData, currencySymbol: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Default Tax Rate (%)</label>
-                <Input
-                  type="number"
-                  value={formData.taxRate}
-                  onChange={e => setFormData({ ...formData, taxRate: Number(e.target.value) })}
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Theme</label>
-                <Select value={theme} onValueChange={(v: any) => setTheme(v)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="light"><div className="flex items-center gap-2"><Sun className="w-4 h-4" /> Light</div></SelectItem>
-                    <SelectItem value="dark"><div className="flex items-center gap-2"><Moon className="w-4 h-4" /> Dark</div></SelectItem>
-                    <SelectItem value="system"><div className="flex items-center gap-2"><Monitor className="w-4 h-4" /> System</div></SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Feature Toggles */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Enabled Features</CardTitle>
-            <CardDescription>Enable or disable functional domains across the application.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {/* Inventory Domain */}
-            <div>
-              <h4 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-3">Inventory Settings</h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/10">
-                  <div className="space-y-0.5">
-                    <label className="text-sm font-medium">Batches Tracking</label>
-                    <p className="text-xs text-muted-foreground">Track inventory items in batches</p>
-                  </div>
-                  <Switch
-                    checked={formData.features.inventory.batches}
-                    onCheckedChange={c => handleFeatureToggle('inventory', 'batches', c)}
-                    disabled={!checkFeature('inventory', 'batches')}
-                  />
-                </div>
-                <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/10">
-                  <div className="space-y-0.5">
-                    <label className="text-sm font-medium">Expiry Dates</label>
-                    <p className="text-xs text-muted-foreground">Enforce FEFO based batch expiry</p>
-                  </div>
-                  <Switch
-                    checked={formData.features.inventory.expiry}
-                    onCheckedChange={c => handleFeatureToggle('inventory', 'expiry', c)}
-                    disabled={!checkFeature('inventory', 'expiry')}
-                  />
-                </div>
-                <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/10">
-                  <div className="space-y-0.5">
-                    <label className="text-sm font-medium">Variants</label>
-                    <p className="text-xs text-muted-foreground">Manage variable sizes or colors</p>
-                  </div>
-                  <Switch
-                    checked={formData.features.inventory.variants}
-                    onCheckedChange={c => handleFeatureToggle('inventory', 'variants', c)}
-                    disabled={!checkFeature('inventory', 'variants')}
-                  />
-                </div>
-                <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/10">
-                  <div className="space-y-0.5">
-                    <label className="text-sm font-medium">Serial Numbers</label>
-                    <p className="text-xs text-muted-foreground">Track items by unique serials</p>
-                  </div>
-                  <Switch
-                    checked={formData.features.inventory.serialNumbers}
-                    onCheckedChange={c => handleFeatureToggle('inventory', 'serialNumbers', c)}
-                    disabled={!checkFeature('inventory', 'serialNumbers')}
-                  />
-                </div>
-                <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/10">
-                  <div className="space-y-0.5">
-                    <label className="text-sm font-medium">Barcode Support</label>
-                    <p className="text-xs text-muted-foreground">Scan item codes during lookup</p>
-                  </div>
-                  <Switch
-                    checked={formData.features.inventory.barcodeSupport}
-                    onCheckedChange={c => handleFeatureToggle('inventory', 'barcodeSupport', c)}
-                    disabled={!checkFeature('inventory', 'barcodeSupport')}
-                  />
-                </div>
-                <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/10">
-                  <div className="space-y-0.5">
-                    <label className="text-sm font-medium">Multiple Units</label>
-                    <p className="text-xs text-muted-foreground">Enable units of measure configurations</p>
-                  </div>
-                  <Switch
-                    checked={formData.features.inventory.multiUnits}
-                    onCheckedChange={c => handleFeatureToggle('inventory', 'multiUnits', c)}
-                    disabled={!checkFeature('inventory', 'multiUnits')}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Sales Domain */}
-            <div className="pt-4 border-t">
-              <h4 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-3">Sales Settings</h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/10">
-                  <div className="space-y-0.5">
-                    <label className="text-sm font-medium">Returns</label>
-                    <p className="text-xs text-muted-foreground">Process invoice return receipts</p>
-                  </div>
-                  <Switch
-                    checked={formData.features.sales.returns}
-                    onCheckedChange={c => handleFeatureToggle('sales', 'returns', c)}
-                    disabled={!checkFeature('sales', 'returns')}
-                  />
-                </div>
-                <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/10">
-                  <div className="space-y-0.5">
-                    <label className="text-sm font-medium">Credit Sales</label>
-                    <p className="text-xs text-muted-foreground">Allow ledger billing for credit balances</p>
-                  </div>
-                  <Switch
-                    checked={formData.features.sales.creditSales}
-                    onCheckedChange={c => handleFeatureToggle('sales', 'creditSales', c)}
-                    disabled={!checkFeature('sales', 'creditSales')}
-                  />
-                </div>
-                <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/10">
-                  <div className="space-y-0.5">
-                    <label className="text-sm font-medium">Discounts</label>
-                    <p className="text-xs text-muted-foreground">Allow custom discounts on POS checkout</p>
-                  </div>
-                  <Switch
-                    checked={formData.features.sales.discounts}
-                    onCheckedChange={c => handleFeatureToggle('sales', 'discounts', c)}
-                    disabled={!checkFeature('sales', 'discounts')}
-                  />
-                </div>
-                <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/10">
-                  <div className="space-y-0.5">
-                    <label className="text-sm font-medium">Layaway</label>
-                    <p className="text-xs text-muted-foreground">Support deferred payment holds</p>
-                  </div>
-                  <Switch
-                    checked={formData.features.sales.layaway}
-                    onCheckedChange={c => handleFeatureToggle('sales', 'layaway', c)}
-                    disabled={!checkFeature('sales', 'layaway')}
-                  />
-                </div>
-                <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/10">
-                  <div className="space-y-0.5">
-                    <label className="text-sm font-medium">Quotations</label>
-                    <p className="text-xs text-muted-foreground">Generate pricing quotations sheets</p>
-                  </div>
-                  <Switch
-                    checked={formData.features.sales.quotations}
-                    onCheckedChange={c => handleFeatureToggle('sales', 'quotations', c)}
-                    disabled={!checkFeature('sales', 'quotations')}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Customers Domain */}
-            <div className="pt-4 border-t">
-              <h4 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-3">Customer Accounts</h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/10">
-                  <div className="space-y-0.5">
-                    <label className="text-sm font-medium">Loyalty System</label>
-                    <p className="text-xs text-muted-foreground">Accrue customer loyalty score points</p>
-                  </div>
-                  <Switch
-                    checked={formData.features.customers.loyalty}
-                    onCheckedChange={c => handleFeatureToggle('customers', 'loyalty', c)}
-                    disabled={!checkFeature('customers', 'loyalty')}
-                  />
-                </div>
-                <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/10">
-                  <div className="space-y-0.5">
-                    <label className="text-sm font-medium">Memberships</label>
-                    <p className="text-xs text-muted-foreground">Manage active user tier levels</p>
-                  </div>
-                  <Switch
-                    checked={formData.features.customers.membership}
-                    onCheckedChange={c => handleFeatureToggle('customers', 'membership', c)}
-                    disabled={!checkFeature('customers', 'membership')}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Hospitality Domain */}
-            <div className="pt-4 border-t">
-              <h4 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-3">Hospitality Modules</h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/10">
-                  <div className="space-y-0.5">
-                    <label className="text-sm font-medium">Hotel Booking Grid</label>
-                    <p className="text-xs text-muted-foreground">Enable room grids booking menus</p>
-                  </div>
-                  <Switch
-                    checked={formData.features.hospitality.hotelGrid}
-                    onCheckedChange={c => handleFeatureToggle('hospitality', 'hotelGrid', c)}
-                    disabled={!checkFeature('hospitality', 'hotelGrid')}
-                  />
-                </div>
-                <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/10">
-                  <div className="space-y-0.5">
-                    <label className="text-sm font-medium">Restaurant Billing</label>
-                    <p className="text-xs text-muted-foreground">Enable table ordering POS layout</p>
-                  </div>
-                  <Switch
-                    checked={formData.features.hospitality.restaurantBilling}
-                    onCheckedChange={c => handleFeatureToggle('hospitality', 'restaurantBilling', c)}
-                    disabled={!checkFeature('hospitality', 'restaurantBilling')}
-                  />
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Save Button */}
-        <div className="flex justify-end">
-          <Button size="lg" onClick={handleSave} className="w-full md:w-auto">
-            <Save className="mr-2 h-5 w-5" /> Save Settings
+    <div className="p-3 md:p-6 space-y-6 max-w-4xl mx-auto pb-28 md:pb-6">
+      {/* Header section optimized for scanning */}
+      <div className="flex items-center justify-between gap-4 border-b border-border pb-4">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground flex items-center gap-2">
+            <SettingsIcon className="h-6 w-6 text-primary" /> Settings
+          </h1>
+          <p className="text-xs md:text-sm text-muted-foreground mt-0.5">
+            Configure default variables and device activations.
+          </p>
+        </div>
+        {/* Desktop Save Button (hidden on mobile to prevent clutter) */}
+        <div className="hidden sm:block">
+          <Button onClick={handleSave} size="default" className="shadow-sm">
+            <Save className="mr-2 h-4 w-4" /> Save Changes
           </Button>
         </div>
+      </div>
 
-        {/* Data Management */}
-        <Card className="border-orange-200">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-orange-600">
-              <AlertTriangle className="h-5 w-5" /> Data Management
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Button variant="outline" onClick={handleExport} disabled={isExporting || isImporting || isResetting || isSeeding} className="w-full justify-start h-12">
-                {isExporting ? <Spinner className="mr-3 h-5 w-5" /> : <Download className="mr-3 h-5 w-5" />}
-                {isExporting ? 'Exporting...' : 'Export Backup'}
-              </Button>
-              <div className="relative">
-                <input
-                  type="file"
-                  accept=".json"
-                  className="hidden"
-                  ref={fileInputRef}
-                  onChange={handleImportFileChange}
+      <Tabs defaultValue="profile" className="space-y-6">
+        {/* Horizontal overflow scrollable tab bar for mobile viewports */}
+        <div className="w-full overflow-x-auto scrollbar-none -mx-3 px-3 sm:mx-0 sm:px-0">
+          <TabsList className="flex w-max sm:w-full border border-border bg-muted/40 p-1 rounded-lg gap-1 min-w-full">
+            <TabsTrigger value="profile" className="flex-1 min-w-[80px] sm:min-w-0 flex items-center justify-center gap-1.5 text-xs py-2 px-3">
+              <Building className="h-3.5 w-3.5" /> Profile
+            </TabsTrigger>
+            <TabsTrigger value="preferences" className="flex-1 min-w-[90px] sm:min-w-0 flex items-center justify-center gap-1.5 text-xs py-2 px-3">
+              <Globe className="h-3.5 w-3.5" /> Preferences
+            </TabsTrigger>
+            <TabsTrigger value="license" className="flex-1 min-w-[80px] sm:min-w-0 flex items-center justify-center gap-1.5 text-xs py-2 px-3">
+              <Key className="h-3.5 w-3.5" /> Activation
+            </TabsTrigger>
+            <TabsTrigger value="data" className="flex-1 min-w-[85px] sm:min-w-0 flex items-center justify-center gap-1.5 text-xs py-2 px-3">
+              <Database className="h-3.5 w-3.5" /> Database
+            </TabsTrigger>
+          </TabsList>
+        </div>
+
+        {/* Tab 1: Profile */}
+        <TabsContent value="profile" className="outline-none space-y-4">
+          <Card className="border border-border shadow-sm">
+            <CardHeader className="p-4 sm:p-6">
+              <CardTitle className="text-base sm:text-lg">Business Profile</CardTitle>
+              <CardDescription className="text-xs">Receipt invoice billing info.</CardDescription>
+            </CardHeader>
+            <CardContent className="p-4 sm:p-6 pt-0 sm:pt-0 space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground">Business Name</label>
+                <Input
+                  className="h-10 sm:h-11 text-sm"
+                  value={formData.businessName}
+                  onChange={e => setFormData({ ...formData, businessName: e.target.value })}
                 />
-                <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={isExporting || isImporting || isResetting || isSeeding} className="w-full justify-start h-12">
-                  {isImporting ? <Spinner className="mr-3 h-5 w-5" /> : <Upload className="mr-3 h-5 w-5" />}
-                  {isImporting ? 'Restoring...' : 'Restore Backup'}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-muted-foreground">Phone Number</label>
+                  <Input
+                    type="tel"
+                    className="h-10 sm:h-11 text-sm"
+                    value={formData.phone}
+                    onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-muted-foreground">VAT / PAN Number</label>
+                  <Input
+                    className="h-10 sm:h-11 text-sm"
+                    value={formData.vatNumber}
+                    onChange={e => setFormData({ ...formData, vatNumber: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground">Address</label>
+                <Input
+                  className="h-10 sm:h-11 text-sm"
+                  value={formData.address}
+                  onChange={e => setFormData({ ...formData, address: e.target.value })}
+                />
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Tab 2: Preferences */}
+        <TabsContent value="preferences" className="outline-none space-y-4">
+          <Card className="border border-border shadow-sm">
+            <CardHeader className="p-4 sm:p-6">
+              <CardTitle className="text-base sm:text-lg">Defaults & Localization</CardTitle>
+              <CardDescription className="text-xs">Manage system configurations and symbols.</CardDescription>
+            </CardHeader>
+            <CardContent className="p-4 sm:p-6 pt-0 sm:pt-0 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-muted-foreground">Currency Symbol</label>
+                  <Input
+                    className="h-10 sm:h-11 text-sm"
+                    value={formData.currencySymbol}
+                    onChange={e => setFormData({ ...formData, currencySymbol: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-muted-foreground">Currency Code</label>
+                  <Input
+                    className="h-10 sm:h-11 text-sm"
+                    value={formData.currency}
+                    onChange={e => setFormData({ ...formData, currency: e.target.value.toUpperCase() })}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-muted-foreground">Default VAT / Tax (%)</label>
+                  <Input
+                    type="number"
+                    className="h-10 sm:h-11 text-sm"
+                    value={formData.taxRate}
+                    onChange={e => setFormData({ ...formData, taxRate: parseFloat(e.target.value) || 0 })}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-muted-foreground">Low Stock Threshold</label>
+                  <Input
+                    type="number"
+                    className="h-10 sm:h-11 text-sm"
+                    value={formData.lowStockThreshold}
+                    onChange={e => setFormData({ ...formData, lowStockThreshold: parseInt(e.target.value) || 0 })}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-muted-foreground">Theme</label>
+                  <Select value={theme} onValueChange={setTheme}>
+                    <SelectTrigger className="h-10 sm:h-11">
+                      <SelectValue placeholder="Select Theme" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="light">
+                        <span className="flex items-center gap-2"><Sun className="h-4 w-4 text-amber-500" /> Light</span>
+                      </SelectItem>
+                      <SelectItem value="dark">
+                        <span className="flex items-center gap-2"><Moon className="h-4 w-4 text-blue-400" /> Dark</span>
+                      </SelectItem>
+                      <SelectItem value="system">
+                        <span className="flex items-center gap-2"><Monitor className="h-4 w-4" /> System</span>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-muted-foreground">System Language</label>
+                  <Select value={formData.language} onValueChange={val => setFormData({ ...formData, language: val })}>
+                    <SelectTrigger className="h-10 sm:h-11">
+                      <SelectValue placeholder="Select Language" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="en">English</SelectItem>
+                      <SelectItem value="ne">Nepali</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Tab 3: Activation */}
+        <TabsContent value="license" className="outline-none">
+          <LicenseCard />
+        </TabsContent>
+
+        {/* Tab 4: Database Operations */}
+        <TabsContent value="data" className="outline-none space-y-4">
+          <Card className="border-orange-200 dark:border-orange-950/40">
+            <CardHeader className="p-4 sm:p-6">
+              <CardTitle className="flex items-center gap-2 text-orange-600 dark:text-orange-400 text-base sm:text-lg">
+                <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5" /> Data Backup & Recovery
+              </CardTitle>
+              <CardDescription className="text-xs">Export backups, restore previous databases, or run resets.</CardDescription>
+            </CardHeader>
+            <CardContent className="p-4 sm:p-6 pt-0 sm:pt-0 space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <Button variant="outline" onClick={handleExport} disabled={isExporting || isImporting || isResetting || isSeeding} className="w-full justify-start h-12 text-xs">
+                  {isExporting ? <Spinner className="mr-3 h-4 w-4" /> : <Download className="mr-3 h-4 w-4" />}
+                  {isExporting ? 'Exporting...' : 'Export Backup JSON'}
+                </Button>
+                <div className="relative">
+                  <input
+                    type="file"
+                    accept=".json"
+                    className="hidden"
+                    ref={fileInputRef}
+                    onChange={handleImportFileChange}
+                  />
+                  <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={isExporting || isImporting || isResetting || isSeeding} className="w-full justify-start h-12 text-xs">
+                    {isImporting ? <Spinner className="mr-3 h-4 w-4" /> : <Upload className="mr-3 h-4 w-4" />}
+                    {isImporting ? 'Restoring...' : 'Restore Backup File'}
+                  </Button>
+                </div>
+                <Button variant="outline" onClick={() => setShowSeedConfirm(true)} disabled={isExporting || isImporting || isResetting || isSeeding} className="w-full justify-start h-12 text-xs text-primary border-primary/20 hover:bg-primary/5">
+                  {isSeeding ? <Spinner className="mr-3 h-4 w-4" /> : <Database className="mr-3 h-4 w-4" />}
+                  {isSeeding ? 'Seeding...' : 'Load Demo Database'}
                 </Button>
               </div>
-              <Button variant="outline" onClick={() => setShowSeedConfirm(true)} disabled={isExporting || isImporting || isResetting || isSeeding} className="w-full justify-start h-12 text-primary border-primary/30 hover:bg-primary/5">
-                {isSeeding ? <Spinner className="mr-3 h-5 w-5" /> : <Database className="mr-3 h-5 w-5" />}
-                {isSeeding ? 'Seeding...' : 'Restore Demo Data'}
-              </Button>
-            </div>
-            <div className="pt-6 border-t">
-              <Button variant="destructive" onClick={() => setShowResetConfirm(true)} disabled={isExporting || isImporting || isResetting || isSeeding} className="w-full">
-                {isResetting ? <Spinner className="mr-2 h-5 w-5" /> : <Trash2 className="mr-2 h-5 w-5" />}
-                {isResetting ? 'Resetting...' : 'Factory Reset App'}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+              <div className="pt-4 border-t border-border mt-2">
+                <Button variant="destructive" onClick={() => setShowResetConfirm(true)} disabled={isExporting || isImporting || isResetting || isSeeding} className="w-full h-11 text-xs">
+                  {isResetting ? <Spinner className="mr-2 h-4 w-4" /> : <Trash2 className="mr-2 h-4 w-4" />}
+                  {isResetting ? 'Resetting Database...' : 'Factory Reset Database'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      {/* Floating Bottom Sticky Action Bar for Mobile Screens (rendered above BottomNav) */}
+      <div className="sm:hidden fixed bottom-16 left-0 right-0 bg-background/90 backdrop-blur-md border-t border-border p-3 flex justify-end z-30 shadow-md">
+        <Button onClick={handleSave} size="default" className="w-full h-11 text-sm shadow-md font-medium flex items-center justify-center gap-2">
+          <Save className="h-4 w-4" /> Save Changes
+        </Button>
       </div>
 
       <ConfirmDialog

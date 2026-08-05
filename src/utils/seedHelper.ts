@@ -1,4 +1,4 @@
-import { storageService } from '@/storage/StorageService';
+import { dexieProvider } from '@/storage/DexieProvider';
 import {
   SEED_SUPPLIERS, SEED_PRODUCTS, SEED_CUSTOMERS,
   SEED_PURCHASES, SEED_SALES, SEED_EXPENSES, SEED_HOTEL_ROOMS, SEED_BATCHES,
@@ -19,20 +19,11 @@ export function hasSeedData(): boolean {
  *
  * @param force - If true, re-seeds even if seed data was previously loaded.
  */
-export function seedDemoData(force = false): void {
+export async function seedDemoData(force = false): Promise<void> {
   if (!force && hasSeedData()) return;
 
-  // Clear existing app data synchronously so seed is clean
-  const keysToRemove: string[] = [];
-  for (let i = 0; i < localStorage.length; i++) {
-    const k = localStorage.key(i);
-    if (k && k.startsWith('sohan_')) {
-      keysToRemove.push(k);
-    }
-  }
-  for (const k of keysToRemove) {
-    localStorage.removeItem(k);
-  }
+  // Clear existing app data synchronously & asynchronously so seed is clean
+  await dexieProvider.clearAll();
 
   const collections: Record<string, any[]> = {
     suppliers: SEED_SUPPLIERS,
@@ -50,7 +41,7 @@ export function seedDemoData(force = false): void {
   };
 
   for (const [key, data] of Object.entries(collections)) {
-    localStorage.setItem(`sohan_${key}`, JSON.stringify(data));
+    await dexieProvider.set(key, data);
   }
 
   localStorage.setItem(SEED_KEY, 'true');
