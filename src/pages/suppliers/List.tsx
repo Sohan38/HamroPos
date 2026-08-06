@@ -41,7 +41,7 @@ export default function SupplierList() {
   const activeCount = items.filter(s => (s.status ?? 'active') === 'active').length;
 
   return (
-    <div className="p-4 md:p-6 space-y-4 max-w-7xl mx-auto pb-28 md:pb-6">
+    <div className="p-4 md:p-6 space-y-4 max-w-7xl mx-auto pb-6">
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
@@ -169,16 +169,6 @@ export default function SupplierList() {
           })}
         </div>
       )}
-
-      {/* Mobile FAB */}
-      <div className="fixed left-0 right-0 bottom-16 z-40 md:hidden border-t bg-card p-3 shadow-[0_-4px_20px_rgba(0,0,0,0.08)]">
-        <Button
-          onClick={() => setLocation('/suppliers/new')}
-          className="w-full h-11 font-semibold shadow-sm flex items-center justify-center gap-2"
-        >
-          <Plus className="h-5 w-5" /> Add Supplier
-        </Button>
-      </div>
     </div>
   );
 }

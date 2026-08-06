@@ -137,7 +137,7 @@ export default function InventoryForm() {
     return Array.from(cats).sort().slice(0, 12);
   }, [items]);
 
-  // Compute average purchase cost dynamically
+  // Compute average purchase cost from batches (expiry mode)
   const averagePurchaseRate = useMemo(() => {
     if (!hasExpiry || localBatches.length === 0) return purchaseRateWatch || 0;
     const totalQty = localBatches.reduce((sum, b) => sum + b.quantity, 0);
@@ -145,6 +145,37 @@ export default function InventoryForm() {
     const totalCost = localBatches.reduce((sum, b) => sum + b.purchaseRate * b.quantity, 0);
     return totalCost / totalQty;
   }, [hasExpiry, localBatches, purchaseRateWatch]);
+
+  // Sync purchaseRate from supplierStocks whenever suppliers change:
+  //   - 1 supplier → mirror that supplier's cost into purchaseRate
+  //   - 2+ suppliers → write weighted-average cost (by stock qty) into purchaseRate
+  //   - 0 suppliers / expiry / variants → leave purchaseRate fully editable
+  useEffect(() => {
+    if (hasExpiry || hasVariants || watchedSupplierIds.length === 0) return;
+
+    const stocks = watchedSupplierStocks as any[];
+    let computed = 0;
+
+    if (watchedSupplierIds.length === 1) {
+      computed = Number(stocks[0]?.cost) || 0;
+    } else {
+      // Multi-supplier: weighted average by per-supplier stock; fall back to simple mean
+      const totalStock = stocks.reduce((s: number, ss: any) => s + (Number(ss.stock) || 0), 0);
+      if (totalStock > 0) {
+        computed = stocks.reduce((s: number, ss: any) => s + (Number(ss.cost) || 0) * (Number(ss.stock) || 0), 0) / totalStock;
+      } else {
+        const withCost = stocks.filter((ss: any) => Number(ss.cost) > 0);
+        if (withCost.length > 0) {
+          computed = withCost.reduce((s: number, ss: any) => s + Number(ss.cost), 0) / withCost.length;
+        }
+      }
+    }
+
+    const current = form.getValues('purchaseRate');
+    if (Math.abs(computed - current) > 0.001) {
+      form.setValue('purchaseRate', computed, { shouldDirty: false });
+    }
+  }, [watchedSupplierIds, watchedSupplierStocks, hasExpiry, hasVariants, form]);
 
   // Real-time stock / quantity calculations
   const totalBatchQuantity = useMemo(() => {
@@ -485,6 +516,8 @@ export default function InventoryForm() {
               form={form}
               hasExpiry={hasExpiry}
               averagePurchaseRate={averagePurchaseRate}
+              hasSupplier={!hasExpiry && watchedSupplierIds.length > 0}
+              isMultiSupplier={isMultiSupplier}
             />
 
             <Separator />

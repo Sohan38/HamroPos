@@ -9,9 +9,11 @@ import { cn } from '@/lib/utils';
 interface PricingSectionProps extends SectionProps {
   hasExpiry: boolean;
   averagePurchaseRate: number;
+  hasSupplier: boolean;
+  isMultiSupplier: boolean;
 }
 
-export const PricingSection = React.memo(({ form, hasExpiry, averagePurchaseRate }: PricingSectionProps) => {
+export const PricingSection = React.memo(({ form, hasExpiry, averagePurchaseRate, hasSupplier, isMultiSupplier }: PricingSectionProps) => {
   const sellingRate  = useWatch({ control: form.control, name: 'sellingRate'  }) ?? 0;
   const purchaseRate = useWatch({ control: form.control, name: 'purchaseRate' }) ?? 0;
 
@@ -74,10 +76,15 @@ export const PricingSection = React.memo(({ form, hasExpiry, averagePurchaseRate
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-3">
-          {/* Purchase cost */}
+          {/* Purchase cost — locked when a supplier is selected */}
           <FormField control={form.control} name="purchaseRate" render={({ field }) => (
             <FormItem>
-              <FormLabel>Purchase Cost <span className="text-muted-foreground font-normal text-[10px]">(optional)</span></FormLabel>
+              <FormLabel>
+                Purchase Cost{' '}
+                <span className="text-muted-foreground font-normal text-[10px]">
+                  {hasSupplier ? '' : '(optional)'}
+                </span>
+              </FormLabel>
               <FormControl>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm pointer-events-none">Rs.</span>
@@ -87,17 +94,25 @@ export const PricingSection = React.memo(({ form, hasExpiry, averagePurchaseRate
                     min={0}
                     placeholder="0.00"
                     {...field}
-                    value={field.value === 0 ? '' : field.value}
+                    value={field.value === 0 ? '' : Number(field.value).toFixed(hasSupplier ? 2 : undefined)}
                     onChange={e => field.onChange(e.target.value === '' ? 0 : Number(e.target.value))}
+                    readOnly={hasSupplier}
+                    disabled={hasSupplier}
                     className={cn(
                       'pl-10 transition-all',
-                      purchaseError  && 'border-destructive focus-visible:ring-destructive/30',
-                      purchaseValid && purchaseRate > 0 && 'border-green-400 focus-visible:ring-green-400/30'
+                      hasSupplier && 'bg-muted/60 text-muted-foreground cursor-not-allowed',
+                      !hasSupplier && purchaseError  && 'border-destructive focus-visible:ring-destructive/30',
+                      !hasSupplier && purchaseValid && purchaseRate > 0 && 'border-green-400 focus-visible:ring-green-400/30'
                     )}
                   />
                 </div>
               </FormControl>
-              <FormMessage className="text-xs" />
+              {hasSupplier && (
+                <p className="text-[10px] text-muted-foreground leading-snug">
+                  {isMultiSupplier ? 'Weighted avg. from suppliers' : 'Set in Supplier section below'}
+                </p>
+              )}
+              {!hasSupplier && <FormMessage className="text-xs" />}
             </FormItem>
           )} />
 

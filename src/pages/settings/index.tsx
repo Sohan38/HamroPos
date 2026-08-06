@@ -180,15 +180,17 @@ export default function Settings() {
             Configure default variables and device activations.
           </p>
         </div>
-        {/* Desktop Save Button (hidden on mobile to prevent clutter) */}
-        <div className="hidden sm:block">
-          <Button onClick={handleSave} size="default" className="shadow-sm">
-            <Save className="mr-2 h-4 w-4" /> Save Changes
-          </Button>
-        </div>
+        {/* Desktop Save Button (hidden on mobile, visible only when dirty and on editable tab) */}
+        {isDirty && (activeTab === 'profile' || activeTab === 'preferences') && (
+          <div className="hidden sm:block">
+            <Button onClick={handleSave} size="default" className="shadow-sm">
+              <Save className="mr-2 h-4 w-4" /> Save Changes
+            </Button>
+          </div>
+        )}
       </div>
 
-      <Tabs defaultValue="profile" className="space-y-6">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         {/* Horizontal overflow scrollable tab bar for mobile viewports */}
         <div className="w-full overflow-x-auto scrollbar-none -mx-3 px-3 sm:mx-0 sm:px-0">
           <TabsList className="flex w-max sm:w-full border border-border bg-muted/40 p-1 rounded-lg gap-1 min-w-full">
@@ -388,12 +390,17 @@ export default function Settings() {
         </TabsContent>
       </Tabs>
 
-      {/* Floating Bottom Sticky Action Bar for Mobile Screens (rendered above BottomNav) */}
-      <div className="sm:hidden fixed bottom-16 left-0 right-0 bg-background/90 backdrop-blur-md border-t border-border p-3 flex justify-end z-30 shadow-md">
-        <Button onClick={handleSave} size="default" className="w-full h-11 text-sm shadow-md font-medium flex items-center justify-center gap-2">
-          <Save className="h-4 w-4" /> Save Changes
-        </Button>
-      </div>
+      {/* Floating Bottom Sticky Action Bar for Mobile (rendered only when dirty on profile/preferences tabs) */}
+      {isDirty && (activeTab === 'profile' || activeTab === 'preferences') && (
+        <div className="sm:hidden fixed bottom-[76px] left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-sm bg-card/90 dark:bg-card/95 backdrop-blur-md border border-border p-2 rounded-full flex items-center justify-between z-30 shadow-xl animate-in fade-in slide-in-from-bottom-5 duration-300">
+          <span className="text-xs font-medium text-foreground pl-3">
+            Unsaved changes
+          </span>
+          <Button onClick={handleSave} size="sm" className="rounded-full px-4 h-9 text-xs shadow-sm font-semibold flex items-center gap-1.5 bg-primary text-primary-foreground">
+            <Save className="h-3.5 w-3.5" /> Save
+          </Button>
+        </div>
+      )}
 
       <ConfirmDialog
         isOpen={showImportConfirm}

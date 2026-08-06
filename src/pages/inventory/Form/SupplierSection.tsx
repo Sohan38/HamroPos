@@ -20,17 +20,26 @@ export const SupplierSection = React.memo(({ form, suppliers, onSupplierNew }: S
   const isMultiSupplier = selectedSupplierIds.length >= 2;
 
   const toggleSupplier = useCallback((sid: string) => {
-    const next = selectedSupplierIds.includes(sid)
-      ? selectedSupplierIds.filter(s => s !== sid)
-      : [...selectedSupplierIds, sid];
+    const isAdding = !selectedSupplierIds.includes(sid);
+    const next = isAdding
+      ? [...selectedSupplierIds, sid]
+      : selectedSupplierIds.filter(s => s !== sid);
 
     form.setValue('supplierIds', next, { shouldDirty: true });
 
-    // Sync supplierStocks: add or remove entries as suppliers change
+    // Sync supplierStocks: add or remove entries as suppliers change.
+    // When adding a new supplier, seed its cost from the current global purchaseRate.
+    // For stock: only the FIRST supplier selected inherits the global stock value;
+    // subsequent suppliers start at 0 so the user can split stock manually.
     const currentStocks: any[] = form.getValues('supplierStocks') ?? [];
+    const currentPurchaseRate = form.getValues('purchaseRate') ?? 0;
+    const isFirstSupplier = isAdding && next.length === 1;
+    const globalStock = isFirstSupplier ? (form.getValues('quantity') ?? 0) : 0;
     const nextStocks = next.map(id => {
       const existing = currentStocks.find((ss: any) => ss.supplierId === id);
-      return existing ?? { supplierId: id, cost: 0, stock: 0, supplierSku: '', reorderLevel: undefined, notes: '' };
+      if (existing) return existing;
+      // New supplier: seed cost (always) and stock (only for the very first supplier)
+      return { supplierId: id, cost: currentPurchaseRate, stock: globalStock, supplierSku: '', reorderLevel: undefined, notes: '' };
     });
     form.setValue('supplierStocks', nextStocks, { shouldDirty: true });
   }, [selectedSupplierIds, form]);
