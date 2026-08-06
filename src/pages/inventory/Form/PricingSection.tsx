@@ -1,7 +1,7 @@
 import React from 'react';
 import { FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { CheckCircle2, TrendingUp, TrendingDown } from 'lucide-react';
+import { CheckCircle2, TrendingUp, TrendingDown, Lock } from 'lucide-react';
 import { SectionProps } from './types';
 import { useWatch } from 'react-hook-form';
 import { cn } from '@/lib/utils';
@@ -19,48 +19,39 @@ export const PricingSection = React.memo(({ form, hasExpiry, averagePurchaseRate
 
   const effectivePurchase = hasExpiry ? averagePurchaseRate : purchaseRate;
   const profitPerUnit = sellingRate - effectivePurchase;
-  const profitMargin  = sellingRate > 0
-    ? Math.round((profitPerUnit / sellingRate) * 100)
-    : 0;
+  const profitMargin  = sellingRate > 0 ? Math.round((profitPerUnit / sellingRate) * 100) : 0;
 
   const sellingError  = form.formState.errors.sellingRate?.message;
   const purchaseError = form.formState.errors.purchaseRate?.message;
-
-  const sellingValid  = !sellingError  && sellingRate  > 0;
+  const sellingValid  = !sellingError && sellingRate > 0;
   const purchaseValid = !purchaseError && purchaseRate >= 0;
-
-  const isProfit = profitPerUnit >= 0;
+  const isProfit      = profitPerUnit >= 0;
 
   return (
-    <section className="px-4 py-4 space-y-3">
+    <section className="px-4 py-4 space-y-4">
       <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Pricing</p>
 
       {hasExpiry ? (
-        <div className="space-y-2">
-          {/* Selling price only (purchase cost comes from batches) */}
+        /* Expiry mode — only selling price editable */
+        <div className="space-y-3">
           <FormField control={form.control} name="sellingRate" render={({ field }) => (
             <FormItem>
-              <FormLabel>Selling Price (MRP) *</FormLabel>
+              <FormLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Selling Price (MRP) *</FormLabel>
               <FormControl>
                 <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm pointer-events-none">Rs.</span>
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground text-sm font-medium pointer-events-none select-none">Rs.</span>
                   <Input
-                    type="number"
-                    step="0.01"
-                    min={0.01}
-                    placeholder="0.00"
+                    type="number" step="0.01" min={0.01} placeholder="0.00"
                     {...field}
                     value={field.value === 0 ? '' : field.value}
                     onChange={e => field.onChange(e.target.value === '' ? 0 : Number(e.target.value))}
                     className={cn(
-                      'pl-10 transition-all',
-                      sellingError  && 'border-destructive focus-visible:ring-destructive/30',
-                      sellingValid  && 'border-green-400 focus-visible:ring-green-400/30'
+                      'pl-11 h-11 text-base font-medium transition-colors',
+                      sellingError && 'border-destructive focus-visible:ring-destructive/30',
+                      sellingValid && 'border-green-400 focus-visible:ring-green-400/30'
                     )}
                   />
-                  {sellingValid && (
-                    <CheckCircle2 className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-green-500 pointer-events-none" />
-                  )}
+                  {sellingValid && <CheckCircle2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-green-500 pointer-events-none" />}
                 </div>
               </FormControl>
               <FormMessage className="text-xs" />
@@ -68,78 +59,71 @@ export const PricingSection = React.memo(({ form, hasExpiry, averagePurchaseRate
           )} />
 
           {averagePurchaseRate > 0 && (
-            <div className="flex items-center justify-between bg-muted/50 rounded-lg px-3 py-2.5 text-sm">
-              <span className="text-muted-foreground">Avg. purchase cost (from batches)</span>
-              <span className="font-semibold">Rs. {averagePurchaseRate.toFixed(2)}</span>
+            <div className="flex items-center justify-between bg-muted/50 rounded-2xl px-4 py-3 text-sm border border-muted/60">
+              <span className="text-muted-foreground text-xs">Avg. purchase cost (from batches)</span>
+              <span className="font-bold">Rs. {averagePurchaseRate.toFixed(2)}</span>
             </div>
           )}
         </div>
       ) : (
+        /* Normal / supplier mode */
         <div className="grid grid-cols-2 gap-3">
-          {/* Purchase cost — locked when a supplier is selected */}
+          {/* Purchase cost — locked when supplier active */}
           <FormField control={form.control} name="purchaseRate" render={({ field }) => (
             <FormItem>
-              <FormLabel>
-                Purchase Cost{' '}
-                <span className="text-muted-foreground font-normal text-[10px]">
-                  {hasSupplier ? '' : '(optional)'}
-                </span>
+              <FormLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                Purchase Cost
+                {!hasSupplier && <span className="font-normal normal-case tracking-normal opacity-60 ml-1">(opt.)</span>}
               </FormLabel>
               <FormControl>
                 <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm pointer-events-none">Rs.</span>
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground text-sm font-medium pointer-events-none select-none">Rs.</span>
                   <Input
-                    type="number"
-                    step="0.01"
-                    min={0}
-                    placeholder="0.00"
+                    type="number" step="0.01" min={0} placeholder="0.00"
                     {...field}
                     value={field.value === 0 ? '' : Number(field.value).toFixed(hasSupplier ? 2 : undefined)}
                     onChange={e => field.onChange(e.target.value === '' ? 0 : Number(e.target.value))}
                     readOnly={hasSupplier}
                     disabled={hasSupplier}
                     className={cn(
-                      'pl-10 transition-all',
-                      hasSupplier && 'bg-muted/60 text-muted-foreground cursor-not-allowed',
-                      !hasSupplier && purchaseError  && 'border-destructive focus-visible:ring-destructive/30',
+                      'pl-11 h-11 text-base font-medium transition-colors',
+                      hasSupplier && 'bg-muted/60 text-muted-foreground cursor-not-allowed pr-9',
+                      !hasSupplier && purchaseError && 'border-destructive focus-visible:ring-destructive/30',
                       !hasSupplier && purchaseValid && purchaseRate > 0 && 'border-green-400 focus-visible:ring-green-400/30'
                     )}
                   />
+                  {hasSupplier && <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/50 pointer-events-none" />}
                 </div>
               </FormControl>
-              {hasSupplier && (
-                <p className="text-[10px] text-muted-foreground leading-snug">
-                  {isMultiSupplier ? 'Weighted avg. from suppliers' : 'Set in Supplier section below'}
+              {hasSupplier ? (
+                <p className="text-[10px] text-muted-foreground leading-snug mt-1">
+                  {isMultiSupplier ? 'Weighted avg. from suppliers' : 'Set in Suppliers section below'}
                 </p>
+              ) : (
+                <FormMessage className="text-xs" />
               )}
-              {!hasSupplier && <FormMessage className="text-xs" />}
             </FormItem>
           )} />
 
           {/* Selling price */}
           <FormField control={form.control} name="sellingRate" render={({ field }) => (
             <FormItem>
-              <FormLabel>Selling Price (MRP) *</FormLabel>
+              <FormLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Selling Price *</FormLabel>
               <FormControl>
                 <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm pointer-events-none">Rs.</span>
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground text-sm font-medium pointer-events-none select-none">Rs.</span>
                   <Input
-                    type="number"
-                    step="0.01"
-                    min={0.01}
-                    placeholder="0.00"
+                    type="number" step="0.01" min={0.01} placeholder="0.00"
                     {...field}
                     value={field.value === 0 ? '' : field.value}
                     onChange={e => field.onChange(e.target.value === '' ? 0 : Number(e.target.value))}
                     className={cn(
-                      'pl-10 transition-all',
-                      sellingError  && 'border-destructive focus-visible:ring-destructive/30',
-                      sellingValid  && 'border-green-400 focus-visible:ring-green-400/30'
+                      'pl-11 h-11 text-base font-medium transition-colors',
+                      sellingError && 'border-destructive focus-visible:ring-destructive/30',
+                      sellingValid && 'border-green-400 focus-visible:ring-green-400/30'
                     )}
                   />
-                  {sellingValid && (
-                    <CheckCircle2 className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-green-500 pointer-events-none" />
-                  )}
+                  {sellingValid && <CheckCircle2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-green-500 pointer-events-none" />}
                 </div>
               </FormControl>
               <FormMessage className="text-xs" />
@@ -148,10 +132,10 @@ export const PricingSection = React.memo(({ form, hasExpiry, averagePurchaseRate
         </div>
       )}
 
-      {/* Live profit indicator — only shows when selling price is set */}
+      {/* Live profit card */}
       {sellingRate > 0 && (
         <div className={cn(
-          'flex items-center justify-between px-3 py-2.5 rounded-xl border text-sm transition-all',
+          'flex items-center justify-between px-4 py-3 rounded-2xl border transition-all',
           isProfit
             ? 'bg-green-50 border-green-200 dark:bg-green-950/30 dark:border-green-800'
             : 'bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-800'
@@ -159,11 +143,13 @@ export const PricingSection = React.memo(({ form, hasExpiry, averagePurchaseRate
           <div className="flex items-center gap-2">
             {isProfit
               ? <TrendingUp  className="h-4 w-4 text-green-600" />
-              : <TrendingDown className="h-4 w-4 text-destructive" />}
-            <span className="font-medium">Profit per unit</span>
+              : <TrendingDown className="h-4 w-4 text-red-600" />}
+            <span className={cn('text-sm font-medium', isProfit ? 'text-green-800 dark:text-green-300' : 'text-red-800 dark:text-red-300')}>
+              Profit per unit
+            </span>
           </div>
           <div className="text-right leading-tight">
-            <span className={cn('font-bold tabular-nums', isProfit ? 'text-green-700' : 'text-destructive')}>
+            <span className={cn('text-base font-bold tabular-nums', isProfit ? 'text-green-700' : 'text-red-600')}>
               {isProfit ? '+' : ''}{profitPerUnit.toFixed(2)}
             </span>
             {effectivePurchase > 0 && (
@@ -173,11 +159,10 @@ export const PricingSection = React.memo(({ form, hasExpiry, averagePurchaseRate
         </div>
       )}
 
-      {/* Gentle warning when selling below cost — not an error, just a nudge */}
+      {/* Below-cost warning */}
       {sellingRate > 0 && effectivePurchase > 0 && !isProfit && (
         <p className="text-xs text-amber-600 dark:text-amber-400 flex items-start gap-1.5 -mt-1">
-          <span>⚠️</span>
-          Selling below cost — you'll lose money on each sale. You can still save.
+          <span>⚠️</span> Selling below cost — you'll lose money on each sale.
         </p>
       )}
     </section>

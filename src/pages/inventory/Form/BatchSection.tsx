@@ -2,6 +2,7 @@ import React from 'react';
 import { FormField } from '@/components/ui/form';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { FlaskConical, Info, Plus, Pencil, Trash2 } from 'lucide-react';
 import { SectionProps } from './types';
 import { ProductBatch } from '@/types';
@@ -27,7 +28,7 @@ export const BatchSection = React.memo(({
   localBatches,
   onAddBatch,
   onEditBatch,
-  onDeleteBatch
+  onDeleteBatch,
 }: BatchSectionProps) => {
   if (!isExpiryEnabled || !isBatchesEnabled) return null;
 
@@ -37,47 +38,58 @@ export const BatchSection = React.memo(({
 
   return (
     <section className="px-4 py-4 space-y-4">
+      {/* Toggle card */}
       <FormField control={form.control} name="hasExpiry" render={({ field }) => (
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className={`p-1.5 rounded-lg shrink-0 ${hasExpiry ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
+        <div
+          className={`flex items-center justify-between gap-4 rounded-2xl border px-4 py-3 transition-colors cursor-pointer ${
+            hasExpiry
+              ? 'border-primary/30 bg-primary/5'
+              : 'border-border bg-muted/20'
+          }`}
+          onClick={() => {
+            const next = !field.value;
+            field.onChange(next);
+            onToggleExpiry(next);
+          }}
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <div className={`p-2 rounded-xl shrink-0 transition-colors ${hasExpiry ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
               <FlaskConical className="h-4 w-4" />
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-medium leading-tight">Track Expiry &amp; Batches</p>
+              <p className="text-sm font-semibold leading-tight">Track Expiry & Batches</p>
               <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
-                {hasExpiry
-                  ? 'Stock, cost & supplier per batch'
-                  : 'Enable for products with expiry dates'}
+                {hasExpiry ? 'Stock, cost & supplier per batch' : 'For products with expiry dates'}
               </p>
             </div>
           </div>
           <Switch
             checked={field.value ?? false}
-            onCheckedChange={(checked) => {
-              field.onChange(checked);
-              onToggleExpiry(checked);
-            }}
-            className="shrink-0"
+            onCheckedChange={(checked) => { field.onChange(checked); onToggleExpiry(checked); }}
+            className="shrink-0 pointer-events-none"
           />
         </div>
       )} />
 
       {hasExpiry && (
         <>
-          <p className="text-xs text-muted-foreground flex items-start gap-1.5 pt-1 pl-0.5">
+          <p className="text-xs text-muted-foreground flex items-start gap-1.5 pl-0.5">
             <Info className="h-3.5 w-3.5 mt-0.5 text-blue-500 shrink-0" />
-            Sold FEFO (earliest expiry first). Purchase cost is the weighted average across all batches.
+            Sold FEFO — earliest expiry first. Purchase cost = weighted avg of all batches.
           </p>
 
-          <div className="space-y-3 pt-2">
+          <div className="space-y-2.5">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Batches List</span>
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Batches
+                {sortedBatches.length > 0 && (
+                  <Badge variant="secondary" className="ml-2 text-[10px] px-1.5 py-0">{sortedBatches.length}</Badge>
+                )}
+              </span>
               <Button
                 type="button"
-                variant="outline"
                 size="sm"
-                className="h-8 gap-1 text-xs"
+                className="h-8 gap-1.5 text-xs rounded-xl"
                 onClick={onAddBatch}
               >
                 <Plus className="h-3.5 w-3.5" /> Add Batch
@@ -85,43 +97,38 @@ export const BatchSection = React.memo(({
             </div>
 
             {sortedBatches.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-6 border border-dashed rounded-lg bg-muted/10">
-                No batches added yet. Add at least one batch to track expiry.
-              </p>
+              <div
+                className="flex flex-col items-center justify-center py-7 border-2 border-dashed border-muted rounded-2xl bg-muted/10 cursor-pointer active:bg-muted/30 transition-colors"
+                onClick={onAddBatch}
+              >
+                <FlaskConical className="h-8 w-8 text-muted-foreground/30 mb-2" />
+                <p className="text-sm font-medium text-muted-foreground">No batches yet</p>
+                <p className="text-xs text-muted-foreground/60 mt-0.5">Tap to add your first batch</p>
+              </div>
             ) : (
-              <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+              <div className="space-y-2 max-h-[280px] overflow-y-auto pr-0.5">
                 {sortedBatches.map(batch => (
-                  <div key={batch.id} className="flex items-center justify-between p-3 bg-muted/30 rounded-xl border border-muted/50 text-sm gap-2">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold truncate">{batch.batchNumber}</span>
-                        {batch.expiryDate && (
-                          <ExpiryBadge expiryDate={batch.expiryDate} />
-                        )}
+                  <div key={batch.id} className="flex items-center gap-2 p-3 bg-muted/30 rounded-2xl border border-muted/60">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-sm font-semibold">{batch.batchNumber}</span>
+                        {batch.expiryDate && <ExpiryBadge expiryDate={batch.expiryDate} />}
                       </div>
-                      <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
-                        <span>Stock: <strong className="text-foreground">{batch.quantity}</strong></span>
+                      <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                        <span>Qty: <strong className="text-foreground">{batch.quantity}</strong></span>
                         <span>Cost: <strong className="text-foreground">Rs. {batch.purchaseRate.toFixed(1)}</strong></span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted"
-                        onClick={() => onEditBatch(batch)}
-                      >
-                        <Pencil className="h-4 w-4" />
+                    <div className="flex items-center gap-0.5 shrink-0">
+                      <Button type="button" variant="ghost" size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                        onClick={() => onEditBatch(batch)}>
+                        <Pencil className="h-3.5 w-3.5" />
                       </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                        onClick={() => onDeleteBatch(batch.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
+                      <Button type="button" variant="ghost" size="icon"
+                        className="h-8 w-8 text-destructive hover:bg-destructive/10"
+                        onClick={() => onDeleteBatch(batch.id)}>
+                        <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     </div>
                   </div>

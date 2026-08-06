@@ -13,55 +13,53 @@ interface SaveBarProps {
 
 export const SaveBar = React.memo(({ onBack, isSaving = false, form }: SaveBarProps) => {
   const { formState: { errors, isSubmitted } } = form;
-
-  // Count of unique error fields — only surface after first submit attempt
   const errorCount = isSubmitted ? Object.keys(errors).length : 0;
 
   return (
-    // Added negative margins (-mx-4, -mb-4) to break out of parent's padding
-    <div className="sticky bottom-0 left-0 right-0 z-40 -mx-4 -mb-4 md:-mx-6 md:-mb-6 border-t bg-background/95 px-4 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-[0_-8px_16px_-8px_rgba(0,0,0,0.1)] backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:px-6">
+    <div className={cn(
+      'sticky bottom-0 left-0 right-0 z-40 -mx-4 -mb-4 md:-mx-6 md:-mb-6',
+      'border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80',
+      'px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]',
+      'shadow-[0_-8px_24px_-4px_rgba(0,0,0,0.08)]'
+    )}>
+      <div className="mx-auto flex w-full max-w-4xl flex-col gap-2.5 md:flex-row md:items-center md:justify-end">
 
-      {/* Container to align content properly on larger screens */}
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-3 md:flex-row md:items-center md:justify-end">
-
-        {/* Error summary nudge — shows only after submit with errors */}
+        {/* Error nudge */}
         {errorCount > 0 && (
-          <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive animate-in slide-in-from-bottom-2 duration-200 md:mr-auto md:max-w-sm">
-            <AlertCircle className="h-4 w-4 shrink-0" />
+          <div className="flex items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive animate-in slide-in-from-bottom-2 duration-200 md:mr-auto">
+            <AlertCircle className="h-3.5 w-3.5 shrink-0" />
             <span>
-              {errorCount === 1
-                ? 'Fix 1 field above to continue'
-                : `Fix ${errorCount} fields above to continue`}
+              {errorCount === 1 ? 'Fix 1 issue above to save' : `Fix ${errorCount} issues above to save`}
             </span>
           </div>
         )}
 
-        {/* Action Buttons */}
-        <div className="flex w-full items-center gap-3 md:w-auto">
+        {/* Buttons */}
+        <div className="flex w-full items-center gap-2.5 md:w-auto">
           <Button
             type="button"
             variant="outline"
             onClick={onBack}
-            className="flex-1 md:flex-initial"
+            className="flex-1 h-11 rounded-2xl md:flex-initial border-border"
             disabled={isSaving}
           >
-            <ArrowLeft className="mr-2 h-4 w-4" /> Cancel
+            <ArrowLeft className="mr-1.5 h-4 w-4" /> Cancel
           </Button>
 
           <Button
             type="submit"
             className={cn(
-              'flex-1 transition-all md:flex-initial',
+              'flex-[2] h-11 rounded-2xl font-semibold text-sm md:flex-initial md:min-w-[140px]',
+              'bg-primary hover:bg-primary/90 transition-all',
               errorCount > 0 && 'opacity-80'
             )}
             disabled={isSaving}
           >
             {isSaving ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving…</>
             ) : (
-              <Save className="mr-2 h-4 w-4" />
+              <><Save className="mr-2 h-4 w-4" /> Save Product</>
             )}
-            {isSaving ? 'Saving...' : 'Save Product'}
           </Button>
         </div>
       </div>
