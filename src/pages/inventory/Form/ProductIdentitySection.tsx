@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Camera, CheckCircle2, X } from 'lucide-react';
@@ -7,16 +7,19 @@ import { toast } from 'sonner';
 import { useWatch } from 'react-hook-form';
 import { cn } from '@/lib/utils';
 import { BarcodeScanner } from '@/components/BarcodeScanner';
+import { rankSearch } from '@/utils/search/rank';
 
 interface ProductIdentitySectionProps extends SectionProps {
   isNew: boolean;
   existingCategories: string[];
+  existingBrands: string[];
 }
 
-export const ProductIdentitySection = React.memo(({ form, isNew, existingCategories }: ProductIdentitySectionProps) => {
+export const ProductIdentitySection = React.memo(({ form, isNew, existingCategories, existingBrands }: ProductIdentitySectionProps) => {
   const imageBase64   = useWatch({ control: form.control, name: 'imageBase64' }) ?? '';
   const nameValue     = useWatch({ control: form.control, name: 'name' })        ?? '';
   const categoryValue = useWatch({ control: form.control, name: 'category' })   ?? '';
+  const brandValue    = useWatch({ control: form.control, name: 'brand' })      ?? '';
 
   const handleImageUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -31,6 +34,19 @@ export const ProductIdentitySection = React.memo(({ form, isNew, existingCategor
   const categoryError = form.formState.errors.category?.message;
   const nameOk        = !nameError && nameValue.length >= 2;
   const categoryOk    = !categoryError && categoryValue.length > 0;
+
+  // Optimize searches: compute ranked results only when input query changes, preventing excessive re-runs
+  const filteredCategories = useMemo(() => {
+    const query = categoryValue.trim();
+    if (!query) return existingCategories.slice(0, 12);
+    return rankSearch(existingCategories.map(cat => ({ name: cat })), query, 12).map(i => i.name);
+  }, [categoryValue, existingCategories]);
+
+  const filteredBrands = useMemo(() => {
+    const query = brandValue.trim();
+    if (!query) return existingBrands.slice(0, 8);
+    return rankSearch(existingBrands.map(b => ({ name: b })), query, 8).map(i => i.name);
+  }, [brandValue, existingBrands]);
 
   return (
     <section className="px-4 py-5 space-y-4">
@@ -123,9 +139,9 @@ export const ProductIdentitySection = React.memo(({ form, isNew, existingCategor
               )}
             />
           </FormControl>
-          {existingCategories.length > 0 && (
+          {filteredCategories.length > 0 && (
             <div className="flex gap-1.5 overflow-x-auto py-2 no-scrollbar">
-              {existingCategories.map(cat => (
+              {filteredCategories.map((cat: string) => (
                 <button
                   key={cat}
                   type="button"
@@ -146,34 +162,52 @@ export const ProductIdentitySection = React.memo(({ form, isNew, existingCategor
         </FormItem>
       )} />
 
-      {/* Barcode + Brand */}
-      <div className="grid grid-cols-2 gap-3">
-        <FormField control={form.control} name="barcode" render={({ field }) => (
-          <FormItem>
-            <FormLabel className="text-xs font-medium text-muted-foreground">Barcode <span className="opacity-60">(opt.)</span></FormLabel>
-            <div className="flex items-center gap-1.5">
-              <FormControl>
-                <Input placeholder="Scan or type" {...field} className="h-9" />
-              </FormControl>
-              <BarcodeScanner
-                className="h-9 w-9 shrink-0"
-                onScan={(code) => form.setValue('barcode', code, { shouldValidate: true })}
-              />
-            </div>
-            <FormMessage className="text-xs" />
-          </FormItem>
-        )} />
-
-        <FormField control={form.control} name="brand" render={({ field }) => (
-          <FormItem>
-            <FormLabel className="text-xs font-medium text-muted-foreground">Brand <span className="opacity-60">(opt.)</span></FormLabel>
+      {/* Barcode (Full Line) */}
+      <FormField control={form.control} name="barcode" render={({ field }) => (
+        <FormItem>
+          <FormLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Barcode <span className="font-normal normal-case tracking-normal opacity-60 ml-1">(opt.)</span></FormLabel>
+          <div className="flex items-center gap-1.5">
             <FormControl>
-              <Input placeholder="e.g. Coca-Cola" {...field} className="h-9" />
+              <Input placeholder="Scan or type barcode" {...field} className="h-9" />
             </FormControl>
-            <FormMessage className="text-xs" />
-          </FormItem>
-        )} />
-      </div>
+            <BarcodeScanner
+              className="h-9 w-9 shrink-0"
+              onScan={(code) => form.setValue('barcode', code, { shouldValidate: true })}
+            />
+          </div>
+          <FormMessage className="text-xs" />
+        </FormItem>
+      )} />
+
+      {/* Brand (Full Line) */}
+      <FormField control={form.control} name="brand" render={({ field }) => (
+        <FormItem>
+          <FormLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Brand <span className="font-normal normal-case tracking-normal opacity-60 ml-1">(opt.)</span></FormLabel>
+          <FormControl>
+            <Input placeholder="e.g. Coca-Cola" {...field} className="h-9" />
+          </FormControl>
+          {filteredBrands.length > 0 && (
+            <div className="flex gap-1.5 overflow-x-auto py-1.5 no-scrollbar">
+              {filteredBrands.map((b: string) => (
+                <button
+                  key={b}
+                  type="button"
+                  onClick={() => form.setValue('brand', b, { shouldValidate: true, shouldTouch: true })}
+                  className={cn(
+                    'text-[10px] px-2.5 py-1 rounded-full border shrink-0 font-medium transition-all',
+                    field.value === b
+                      ? 'bg-primary border-primary text-primary-foreground shadow-sm'
+                      : 'bg-muted/50 border-muted-foreground/20 text-muted-foreground hover:bg-muted'
+                  )}
+                >
+                  {b}
+                </button>
+              ))}
+            </div>
+          )}
+          <FormMessage className="text-xs" />
+        </FormItem>
+      )} />
     </section>
   );
 });

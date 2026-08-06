@@ -39,9 +39,10 @@ interface SupplierFormProps {
     onSuccess?: (supplierId: string) => void;
     onCancel?: () => void;
     isModal?: boolean;
+    defaultName?: string;
 }
 
-export default function SupplierForm({ id: propId, onSuccess, onCancel, isModal = false }: SupplierFormProps = {}) {
+export default function SupplierForm({ id: propId, onSuccess, onCancel, isModal = false, defaultName = '' }: SupplierFormProps = {}) {
     const goBack = useSmartBack('/suppliers');
     const { id: routeId } = useParams<{ id: string }>();
     const id = propId !== undefined ? propId : routeId;
@@ -51,7 +52,10 @@ export default function SupplierForm({ id: propId, onSuccess, onCancel, isModal 
     const isNew = !id || id === 'new';
     const existing = !isNew ? items.find(s => s.id === id) : null;
 
-    const [form, setForm] = useState<FormData>(EMPTY_FORM);
+    const [form, setForm] = useState<FormData>(() => ({
+        ...EMPTY_FORM,
+        name: defaultName,
+    }));
     const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({});
     const [saving, setSaving] = useState(false);
     const [isSubmitted, setIsSubmitted] = useState(false);

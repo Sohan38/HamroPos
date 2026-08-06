@@ -51,9 +51,10 @@ export default function InventoryForm() {
   const [batchDialogOpen, setBatchDialogOpen] = useState(false);
   const [editingBatch, setEditingBatch] = useState<ProductBatch | null>(null);
   const [supplierAutoSelected, setSupplierAutoSelected] = useState(false);
+  const [supplierPresetName, setSupplierPresetName] = useState('');
   const [supplierDialogOpen, setSupplierDialogOpen] = useState(false);
 
-  // Populate local batches from storage when editing
+  // Local batch handlers
   useEffect(() => {
     if (!isNew && existingProduct) {
       setLocalBatches(allBatches.filter(b => b.productId === existingProduct.id));
@@ -135,6 +136,15 @@ export default function InventoryForm() {
       if (item.category) cats.add(item.category.trim());
     }
     return Array.from(cats).sort().slice(0, 12);
+  }, [items]);
+
+  // Generate unique brands list from catalog
+  const existingBrands = useMemo(() => {
+    const brands = new Set<string>();
+    for (const item of items) {
+      if (item.brand?.trim()) brands.add(item.brand.trim());
+    }
+    return Array.from(brands).sort();
   }, [items]);
 
   // Compute average purchase cost from batches (expiry mode)
@@ -478,10 +488,11 @@ export default function InventoryForm() {
         <form onSubmit={form.handleSubmit(onSubmit)}>
           <div className="md:rounded-2xl md:border md:bg-card md:overflow-hidden md:shadow-sm">
             {/* Identity */}
-            <ProductIdentitySection
+             <ProductIdentitySection
               form={form}
               isNew={isNew}
               existingCategories={existingCategories}
+              existingBrands={existingBrands}
             />
 
             <Separator />
@@ -541,7 +552,10 @@ export default function InventoryForm() {
                 <SupplierSection
                   form={form}
                   suppliers={suppliers}
-                  onSupplierNew={() => setSupplierDialogOpen(true)}
+                  onSupplierNew={(nameValue) => {
+                    setSupplierPresetName(nameValue ?? '');
+                    setSupplierDialogOpen(true);
+                  }}
                 />
                 <Separator />
               </>
@@ -570,7 +584,8 @@ export default function InventoryForm() {
       {/* Supplier Dialog */}
       <SupplierFormDialog
         open={supplierDialogOpen}
-        onClose={() => setSupplierDialogOpen(false)}
+        onClose={() => { setSupplierDialogOpen(false); setSupplierPresetName(''); }}
+        defaultName={supplierPresetName}
         onSuccess={(newSupplierId) => {
           const currentSupplierIds = form.getValues('supplierIds') ?? [];
           if (!currentSupplierIds.includes(newSupplierId)) {

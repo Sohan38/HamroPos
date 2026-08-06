@@ -6,9 +6,10 @@ interface SupplierFormDialogProps {
   open: boolean;
   onClose: () => void;
   onSuccess: (supplierId: string) => void;
+  defaultName?: string;
 }
 
-export function SupplierFormDialog({ open, onClose, onSuccess }: SupplierFormDialogProps) {
+export function SupplierFormDialog({ open, onClose, onSuccess, defaultName }: SupplierFormDialogProps) {
   useBackModal(open, onClose, 'supplier-form-dialog');
 
   return (
@@ -17,7 +18,7 @@ export function SupplierFormDialog({ open, onClose, onSuccess }: SupplierFormDia
         <DialogHeader>
           <DialogTitle>Add New Supplier</DialogTitle>
         </DialogHeader>
-        <SupplierForm isModal onSuccess={onSuccess} onCancel={onClose} />
+        <SupplierForm isModal onSuccess={onSuccess} onCancel={onClose} defaultName={defaultName} />
       </DialogContent>
     </Dialog>
   );
