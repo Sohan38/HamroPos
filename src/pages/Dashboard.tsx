@@ -11,14 +11,12 @@ import { Badge } from '@/components/ui/badge';
 import {
   ShoppingCart, Truck, UtensilsCrossed, Hotel, Receipt, Banknote,
   TrendingUp, TrendingDown, Package, AlertTriangle, Wallet,
-  BarChart3, ArrowUpRight, Users,
+  BarChart3, ArrowUpRight, Users, ArrowUpFromLine
 } from 'lucide-react';
-import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, BarChart, Bar, Legend,
-} from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend } from 'recharts';
 import { useApp } from '@/contexts/AppContext';
 import { useFeature } from '@/hooks/useFeature';
+import { cn } from '@/lib/utils';
 
 // Compute cost-of-goods-sold for a set of sales using current inventory data for purchase rates
 function computeCOGS(
@@ -269,79 +267,149 @@ export default function Dashboard() {
         </Button>
       </div>
 
-      {/* Today's key metrics — 2×2 on mobile */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card className="bg-primary text-primary-foreground border-none">
-          <CardContent className="p-4">
-            <p className="text-xs font-medium opacity-80">Today's Sales</p>
-            <h2 className="text-xl font-bold mt-1">{formatCurrency(metrics.todayRevenue)}</h2>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs font-medium text-muted-foreground">Today's Expenses</p>
-            <h2 className="text-xl font-bold mt-1 text-destructive">{formatCurrency(metrics.todayExpensesTotal)}</h2>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs font-medium text-muted-foreground">Gross Profit</p>
-            <div className="flex items-center gap-1 mt-1">
-              <h2 className={`text-xl font-bold ${metrics.todayGrossProfit >= 0 ? 'text-green-600' : 'text-destructive'}`}>
-                {formatCurrency(Math.abs(metrics.todayGrossProfit))}
-              </h2>
-              {metrics.todayGrossProfit >= 0
-                ? <TrendingUp className="h-4 w-4 text-green-600" />
-                : <TrendingDown className="h-4 w-4 text-destructive" />}
+      {/* Primary Key Metrics Section */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <Card className="border border-primary/10 bg-primary/[0.03] dark:bg-primary/[0.01] rounded-2xl shadow-sm hover:shadow-md transition-all duration-300">
+          <CardContent className="p-5 flex items-center justify-between">
+            <div className="space-y-1">
+              <p className="text-[11px] font-bold text-primary/80 uppercase tracking-wider">Today's Sales</p>
+              <h2 className="text-2xl font-black text-primary tracking-tight">{formatCurrency(metrics.todayRevenue)}</h2>
+            </div>
+            <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+              <ShoppingCart className="h-5 w-5" />
             </div>
           </CardContent>
         </Card>
-        <Card className="cursor-pointer hover:bg-muted/40 transition-colors" onClick={() => setLocation('/credit')}>
-          <CardContent className="p-4">
-            <p className="text-xs font-medium text-muted-foreground">Pending Credit (Udharo)</p>
-            <h2 className="text-xl font-bold mt-1 text-orange-500">{formatCurrency(metrics.pendingCreditTotal)}</h2>
+
+        <Card className="border border-rose-500/10 bg-rose-500/[0.02] dark:bg-rose-500/[0.01] rounded-2xl shadow-sm hover:shadow-md transition-all duration-300">
+          <CardContent className="p-5 flex items-center justify-between">
+            <div className="space-y-1">
+              <p className="text-[11px] font-bold text-rose-700/80 uppercase tracking-wider">Today's Expenses</p>
+              <h2 className="text-2xl font-black text-rose-600 tracking-tight">{formatCurrency(metrics.todayExpensesTotal)}</h2>
+            </div>
+            <div className="h-10 w-10 rounded-xl bg-rose-500/10 flex items-center justify-center text-rose-600">
+              <Receipt className="h-5 w-5" />
+            </div>
           </CardContent>
         </Card>
-        <Card className="cursor-pointer hover:bg-muted/40 transition-colors" onClick={() => setLocation('/payables')}>
-          <CardContent className="p-4">
-            <p className="text-xs font-medium text-muted-foreground">Pending Payables</p>
-            <h2 className="text-xl font-bold mt-1 text-red-500">{formatCurrency(metrics.pendingPayablesTotal)}</h2>
+
+        <Card className={cn(
+          "border rounded-2xl shadow-sm hover:shadow-md transition-all duration-300",
+          metrics.todayGrossProfit >= 0 
+            ? "border-emerald-500/10 bg-emerald-500/[0.02] dark:bg-emerald-500/[0.01]" 
+            : "border-rose-500/10 bg-rose-500/[0.02] dark:bg-rose-500/[0.01]"
+        )}>
+          <CardContent className="p-5 flex items-center justify-between">
+            <div className="space-y-1">
+              <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Gross Profit</p>
+              <div className="flex items-center gap-1.5">
+                <h2 className={cn(
+                  "text-2xl font-black tracking-tight",
+                  metrics.todayGrossProfit >= 0 ? "text-emerald-600" : "text-rose-600"
+                )}>
+                  {formatCurrency(Math.abs(metrics.todayGrossProfit))}
+                </h2>
+              </div>
+            </div>
+            <div className={cn(
+              "h-10 w-10 rounded-xl flex items-center justify-center",
+              metrics.todayGrossProfit >= 0 ? "bg-emerald-500/10 text-emerald-600" : "bg-rose-500/10 text-rose-600"
+            )}>
+              {metrics.todayGrossProfit >= 0 ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border border-orange-500/10 bg-orange-500/[0.02] dark:bg-orange-500/[0.01] rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer hover:bg-orange-500/[0.04]" onClick={() => setLocation('/credit')}>
+          <CardContent className="p-5 flex items-center justify-between">
+            <div className="space-y-1">
+              <p className="text-[11px] font-bold text-orange-700/80 uppercase tracking-wider">Pending Credit</p>
+              <h2 className="text-2xl font-black text-orange-600 tracking-tight">{formatCurrency(metrics.pendingCreditTotal)}</h2>
+            </div>
+            <div className="h-10 w-10 rounded-xl bg-orange-500/10 flex items-center justify-center text-orange-600">
+              <Banknote className="h-5 w-5" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border border-red-500/10 bg-red-500/[0.02] dark:bg-red-500/[0.01] rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer hover:bg-red-500/[0.04]" onClick={() => setLocation('/payables')}>
+          <CardContent className="p-5 flex items-center justify-between">
+            <div className="space-y-1">
+              <p className="text-[11px] font-bold text-red-700/80 uppercase tracking-wider">Pending Payables</p>
+              <h2 className="text-2xl font-black text-red-600 tracking-tight">{formatCurrency(metrics.pendingPayablesTotal)}</h2>
+            </div>
+            <div className="h-10 w-10 rounded-xl bg-red-500/10 flex items-center justify-center text-red-600">
+              <ArrowUpFromLine className="h-5 w-5" />
+            </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Secondary metrics */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">QR Payments Today</p>
-            <p className="font-bold text-lg mt-1">{formatCurrency(metrics.qrSalesToday)}</p>
+      {/* Secondary Metrics Section */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <Card className="border border-border rounded-2xl shadow-sm hover:shadow-md transition-all duration-300">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="h-9 w-9 rounded-xl bg-muted flex items-center justify-center text-foreground shrink-0">
+              <Wallet className="h-4.5 w-4.5" />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">QR Payments Today</p>
+              <p className="font-extrabold text-base tracking-tight text-foreground">{formatCurrency(metrics.qrSalesToday)}</p>
+            </div>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">Purchases Today</p>
-            <p className="font-bold text-lg mt-1">{formatCurrency(metrics.todayPurchaseTotal)}</p>
+
+        <Card className="border border-border rounded-2xl shadow-sm hover:shadow-md transition-all duration-300">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="h-9 w-9 rounded-xl bg-muted flex items-center justify-center text-foreground shrink-0">
+              <Truck className="h-4.5 w-4.5" />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Purchases Today</p>
+              <p className="font-extrabold text-base tracking-tight text-foreground">{formatCurrency(metrics.todayPurchaseTotal)}</p>
+            </div>
           </CardContent>
         </Card>
-        <Card className="cursor-pointer hover:bg-muted/40 transition-colors" onClick={() => setLocation('/credit')}>
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">Credit Received Today</p>
-            <p className="font-bold text-lg mt-1 text-green-600">{formatCurrency(metrics.creditReceivedToday)}</p>
+
+        <Card className="border border-border rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer hover:bg-muted/40" onClick={() => setLocation('/credit')}>
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="h-9 w-9 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-600 shrink-0">
+              <Banknote className="h-4.5 w-4.5" />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Credit Received Today</p>
+              <p className="font-extrabold text-base tracking-tight text-emerald-600">{formatCurrency(metrics.creditReceivedToday)}</p>
+            </div>
           </CardContent>
         </Card>
-        <Card className="cursor-pointer hover:bg-muted/40 transition-colors" onClick={() => setLocation('/payables')}>
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">Payables Paid Today</p>
-            <p className="font-bold text-lg mt-1 text-red-500">{formatCurrency(metrics.payablesPaidToday)}</p>
+
+        <Card className="border border-border rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer hover:bg-muted/40" onClick={() => setLocation('/payables')}>
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="h-9 w-9 rounded-xl bg-rose-500/10 flex items-center justify-center text-rose-600 shrink-0">
+              <ArrowUpFromLine className="h-4.5 w-4.5" />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Payables Paid Today</p>
+              <p className="font-extrabold text-base tracking-tight text-rose-600">{formatCurrency(metrics.payablesPaidToday)}</p>
+            </div>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">Net Profit (Today)</p>
-            <p className={`font-bold text-lg mt-1 ${metrics.todayNetProfit >= 0 ? 'text-green-600' : 'text-destructive'}`}>
-              {formatCurrency(Math.abs(metrics.todayNetProfit))}
-            </p>
+
+        <Card className="border border-border rounded-2xl shadow-sm hover:shadow-md transition-all duration-300">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className={cn(
+              "h-9 w-9 rounded-xl flex items-center justify-center shrink-0",
+              metrics.todayNetProfit >= 0 ? "bg-emerald-500/10 text-emerald-600" : "bg-rose-500/10 text-rose-600"
+            )}>
+              {metrics.todayNetProfit >= 0 ? <TrendingUp className="h-4.5 w-4.5" /> : <TrendingDown className="h-4.5 w-4.5" />}
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Net Profit Today</p>
+              <p className={cn(
+                "font-extrabold text-base tracking-tight",
+                metrics.todayNetProfit >= 0 ? "text-emerald-600" : "text-rose-600"
+              )}>{formatCurrency(Math.abs(metrics.todayNetProfit))}</p>
+            </div>
           </CardContent>
         </Card>
       </div>
