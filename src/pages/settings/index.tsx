@@ -14,7 +14,7 @@ import { toast } from 'sonner';
 import { Spinner } from '@/components/ui/spinner';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { seedDemoData } from '@/utils/seedHelper';
-
+//finals
 export default function Settings() {
   const { settings, updateSettings, theme, setTheme } = useApp();
   const { state } = useLicense();
@@ -85,7 +85,7 @@ export default function Settings() {
               url: result.uri,
               dialogTitle: 'Share or save backup'
             });
-          } catch (_) {}
+          } catch (_) { }
           return;
         } catch (err) {
           console.error('Native filesystem export failed:', err);
