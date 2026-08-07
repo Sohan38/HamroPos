@@ -68,7 +68,19 @@ export default function InventoryForm() {
     defaultValues: existingProduct ? {
       ...existingProduct,
       supplierIds: existingProduct.supplierIds ?? (existingProduct.supplierId ? [existingProduct.supplierId] : []),
-      supplierStocks: existingProduct.supplierStocks ?? [],
+      supplierStocks: existingProduct.supplierStocks && existingProduct.supplierStocks.length > 0
+        ? existingProduct.supplierStocks
+        : (existingProduct.supplierId
+            ? [{
+                supplierId: existingProduct.supplierId,
+                cost: existingProduct.purchaseRate || 0,
+                stock: existingProduct.quantity || 0,
+                supplierSku: '',
+                reorderLevel: existingProduct.minimumStock,
+                notes: ''
+              }]
+            : []
+          ),
       hasExpiry: existingProduct.hasExpiry ?? false,
       hasVariants: existingProduct.hasVariants ?? false,
       variants: existingProduct.variants ?? [],
@@ -363,7 +375,7 @@ export default function InventoryForm() {
         hasExpiry: data.hasExpiry ?? false,
         hasVariants: data.hasVariants ?? false,
         variants: data.variants ?? [],
-        purchaseRate: isMultiSup ? effectivePurchaseRate : data.purchaseRate,
+        purchaseRate: (isMultiSup || data.hasExpiry) ? effectivePurchaseRate : data.purchaseRate,
         profitPerUnit: data.sellingRate - effectivePurchaseRate,
         unit: data.unit as ProductUnit,
         imageBase64: data.imageBase64 ?? '',

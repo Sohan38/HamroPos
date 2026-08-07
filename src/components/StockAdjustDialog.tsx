@@ -9,7 +9,10 @@ import { Plus, Minus, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { Product } from '@/types';
 import { useBackModal } from '@/contexts/NavigationContext';
-import { useInventory, useProductBatches } from '@/contexts/GlobalProviders';
+import { useInventory, useProductBatches, useSuppliers } from '@/contexts/GlobalProviders';
+import { rankSearch } from '@/utils/search/rank';
+import { cn } from '@/lib/utils';
+import { Users, X } from 'lucide-react';
 
 interface StockAdjustDialogProps {
   product: Product | null;
@@ -21,6 +24,7 @@ interface StockAdjustDialogProps {
 export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdjustDialogProps) {
   const { update: updateProduct } = useInventory();
   const { items: allBatches, update: updateBatch } = useProductBatches();
+  const { items: suppliers } = useSuppliers();
 
   const [mode, setMode] = useState<'add' | 'remove' | 'set'>('add');
   const [amount, setAmount] = useState('');
@@ -28,6 +32,8 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
 
   const [selectedBatchId, setSelectedBatchId] = useState('');
   const [selectedVariantName, setSelectedVariantName] = useState('');
+  const [selectedSupplierId, setSelectedSupplierId] = useState('');
+  const [filterQuery, setFilterQuery] = useState('');
 
   const amountInputRef = useRef<HTMLInputElement>(null);
 
@@ -38,6 +44,19 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
 
   const hasExpiry = !!(product?.hasExpiry && productBatches.length > 0);
   const hasVariants = !!(product?.hasVariants && product?.variants && product.variants.length > 0);
+  const isMultiSupplier = !!(!hasExpiry && !hasVariants && product?.supplierIds && product.supplierIds.length >= 2);
+
+  const productSuppliers = useMemo(() => {
+    if (!product || !product.supplierIds) return [];
+    const ids = product.supplierIds;
+    return suppliers.filter(s => ids.includes(s.id));
+  }, [product, suppliers]);
+
+  const filteredSuppliers = useMemo(() => {
+    const query = filterQuery.trim();
+    if (!query) return productSuppliers;
+    return rankSearch(productSuppliers, query, 10);
+  }, [productSuppliers, filterQuery]);
 
   useBackModal(open, onClose, 'stock-adjust-dialog');
 
@@ -48,6 +67,8 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
 
     setSelectedBatchId(productBatches[0]?.id || '');
     setSelectedVariantName(product.variants?.[0]?.name || '');
+    setSelectedSupplierId(isMultiSupplier ? '' : (product.supplierIds?.[0] || ''));
+    setFilterQuery('');
     setAmount('');
     setReason('');
     setMode('add');
@@ -55,7 +76,8 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
     // Delay focus slightly to ensure modal animation has started
     const timer = setTimeout(() => amountInputRef.current?.focus(), 50);
     return () => clearTimeout(timer);
-  }, [open, product, productBatches]);
+  }, [open, product?.id]);
+
   if (!product) return null;
 
   const getSelectedCurrentQty = (): number => {
@@ -66,6 +88,10 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
     if (hasExpiry) {
       const batch = productBatches.find(b => b.id === selectedBatchId);
       return batch ? batch.quantity : 0;
+    }
+    if (isMultiSupplier) {
+      const entry = product.supplierStocks?.find(ss => ss.supplierId === selectedSupplierId);
+      return entry ? entry.stock : 0;
     }
     return product.quantity;
   };
@@ -83,9 +109,13 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
   const diff = newQty - currentQty;
 
   // Validation logic
-  const isInvalid = !amount || numericAmount < 0 || (mode === 'remove' && numericAmount > currentQty);
+  const isInvalid = !amount || numericAmount < 0 || (mode === 'remove' && numericAmount > currentQty) || (isMultiSupplier && !selectedSupplierId);
 
   const handleSave = () => {
+    if (isMultiSupplier && !selectedSupplierId) {
+      toast.error('Please select a supplier');
+      return;
+    }
     if (isInvalid) {
       if (!amount) toast.error('Enter an amount');
       else if (mode === 'remove' && numericAmount > currentQty) toast.error(`Cannot remove more than current stock (${currentQty})`);
@@ -118,6 +148,32 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
       });
       const batch = productBatches.find(b => b.id === selectedBatchId);
       toast.success(`Updated batch "${batch?.batchNumber}": ${diff > 0 ? `+${diff}` : diff} → ${newQty} ${product.unit}. ${finalReason}`);
+    } else if (isMultiSupplier) {
+      const currentStocks = product.supplierStocks || [];
+      const updatedStocks = product.supplierIds?.map(sid => {
+        const existing = currentStocks.find(ss => ss.supplierId === sid);
+        if (existing) {
+          return sid === selectedSupplierId ? { ...existing, stock: newQty } : existing;
+        } else {
+          const stockVal = sid === selectedSupplierId ? newQty : 0;
+          return {
+            supplierId: sid,
+            cost: product.purchaseRate || 0,
+            stock: stockVal,
+            supplierSku: '',
+            reorderLevel: undefined
+          };
+        }
+      }) || [];
+
+      const newTotalQty = updatedStocks.reduce((sum, ss) => sum + (ss.stock || 0), 0);
+
+      updateProduct(product.id, {
+        supplierStocks: updatedStocks,
+        quantity: newTotalQty
+      });
+      const supplier = suppliers.find(s => s.id === selectedSupplierId);
+      toast.success(`Updated stock for supplier "${supplier?.name}": ${diff > 0 ? `+${diff}` : diff} → ${newQty} ${product.unit}. ${finalReason}`);
     } else {
       updateProduct(product.id, { quantity: newQty });
       if (onAdjust) {
@@ -126,7 +182,6 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
         toast.success(`Updated product stock: ${diff > 0 ? `+${diff}` : diff} → ${newQty} ${product.unit}. ${finalReason}`);
       }
     }
-
     onClose();
   };
 
@@ -196,87 +251,166 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
               </div>
             )}
 
-            <div className="bg-primary/5 rounded-lg p-3 border border-primary/10">
-              <div className="text-xs text-muted-foreground">Adjusting Current Stock:</div>
-              <div className="text-lg font-bold text-primary">
-                {currentQty} <span className="text-sm font-normal text-muted-foreground">{product.unit}</span>
+            {/* Multi-supplier search & selection list */}
+            {isMultiSupplier && (
+              <div className="space-y-2">
+                <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Select Supplier *</Label>
+                {selectedSupplierId ? (
+                  (() => {
+                    const selectedSupplier = suppliers.find(s => s.id === selectedSupplierId);
+                    return (
+                      <div className="flex items-center justify-between rounded-xl border bg-muted/40 p-2.5 border-border">
+                        <div className="flex items-center gap-2">
+                          <div className="h-7 w-7 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold">
+                            {selectedSupplier?.name.charAt(0).toUpperCase()}
+                          </div>
+                          <span className="text-sm font-medium">{selectedSupplier?.name}</span>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 rounded-full hover:bg-destructive/15 hover:text-destructive text-muted-foreground"
+                          onClick={() => setSelectedSupplierId('')}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    );
+                  })()
+                ) : (
+                  <div className="space-y-2">
+                    <div className="relative">
+                      <Input
+                        placeholder="Search product suppliers..."
+                        value={filterQuery}
+                        onChange={e => setFilterQuery(e.target.value)}
+                        className="h-9 text-sm rounded-xl"
+                      />
+                      {filterQuery && (
+                        <button
+                          type="button"
+                          onClick={() => setFilterQuery('')}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto py-1">
+                      {filteredSuppliers.map(s => (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedSupplierId(s.id);
+                            setFilterQuery('');
+                          }}
+                          className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border bg-muted/50 border-border text-foreground hover:border-primary/50 hover:bg-primary/5 transition-all select-none"
+                        >
+                          {s.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
+            )}
 
-            {/* Mode selector */}
-            <div className="grid grid-cols-3 gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant={mode === 'add' ? 'default' : 'outline'}
-                onClick={() => setMode('add')}
-                className="gap-1"
-              >
-                <Plus className="h-3 w-3" /> Add
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={mode === 'remove' ? 'destructive' : 'outline'}
-                onClick={() => setMode('remove')}
-                className="gap-1"
-              >
-                <Minus className="h-3 w-3" /> Remove
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={mode === 'set' ? 'secondary' : 'outline'}
-                onClick={() => setMode('set')}
-              >
-                Set To
-              </Button>
-            </div>
-
-            <div className="space-y-2">
-              <Label>
-                {mode === 'add' ? 'Add Quantity' : mode === 'remove' ? 'Remove Quantity' : 'Set New Quantity'}
-              </Label>
-              <div className="flex gap-2">
-                <Input
-                  ref={amountInputRef}
-                  type="number"
-                  min="0"
-                  placeholder="Enter amount"
-                  value={amount}
-                  onChange={e => setAmount(e.target.value)}
-                  onWheel={(e) => e.currentTarget.blur()} // Prevent scroll-wheel from changing numbers
-                  className="h-12 text-lg font-bold flex-1"
-                  data-testid="input-stock-amount"
-                />
-                <div className="flex gap-1">
-                  {[1, 5, 10].map(val => (
-                    <Button
-                      key={val}
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="h-12 px-3 text-xs"
-                      onClick={() => handleQuickAmount(val)}
-                    >
-                      {mode === 'remove' ? `-${val}` : `+${val}`}
-                    </Button>
-                  ))}
+            {/* Display status or locked notice */}
+            {isMultiSupplier && !selectedSupplierId ? (
+              <div className="flex items-start gap-2.5 rounded-xl border border-blue-200/50 bg-blue-50/50 dark:bg-blue-950/20 p-3 text-xs text-blue-700 dark:text-blue-300">
+                <Users className="h-4 w-4 mt-0.5 shrink-0" />
+                <span>Please select a supplier from the list above first to view and adjust their specific stock level.</span>
+              </div>
+            ) : (
+              <div className="bg-primary/5 rounded-lg p-3 border border-primary/10">
+                <div className="text-xs text-muted-foreground">Adjusting Current Stock:</div>
+                <div className="text-lg font-bold text-primary">
+                  {currentQty} <span className="text-sm font-normal text-muted-foreground">{product.unit}</span>
                 </div>
               </div>
-            </div>
+            )}
 
-            {/* Preview */}
-            {amount && (
-              <div className={`flex justify-between items-center rounded-lg p-3 text-sm font-medium
-                ${diff > 0 ? 'bg-green-500/10 text-green-700 dark:text-green-400' :
-                  diff < 0 ? 'bg-destructive/10 text-destructive' :
-                    'bg-muted text-muted-foreground'}`}>
-                <span>New stock</span>
-                <span className="font-bold text-base">
-                  {diff > 0 ? '+' : ''}{diff !== 0 ? diff : ''} → {newQty} {product.unit}
-                </span>
-              </div>
+            {/* Adjustment inputs (disabled/hidden if supplier not selected for multi-supplier) */}
+            {(!isMultiSupplier || selectedSupplierId) && (
+              <>
+                {/* Mode selector */}
+                <div className="grid grid-cols-3 gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={mode === 'add' ? 'default' : 'outline'}
+                    onClick={() => setMode('add')}
+                    className="gap-1"
+                  >
+                    <Plus className="h-3 w-3" /> Add
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={mode === 'remove' ? 'destructive' : 'outline'}
+                    onClick={() => setMode('remove')}
+                    className="gap-1"
+                  >
+                    <Minus className="h-3 w-3" /> Remove
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={mode === 'set' ? 'secondary' : 'outline'}
+                    onClick={() => setMode('set')}
+                  >
+                    Set To
+                  </Button>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>
+                    {mode === 'add' ? 'Add Quantity' : mode === 'remove' ? 'Remove Quantity' : 'Set New Quantity'}
+                  </Label>
+                  <div className="flex gap-2">
+                    <Input
+                      ref={amountInputRef}
+                      type="number"
+                      min="0"
+                      placeholder="Enter amount"
+                      value={amount}
+                      onChange={e => setAmount(e.target.value)}
+                      onWheel={(e) => e.currentTarget.blur()} // Prevent scroll-wheel from changing numbers
+                      className="h-12 text-lg font-bold flex-1"
+                      data-testid="input-stock-amount"
+                    />
+                    <div className="flex gap-1">
+                      {[1, 5, 10].map(val => (
+                        <Button
+                          key={val}
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-12 px-3 text-xs"
+                          onClick={() => handleQuickAmount(val)}
+                        >
+                          {mode === 'remove' ? `-${val}` : `+${val}`}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Preview */}
+                {amount && (
+                  <div className={`flex justify-between items-center rounded-lg p-3 text-sm font-medium
+                    ${diff > 0 ? 'bg-green-500/10 text-green-700 dark:text-green-400' :
+                      diff < 0 ? 'bg-destructive/10 text-destructive' :
+                        'bg-muted text-muted-foreground'}`}>
+                    <span>New stock</span>
+                    <span className="font-bold text-base">
+                      {diff > 0 ? '+' : ''}{diff !== 0 ? diff : ''} → {newQty} {product.unit}
+                    </span>
+                  </div>
+                )}
+              </>
             )}
 
             <div className="space-y-1">

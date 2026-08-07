@@ -27,7 +27,7 @@ export class KeyboardBarcodeProvider implements BarcodeProvider {
         } else {
           KeyboardBarcodeProvider.buffer = '';
         }
-      } else if (e.key.length === 1) {
+      } else if (e.key && e.key.length === 1) {
         if (diff > 100) {
           KeyboardBarcodeProvider.buffer = e.key;
         } else {
