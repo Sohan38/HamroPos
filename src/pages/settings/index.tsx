@@ -9,7 +9,7 @@ import { useStorageProvider } from '@/storage/StorageContext';
 import { FeatureConfig } from '@/types';
 import LicenseCard from './License';
 import { useLicense } from '@/license/LicenseContext';
-import { Save, Upload, Download, AlertTriangle, Monitor, Moon, Sun, Trash2, Database, Building, Globe, Key, Settings as SettingsIcon } from 'lucide-react';
+import { Save, Upload, Download, AlertTriangle, Monitor, Moon, Sun, Trash2, Database, Building, Globe, Key, Settings as SettingsIcon, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 import { Spinner } from '@/components/ui/spinner';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -17,10 +17,19 @@ import { seedDemoData } from '@/utils/seedHelper';
 
 export default function Settings() {
   const { settings, updateSettings, theme, setTheme } = useApp();
-  const { checkFeature } = useLicense();
+  const { state } = useLicense();
   const storage = useStorageProvider();
   const [formData, setFormData] = useState(settings);
-  const [activeTab, setActiveTab] = useState('profile');
+  const [activeTab, setActiveTab] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const tab = new URLSearchParams(window.location.search).get('tab');
+      if (tab && ['profile', 'preferences', 'license', 'data'].includes(tab)) {
+        return tab;
+      }
+    }
+    return 'profile';
+  });
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Sync state if settings are loaded/restored asynchronously
@@ -41,6 +50,7 @@ export default function Settings() {
   const [showImportConfirm, setShowImportConfirm] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showSeedConfirm, setShowSeedConfirm] = useState(false);
+  const [showBackupLockedNotice, setShowBackupLockedNotice] = useState(false);
   const [pendingImportContent, setPendingImportContent] = useState<string | null>(null);
 
   const handleSave = () => {
@@ -190,7 +200,11 @@ export default function Settings() {
         )}
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+      <Tabs
+        value={activeTab}
+        onValueChange={setActiveTab}
+        className="space-y-6"
+      >
         {/* Horizontal overflow scrollable tab bar for mobile viewports */}
         <div className="w-full overflow-x-auto scrollbar-none -mx-3 px-3 sm:mx-0 sm:px-0">
           <TabsList className="flex w-max sm:w-full border border-border bg-muted/40 p-1 rounded-lg gap-1 min-w-full">
@@ -357,9 +371,17 @@ export default function Settings() {
             </CardHeader>
             <CardContent className="p-4 sm:p-6 pt-0 sm:pt-0 space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <Button variant="outline" onClick={handleExport} disabled={isExporting || isImporting || isResetting || isSeeding} className="w-full justify-start h-12 text-xs">
+                <Button
+                  variant="outline"
+                  onClick={state.status === 'trial' ? () => setShowBackupLockedNotice(true) : handleExport}
+                  disabled={isExporting || isImporting || isResetting || isSeeding}
+                  className="w-full justify-start h-12 text-xs flex items-center"
+                >
                   {isExporting ? <Spinner className="mr-3 h-4 w-4" /> : <Download className="mr-3 h-4 w-4" />}
-                  {isExporting ? 'Exporting...' : 'Export Backup JSON'}
+                  <span className="flex-1 text-left truncate">
+                    {isExporting ? 'Exporting...' : 'Export Backup JSON'}
+                  </span>
+                  {state.status === 'trial' && <Lock className="h-3.5 w-3.5 text-muted-foreground/60 flex-shrink-0 ml-1.5" />}
                 </Button>
                 <div className="relative">
                   <input
@@ -369,9 +391,17 @@ export default function Settings() {
                     ref={fileInputRef}
                     onChange={handleImportFileChange}
                   />
-                  <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={isExporting || isImporting || isResetting || isSeeding} className="w-full justify-start h-12 text-xs">
+                  <Button
+                    variant="outline"
+                    onClick={state.status === 'trial' ? () => setShowBackupLockedNotice(true) : () => fileInputRef.current?.click()}
+                    disabled={isExporting || isImporting || isResetting || isSeeding}
+                    className="w-full justify-start h-12 text-xs flex items-center"
+                  >
                     {isImporting ? <Spinner className="mr-3 h-4 w-4" /> : <Upload className="mr-3 h-4 w-4" />}
-                    {isImporting ? 'Restoring...' : 'Restore Backup File'}
+                    <span className="flex-1 text-left truncate">
+                      {isImporting ? 'Restoring...' : 'Restore Backup File'}
+                    </span>
+                    {state.status === 'trial' && <Lock className="h-3.5 w-3.5 text-muted-foreground/60 flex-shrink-0 ml-1.5" />}
                   </Button>
                 </div>
                 <Button variant="outline" onClick={() => setShowSeedConfirm(true)} disabled={isExporting || isImporting || isResetting || isSeeding} className="w-full justify-start h-12 text-xs text-primary border-primary/20 hover:bg-primary/5">
@@ -379,6 +409,35 @@ export default function Settings() {
                   {isSeeding ? 'Seeding...' : 'Load Demo Database'}
                 </Button>
               </div>
+
+              {/* Trial mode backup locked notice */}
+              {showBackupLockedNotice && state.status === 'trial' && (
+                <div className="flex items-start gap-3 rounded-lg border border-amber-400/30 bg-amber-50/60 dark:bg-amber-950/20 p-3.5 animate-in fade-in slide-in-from-top-1 duration-200">
+                  <Lock className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">
+                      Feature Locked — Trial Plan
+                    </p>
+                    <p className="text-xs text-amber-700/80 dark:text-amber-400/80 mt-0.5 leading-relaxed">
+                      Backup export and restore are unavailable during the trial period. Activate Sohan POS with a valid license key to enable data backup and recovery.
+                    </p>
+                    <div className="flex items-center gap-3 mt-2">
+                      <button
+                        onClick={() => { setActiveTab('license'); setShowBackupLockedNotice(false); }}
+                        className="text-xs font-semibold text-amber-700 dark:text-amber-300 underline underline-offset-2 hover:no-underline"
+                      >
+                        Activate Now →
+                      </button>
+                      <button
+                        onClick={() => setShowBackupLockedNotice(false)}
+                        className="text-xs text-amber-600/60 dark:text-amber-500/60 hover:text-amber-700 dark:hover:text-amber-400 transition-colors"
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
               <div className="pt-4 border-t border-border mt-2">
                 <Button variant="destructive" onClick={() => setShowResetConfirm(true)} disabled={isExporting || isImporting || isResetting || isSeeding} className="w-full h-11 text-xs">
                   {isResetting ? <Spinner className="mr-2 h-4 w-4" /> : <Trash2 className="mr-2 h-4 w-4" />}

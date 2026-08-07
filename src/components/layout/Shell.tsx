@@ -3,10 +3,12 @@ import { TopNav } from './TopNav';
 import { BottomNav } from './BottomNav';
 import { DesktopSidebar } from './DesktopSidebar';
 import { LicenseBanner } from '../LicenseBanner';
+import { ActivationBlocker } from '../ActivationBlocker';
 
 export function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-[100dvh] flex flex-col bg-background">
+      <ActivationBlocker />
       <LicenseBanner />
       <TopNav />
       <div className="flex flex-1">

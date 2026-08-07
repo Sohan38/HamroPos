@@ -18,7 +18,7 @@ export function LicenseBanner() {
         <HelpCircle className="h-3.5 w-3.5 animate-pulse" />
         <span>Trial Mode: {state.trial.daysRemaining} days remaining.</span>
         <button
-          onClick={() => setLocation('/settings')}
+          onClick={() => setLocation('/settings?tab=license')}
           className="inline-flex items-center gap-0.5 bg-white/10 hover:bg-white/20 active:bg-white/30 px-2 py-0.5 rounded transition-all font-semibold ml-2"
         >
           Activate Now <ArrowRight className="h-3 w-3" />
@@ -48,7 +48,7 @@ export function LicenseBanner() {
         <ShieldAlert className="h-4 w-4" />
         <span>{getStatusText()}</span>
         <button
-          onClick={() => setLocation('/settings')}
+          onClick={() => setLocation('/settings?tab=license')}
           className="inline-flex items-center gap-0.5 bg-white text-destructive hover:bg-white/90 active:bg-white/80 px-2.5 py-0.5 rounded-full transition-all ml-2 shadow-sm"
         >
           Activate License <ArrowRight className="h-3 w-3" />
@@ -64,7 +64,7 @@ export function LicenseBanner() {
         <ShieldAlert className="h-3.5 w-3.5" />
         <span>License expired. Grace period active ({state.daysUntilExpiry + (state.license?.gracePeriodDays ?? 7)} days left).</span>
         <button
-          onClick={() => setLocation('/settings')}
+          onClick={() => setLocation('/settings?tab=license')}
           className="inline-flex items-center gap-0.5 bg-white/15 hover:bg-white/25 active:bg-white/35 px-2 py-0.5 rounded transition-all font-semibold ml-2"
         >
           Renew Now <ArrowRight className="h-3 w-3" />
