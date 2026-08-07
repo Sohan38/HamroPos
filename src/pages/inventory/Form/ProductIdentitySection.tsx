@@ -145,7 +145,12 @@ export const ProductIdentitySection = React.memo(({ form, isNew, existingCategor
                 <button
                   key={cat}
                   type="button"
-                  onClick={() => form.setValue('category', cat, { shouldValidate: true, shouldTouch: true })}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    form.setValue('category', cat, { shouldTouch: true });
+                    form.clearErrors('category');
+                    form.trigger('category');
+                  }}
                   className={cn(
                     'text-[10px] px-2.5 py-1 rounded-full border shrink-0 font-medium transition-all',
                     field.value === cat
@@ -192,7 +197,12 @@ export const ProductIdentitySection = React.memo(({ form, isNew, existingCategor
                 <button
                   key={b}
                   type="button"
-                  onClick={() => form.setValue('brand', b, { shouldValidate: true, shouldTouch: true })}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    form.setValue('brand', b, { shouldTouch: true });
+                    form.clearErrors('brand');
+                    form.trigger('brand');
+                  }}
                   className={cn(
                     'text-[10px] px-2.5 py-1 rounded-full border shrink-0 font-medium transition-all',
                     field.value === b
