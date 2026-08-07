@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, lazy, Suspense, useEffect, useCallback } from 'react';
-import { useInventory, useSales, useCustomers, useProductBatches } from '@/contexts/GlobalProviders';
+import { useInventory, useSales, useCustomers, useProductBatches, useCredit } from '@/contexts/GlobalProviders';
 import { useCurrency } from '@/hooks/useCurrency';
 import { useApp } from '@/contexts/AppContext';
 import { rankSearch } from '@/utils/search/rank';
@@ -35,6 +35,7 @@ export default function SalesPos() {
   const goBack = useSmartBack('/sales');
   const { items: inventory, update: updateInventory } = useInventory();
   const { add: addSale } = useSales();
+  const { add: addCredit } = useCredit();
   const { items: customers } = useCustomers();
   const { items: batches, update: updateBatch } = useProductBatches();
   const { format, symbol } = useCurrency();
@@ -51,6 +52,7 @@ export default function SalesPos() {
   const [customerId, setCustomerId] = useState<string>('');
   const [showCustomer, setShowCustomer] = useState(false);
   const [printSale, setPrintSale] = useState<SaleInvoice | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState('all');
 
   // Mobile-specific state
   const [searchOpen, setSearchOpen] = useState(false);
@@ -108,6 +110,24 @@ export default function SalesPos() {
             .toLowerCase(),
       }));
   }, [inventory]);
+
+  const categories = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const product of availableProducts) {
+      if (product.category) counts.set(product.category, (counts.get(product.category) ?? 0) + 1);
+    }
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([category]) => category);
+  }, [availableProducts]);
+
+  const visibleCategories = useMemo(() => categories.slice(0, 8), [categories]);
+  const categoryProducts = useMemo(
+    () => categoryFilter === 'all'
+      ? availableProducts
+      : availableProducts.filter(product => product.category === categoryFilter),
+    [availableProducts, categoryFilter],
+  );
 
   const inventoryById = useMemo(() => {
     const map = new Map<string, typeof inventory[number]>();
@@ -274,7 +294,7 @@ export default function SalesPos() {
     return map;
   }, [batches]);
 
-  const handleCheckout = () => {
+  const handleCheckout = async () => {
     if (cart.length === 0) return;
     const stockErrors = cart.map(item => {
       const p = inventoryById.get(item.productId);
@@ -283,8 +303,23 @@ export default function SalesPos() {
       return null;
     }).filter(Boolean);
     if (stockErrors.length > 0) { toast.error(`Insufficient stock: ${stockErrors.join('; ')}`); return; }
-    if (paidAmount !== '' && Number(paidAmount) < grandTotal) {
+    const paidNow = paidAmount === '' ? (paymentMethod === 'credit' ? 0 : grandTotal) : Number(paidAmount);
+    if (paidNow < 0 || paidNow > grandTotal) {
+      toast.error(`Paid amount cannot be more than the total (${format(grandTotal)})`);
+      return;
+    }
+    if (paymentMethod === 'credit' && !customerId) {
+      toast.error('Select a customer before saving credit');
+      setShowCustomer(true);
+      return;
+    }
+    if (paymentMethod !== 'credit' && paidAmount !== '' && Number(paidAmount) < grandTotal) {
       toast.error(`Paid amount (${format(Number(paidAmount))}) is less than total (${format(grandTotal)})`);
+      return;
+    }
+    const dueAmount = Math.max(0, grandTotal - paidNow);
+    if (paymentMethod === 'credit' && dueAmount <= 0) {
+      toast.error('Credit must have an unpaid balance');
       return;
     }
     try {
@@ -302,10 +337,25 @@ export default function SalesPos() {
           subtotal: i.subtotal,
         })),
         discount, tax: taxAmount, grandTotal,
-        paidAmount: paidAmount !== '' ? Number(paidAmount) : grandTotal,
+        paidAmount: paidNow,
         paymentMethod, notes: '',
       };
-      addSale(saleRecord);
+      const savedSale = await addSale(saleRecord);
+      if (paymentMethod === 'credit' && selectedCustomer) {
+        await addCredit({
+          customerId: selectedCustomer.id,
+          customerName: selectedCustomer.name,
+          phone: selectedCustomer.phone,
+          amount: dueAmount,
+          description: `POS sale • ${cart.length} item${cart.length !== 1 ? 's' : ''}`,
+          date: new Date().toISOString(),
+          dueDate: null,
+          status: 'pending',
+          paidAt: null,
+          notes: paidNow > 0 ? `Paid ${format(paidNow)} at checkout` : 'Full credit sale',
+          sourceSaleId: savedSale.id,
+        });
+      }
       for (const item of cart) {
         const p = inventoryById.get(item.productId);
         if (!p) continue;
@@ -315,16 +365,12 @@ export default function SalesPos() {
         }
         updateInventory(p.id, { quantity: p.quantity - item.quantity });
       }
-      toast.success('Sale completed!');
-      setPrintSale({
-        ...saleRecord,
-        id: crypto.randomUUID(),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        deletedAt: null,
-        version: 1,
-      });
+      toast.success(paymentMethod === 'credit'
+        ? `Sale saved • ${format(dueAmount)} added to credit`
+        : 'Sale completed!');
+      setPrintSale(savedSale);
       setCart([]); setDiscountValue(0); setDiscountType('flat'); setTaxPercent(0); setPaidAmount(''); setCustomerId('');
+      setPaymentMethod('cash'); setCategoryFilter('all');
       setCartOpen(false);
     } catch (e) {
       toast.error('Checkout failed');
@@ -355,7 +401,11 @@ export default function SalesPos() {
     onSetDiscountType: setDiscountType,
     onSetDiscountValue: setDiscountValue,
     onSetTaxPercent: setTaxPercent,
-    onSetPaymentMethod: setPaymentMethod,
+    onSetPaymentMethod: (method: PaymentMethod) => {
+      setPaymentMethod(method);
+      if (method === 'credit' && paidAmount === '') setPaidAmount(0);
+      if (method !== 'credit' && paidAmount === 0) setPaidAmount('');
+    },
     onSetPaidAmount: setPaidAmount,
     onSetCustomerId: setCustomerId,
     onToggleCustomer: () => setShowCustomer(v => !v),
@@ -560,11 +610,43 @@ export default function SalesPos() {
 
           {/* Product grid — visible on all sizes now on mobile too */}
           <div className="flex-1 overflow-y-auto p-3 pb-24">
-            <p className="text-xs text-muted-foreground mb-3 font-medium">
-              {availableProducts.length} products in stock — tap to add
-            </p>
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <p className="text-xs text-muted-foreground font-medium">
+                {categoryProducts.length} product{categoryProducts.length !== 1 ? 's' : ''} in stock
+              </p>
+              {categories.length > 8 && (
+                <select
+                  value={categories.includes(categoryFilter) && !visibleCategories.includes(categoryFilter) ? categoryFilter : 'more'}
+                  onChange={e => setCategoryFilter(e.target.value === 'more' ? 'all' : e.target.value)}
+                  className="h-8 max-w-36 rounded-lg border bg-background px-2 text-xs font-medium outline-none focus:ring-2 focus:ring-primary/30"
+                  aria-label="More product categories"
+                >
+                  <option value="more">More categories</option>
+                  {categories.slice(8).map(category => <option key={category} value={category}>{category}</option>)}
+                </select>
+              )}
+            </div>
+            <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-3">
+              <button
+                type="button"
+                onClick={() => setCategoryFilter('all')}
+                className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${categoryFilter === 'all' ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-muted-foreground hover:bg-muted'}`}
+              >
+                All
+              </button>
+              {visibleCategories.map(category => (
+                <button
+                  key={category}
+                  type="button"
+                  onClick={() => setCategoryFilter(category)}
+                  className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${categoryFilter === category ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-muted-foreground hover:bg-muted'}`}
+                >
+                  {category}
+                </button>
+              ))}
+            </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-2">
-              {availableProducts.slice(0, 16).map(product => (
+              {categoryProducts.slice(0, 24).map(product => (
                 <ProductCard
                   key={product.id}
                   product={product}
@@ -622,7 +704,7 @@ export default function SalesPos() {
           <SaleBillPrint
             sale={printSale}
             settings={settings}
-            customerName={selectedCustomer?.name}
+            customerName={printSale.customerName ?? undefined}
             open={!!printSale}
             onClose={() => setPrintSale(null)}
           />

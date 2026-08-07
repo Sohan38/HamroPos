@@ -18,14 +18,14 @@ import type { SaleInvoice, AppSettings } from '@/types';
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface ReceiptData {
-    sale: SaleInvoice;
-    settings: AppSettings;
-    customerName?: string;
+  sale: SaleInvoice;
+  settings: AppSettings;
+  customerName?: string;
 }
 
 export interface ReceiptOptions {
-    /** 'narrow' = 58 mm (~220 px body), 'standard' = 80 mm (~302 px body) */
-    paperWidth?: 'narrow' | 'standard';
+  /** 'narrow' = 58 mm (~220 px body), 'standard' = 80 mm (~302 px body) */
+  paperWidth?: 'narrow' | 'standard';
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -35,91 +35,92 @@ export interface ReceiptOptions {
  * injected into a new window / iframe and printed.
  */
 export function generateReceiptHTML(
-    data: ReceiptData,
-    options: ReceiptOptions = {},
+  data: ReceiptData,
+  options: ReceiptOptions = {},
 ): string {
-    const { sale, settings, customerName } = data;
-    const { paperWidth = 'standard' } = options;
+  const { sale, settings, customerName } = data;
+  const { paperWidth = 'standard' } = options;
 
-    const bodyWidth = paperWidth === 'narrow' ? '220px' : '302px';
+  const bodyWidth = paperWidth === 'narrow' ? '220px' : '302px';
 
-    // ── Derived values ──────────────────────────────────────────────────────
-    const subtotal = sale.items.reduce((s, i) => s + i.subtotal, 0);
-    const change =
-        sale.paidAmount > sale.grandTotal ? sale.paidAmount - sale.grandTotal : 0;
-    const billId = sale.id.slice(-8).toUpperCase();
+  // ── Derived values ──────────────────────────────────────────────────────
+  const subtotal = sale.items.reduce((s, i) => s + i.subtotal, 0);
+  const change =
+    sale.paidAmount > sale.grandTotal ? sale.paidAmount - sale.grandTotal : 0;
+  const billId = sale.id.slice(-8).toUpperCase();
 
-    let billDate = '';
-    let billTime = '';
-    try {
-        const d = parseISO(sale.date);
-        billDate = formatDate(d, 'dd/MM/yyyy');
-        billTime = formatDate(d, 'hh:mm a');
-    } catch {
-        const d = new Date(sale.date);
-        billDate = formatDate(d, 'dd/MM/yyyy');
-        billTime = formatDate(d, 'hh:mm a');
-    }
+  let billDate = '';
+  let billTime = '';
+  try {
+    const d = parseISO(sale.date);
+    billDate = formatDate(d, 'dd/MM/yyyy');
+    billTime = formatDate(d, 'hh:mm a');
+  } catch {
+    const d = new Date(sale.date);
+    billDate = formatDate(d, 'dd/MM/yyyy');
+    billTime = formatDate(d, 'hh:mm a');
+  }
 
-    const sym = settings.currencySymbol || 'Rs';
-    const fmt = (n: number) => `${sym}\u00a0${n.toFixed(2)}`;
+  const sym = settings.currencySymbol || 'Rs';
+  const fmt = (n: number) => `${sym}\u00a0${n.toFixed(2)}`;
 
-    const paymentLabel: Record<string, string> = {
-        cash: 'Cash',
-        qr: 'QR / Mobile Pay',
-        card: 'Card',
-        bank: 'Bank Transfer',
-        split: 'Split Payment',
-    };
-    const pmtLabel = paymentLabel[sale.paymentMethod] ?? sale.paymentMethod;
+  const paymentLabel: Record<string, string> = {
+    cash: 'Cash',
+    qr: 'QR / Mobile Pay',
+    card: 'Card',
+    bank: 'Bank Transfer',
+    split: 'Split Payment',
+    credit: 'Credit / Udharo',
+  };
+  const pmtLabel = paymentLabel[sale.paymentMethod] ?? sale.paymentMethod;
 
-    // ── Item rows ────────────────────────────────────────────────────────────
-    const itemRows = sale.items
-        .map(
-            (item) => `
+  // ── Item rows ────────────────────────────────────────────────────────────
+  const itemRows = sale.items
+    .map(
+      (item) => `
     <tr>
       <td class="col-name">${esc(item.productName)}</td>
       <td class="col-qty">${item.quantity}</td>
       <td class="col-price">${item.sellingRate.toFixed(2)}</td>
       <td class="col-total">${item.subtotal.toFixed(2)}</td>
     </tr>`,
-        )
-        .join('\n');
+    )
+    .join('\n');
 
-    // ── Optional header lines ────────────────────────────────────────────────
-    const addressLine = settings.address
-        ? `<div class="sub">${esc(settings.address)}</div>`
-        : '';
-    const phoneLine = settings.phone
-        ? `<div class="sub">Tel: ${esc(settings.phone)}</div>`
-        : '';
-    const vatLine = settings.vatNumber
-        ? `<div class="sub">VAT/PAN: ${esc(settings.vatNumber)}</div>`
-        : '';
+  // ── Optional header lines ────────────────────────────────────────────────
+  const addressLine = settings.address
+    ? `<div class="sub">${esc(settings.address)}</div>`
+    : '';
+  const phoneLine = settings.phone
+    ? `<div class="sub">Tel: ${esc(settings.phone)}</div>`
+    : '';
+  const vatLine = settings.vatNumber
+    ? `<div class="sub">VAT/PAN: ${esc(settings.vatNumber)}</div>`
+    : '';
 
-    const customerRow = customerName
-        ? `<tr><td class="lbl">Customer</td><td class="val">${esc(customerName)}</td></tr>`
-        : '';
+  const customerRow = customerName
+    ? `<tr><td class="lbl">Customer</td><td class="val">${esc(customerName)}</td></tr>`
+    : '';
 
-    const discountRow =
-        sale.discount > 0
-            ? `<tr><td class="lbl">Discount</td><td class="val">- ${fmt(sale.discount)}</td></tr>`
-            : '';
-    const taxRow =
-        sale.tax > 0
-            ? `<tr><td class="lbl">Tax</td><td class="val">${fmt(sale.tax)}</td></tr>`
-            : '';
-    const changeRow =
-        change > 0
-            ? `<tr class="change-row"><td class="lbl">Change</td><td class="val">${fmt(change)}</td></tr>`
-            : '';
+  const discountRow =
+    sale.discount > 0
+      ? `<tr><td class="lbl">Discount</td><td class="val">- ${fmt(sale.discount)}</td></tr>`
+      : '';
+  const taxRow =
+    sale.tax > 0
+      ? `<tr><td class="lbl">Tax</td><td class="val">${fmt(sale.tax)}</td></tr>`
+      : '';
+  const changeRow =
+    change > 0
+      ? `<tr class="change-row"><td class="lbl">Change</td><td class="val">${fmt(change)}</td></tr>`
+      : '';
 
-    const inquiryLine = settings.phone
-        ? `<div>Inquiries: ${esc(settings.phone)}</div>`
-        : '';
+  const inquiryLine = settings.phone
+    ? `<div>Inquiries: ${esc(settings.phone)}</div>`
+    : '';
 
-    // ── Full document ────────────────────────────────────────────────────────
-    return `<!DOCTYPE html>
+  // ── Full document ────────────────────────────────────────────────────────
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -305,10 +306,10 @@ export function generateReceiptHTML(
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
 function esc(str: string): string {
-    return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }

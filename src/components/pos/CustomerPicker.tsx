@@ -4,8 +4,8 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Search, X, User, UserPlus, Check, Phone } from 'lucide-react';
 import { Customer } from '@/types';
-import { v4 as uuidv4 } from 'uuid';
 import { toast } from 'sonner';
+import { rankSearch } from '@/utils/search/rank';
 
 interface CustomerPickerProps {
   customerId: string;
@@ -34,11 +34,8 @@ export function CustomerPicker({ customerId, onChange, onClose }: CustomerPicker
   }, []);
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return customers.slice(0, 20);
-    return customers.filter(c =>
-      c.name.toLowerCase().includes(q) || c.phone.includes(q)
-    ).slice(0, 20);
+    if (!query.trim()) return customers.slice(0, 8);
+    return rankSearch(customers, query, 20);
   }, [customers, query]);
 
   const handleSelect = useCallback((c: Customer) => {
@@ -55,12 +52,11 @@ export function CustomerPicker({ customerId, onChange, onClose }: CustomerPicker
     if (!newName.trim()) return;
     setCreating(true);
     try {
-      const id = uuidv4();
-      await add({ name: newName.trim(), phone: newPhone.trim(), address: '', email: '', notes: '' });
-      // The add function uses its own uuid internally — find the new customer by name+phone
+      const created = await add({ name: newName.trim(), phone: newPhone.trim(), address: '', email: '', notes: '' });
       toast.success(`Customer "${newName.trim()}" added`);
+      onChange(created.id);
       setShowCreate(false);
-      setQuery(newName.trim());
+      onClose();
       setNewName('');
       setNewPhone('');
     } finally {

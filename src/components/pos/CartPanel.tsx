@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   ShoppingCart, User, Trash2, Minus, Plus, Banknote, QrCode,
-  CreditCard, SplitSquareHorizontal,
+  CreditCard, SplitSquareHorizontal, BookOpen,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CustomerPicker } from '@/components/pos/CustomerPicker';
@@ -266,8 +266,8 @@ export const CartPanel = React.memo(({
         </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-1.5">
-        {(['cash', 'qr', 'card', 'bank'] as PaymentMethod[]).map(m => (
+      <div className="grid grid-cols-5 gap-1.5">
+        {(['cash', 'qr', 'card', 'bank', 'credit'] as PaymentMethod[]).map(m => (
           <Button
             key={m}
             variant={paymentMethod === m ? 'default' : 'outline'}
@@ -278,37 +278,48 @@ export const CartPanel = React.memo(({
             {m === 'qr' && <QrCode className="h-4 w-4" />}
             {m === 'card' && <CreditCard className="h-4 w-4" />}
             {m === 'bank' && <SplitSquareHorizontal className="h-4 w-4" />}
-            <span className="capitalize">{m === 'bank' ? 'Bank' : m}</span>
+            {m === 'credit' && <BookOpen className="h-4 w-4" />}
+            <span className="capitalize">{m === 'bank' ? 'Bank' : m === 'credit' ? 'Credit' : m}</span>
           </Button>
         ))}
       </div>
 
       <div className="space-y-1">
-        <label className="text-xs text-muted-foreground">Paid Amount</label>
+        <div className="flex justify-between items-center">
+          <label className="text-xs text-muted-foreground">{paymentMethod === 'credit' ? 'Paid now' : 'Paid Amount'}</label>
+          {paymentMethod === 'credit' && <span className="text-[11px] text-orange-600 font-medium">0 = full credit</span>}
+        </div>
         <Input
           type="number"
           inputMode="decimal"
-          placeholder={`${format(grandTotal)} (exact)`}
+          placeholder={paymentMethod === 'credit' ? '0 for full credit' : `${format(grandTotal)} (exact)`}
           className={`h-11 text-base font-bold ${paidAmount !== '' && Number(paidAmount) < grandTotal ? 'border-destructive' : ''}`}
           value={paidAmount}
           onChange={e => onSetPaidAmount(e.target.value ? Number(e.target.value) : '')}
         />
         {paidAmount !== '' && Number(paidAmount) < grandTotal && (
-          <p className="text-xs text-destructive">Short by {format(grandTotal - Number(paidAmount))}</p>
+          <p className={`text-xs ${paymentMethod === 'credit' ? 'text-orange-600' : 'text-destructive'}`}>
+            {paymentMethod === 'credit' ? `Credit due: ${format(grandTotal - Number(paidAmount))}` : `Short by ${format(grandTotal - Number(paidAmount))}`}
+          </p>
         )}
         {change > 0 && (
           <div className="text-sm font-semibold text-green-600 tabular-nums">Change: {format(change)}</div>
         )}
       </div>
 
+      {paymentMethod === 'credit' && !selectedCustomerName && (
+        <p className="rounded-lg bg-orange-500/10 px-3 py-2 text-xs text-orange-700 dark:text-orange-300">
+          Select a customer above to save this sale as credit.
+        </p>
+      )}
       <Button
         size="lg"
         className="w-full h-13 text-base font-bold shadow-md"
-        disabled={cart.length === 0 || (paidAmount !== '' && Number(paidAmount) < grandTotal)}
+        disabled={cart.length === 0 || (paymentMethod !== 'credit' && paidAmount !== '' && Number(paidAmount) < grandTotal) || (paymentMethod === 'credit' && !selectedCustomerName)}
         onClick={onCheckout}
       >
         <ShoppingCart className="h-5 w-5 mr-2" />
-        Checkout • {format(grandTotal)}
+        {paymentMethod === 'credit' ? 'Save Credit' : 'Checkout'} • {format(grandTotal)}
       </Button>
     </div>
   </div>

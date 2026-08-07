@@ -38,7 +38,7 @@ import { format as formatDate, parseISO, subDays, startOfWeek, startOfMonth } fr
 import {
   Search, Plus, Receipt, Calendar, Printer, X,
   ChevronDown, Banknote, CreditCard, QrCode,
-  SplitSquareHorizontal, TrendingUp,
+  SplitSquareHorizontal, TrendingUp, BookOpen,
 } from 'lucide-react';
 
 import { useSales } from '@/contexts/GlobalProviders';
@@ -85,6 +85,7 @@ const PAYMENT_OPTIONS: PaymentOption[] = [
   { id: 'qr', label: 'QR', icon: <QrCode className="h-3 w-3" /> },
   { id: 'card', label: 'Card', icon: <CreditCard className="h-3 w-3" /> },
   { id: 'bank', label: 'Bank', icon: <SplitSquareHorizontal className="h-3 w-3" /> },
+  { id: 'credit', label: 'Credit', icon: <BookOpen className="h-3 w-3" /> },
 ];
 
 const PAYMENT_LABELS: Record<string, string> = {
@@ -93,6 +94,7 @@ const PAYMENT_LABELS: Record<string, string> = {
   card: 'Card',
   bank: 'Bank',
   split: 'Split',
+  credit: 'Credit',
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

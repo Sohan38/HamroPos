@@ -46,6 +46,7 @@ const PAYMENT_LABELS: Record<string, string> = {
   card: 'Card',
   bank: 'Bank Transfer',
   split: 'Split Payment',
+  credit: 'Credit / Udharo',
 };
 
 function parseSaleDate(dateStr: string): Date {

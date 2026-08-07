@@ -84,7 +84,7 @@ export interface Customer extends StorageRecord {
   notes: string;
 }
 
-export type PaymentMethod = 'cash' | 'qr' | 'card' | 'bank' | 'split';
+export type PaymentMethod = 'cash' | 'qr' | 'card' | 'bank' | 'split' | 'credit';
 
 export interface PurchaseItem {
   productId: string;
@@ -236,6 +236,7 @@ export interface Credit extends StorageRecord {
   status: 'pending' | 'paid';
   paidAt: string | null;
   notes: string;
+  sourceSaleId?: string;
 }
 
 export interface FeatureConfig {
