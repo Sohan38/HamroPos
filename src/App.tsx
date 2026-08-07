@@ -169,9 +169,9 @@ function Router() {
 function App() {
   return (
     <ErrorBoundary>
-      <LicenseProvider>
-        <QueryClientProvider client={queryClient}>
-          <AppProvider>
+      <AppProvider>
+        <LicenseProvider>
+          <QueryClientProvider client={queryClient}>
             <GlobalProviders>
               <TooltipProvider>
                 <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
@@ -182,9 +182,9 @@ function App() {
                 <Toaster />
               </TooltipProvider>
             </GlobalProviders>
-          </AppProvider>
-        </QueryClientProvider>
-      </LicenseProvider>
+          </QueryClientProvider>
+        </LicenseProvider>
+      </AppProvider>
     </ErrorBoundary>
   );
 }

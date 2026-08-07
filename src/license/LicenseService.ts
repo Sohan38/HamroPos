@@ -16,6 +16,7 @@ import { deviceService } from './DeviceService';
 import { signatureService } from './SignatureService';
 import { licenseStorage } from './LicenseStorage';
 import { buildLicenseState, nowISO, needsServerVerification } from './LicenseValidator';
+import { apiClient, ApiError } from '@/services/apiClient';
 
 export class LicenseService {
   private _cachedState: LicenseState | null = null;
@@ -81,64 +82,77 @@ export class LicenseService {
         return { success: false, errorCode: 'INVALID_KEY' };
       }
 
-      // Mock backend validation delay
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      const deviceId = deviceService.getDeviceId();
+      const platform = deviceService.getPlatform();
+      const appVersion = '1.0.0';
 
-      // Simple mock activation validation:
-      // Valid keys have a format like: SOHAN-XXXX-XXXX-XXXX
-      const sanitizedKey = key.trim().toUpperCase();
-      if (!sanitizedKey.startsWith('SOHAN-')) {
-        return { success: false, errorCode: 'INVALID_KEY' };
+      interface ServerActivationResponse {
+        success: boolean;
+        data?: {
+          payload: {
+            version: number;
+            licenseId: string;
+            businessName: string;
+            plan: string;
+            expiresAt: string | null;
+            gracePeriodDays: number;
+            entitlements: Record<string, boolean>;
+            authorizedDevices: string[];
+            issuedAt: string;
+            metadata?: Record<string, unknown>;
+          };
+          signature: string;
+        };
+        error?: string;
+        errorCode?: string;
       }
 
-      const deviceId = deviceService.getDeviceId();
+      const resData = await apiClient.post<ServerActivationResponse>('/license/activate', {
+        activationKey: key.trim(),
+        deviceId: deviceId,
+        deviceMeta: {
+          platform,
+          appVersion,
+        },
+      });
+
+      if (!resData.success || !resData.data) {
+        return {
+          success: false,
+          errorCode: (resData.errorCode as any) || 'INVALID_KEY',
+          error: resData.error
+        };
+      }
+
+      const { payload, signature } = resData.data;
+      if (!payload || !signature) {
+        return { success: false, errorCode: 'SERVER_ERROR' };
+      }
+
       const now = nowISO();
 
-      // Determine mock features based on key suffix for demonstration/testing
-      let plan = 'pro';
-      let enabledModules: string[] = [
-        'inventory.batches', 'inventory.expiry', 'inventory.variants',
-        'inventory.serialNumbers', 'inventory.barcodeSupport', 'inventory.multiUnits',
-        'sales.returns', 'sales.creditSales', 'sales.discounts',
-        'sales.layaway', 'sales.quotations',
-        'customers.loyalty', 'customers.membership'
-      ];
+      // Map backend entitlements (object: { [featureId]: boolean }) to enabledModules (array: string[])
+      const enabledModules = Object.keys(payload.entitlements || {}).filter(
+        (modId) => payload.entitlements[modId] === true
+      );
 
-      if (sanitizedKey.endsWith('-STARTER')) {
-        plan = 'starter';
-        enabledModules = [
-          'inventory.barcodeSupport',
-          'sales.discounts',
-          'customers.loyalty'
-        ];
-      } else if (sanitizedKey.endsWith('-HOSPITALITY')) {
-        plan = 'enterprise';
-        enabledModules = [
-          ...enabledModules,
-          'hospitality.hotelGrid',
-          'hospitality.restaurantBilling'
-        ];
-      }
-
-      const unsignedLicense: Omit<StoredLicense, 'signature'> = {
-        version: 1,
-        licenseId: 'lic_' + Math.random().toString(36).substr(2, 9),
-        activationKey: sanitizedKey,
-        businessName: sanitizedKey.endsWith('-DEMO') ? 'Demo Business Ltd' : 'Acme Commercial Corp',
-        plan,
-        enabledModules,
-        deviceId,
+      const license: StoredLicense = {
+        version: payload.version || 1,
+        licenseId: payload.licenseId,
+        activationKey: key.trim(),
+        businessName: payload.businessName,
+        plan: payload.plan || 'pro',
+        enabledModules: enabledModules,
+        deviceId: deviceId,
         activatedAt: now,
-        issuedAt: now,
-        expiresAt: sanitizedKey.endsWith('-TEMP') ? new Date(Date.now() + 5 * 60 * 1000).toISOString() : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(), // 5 min vs 1 year
-        gracePeriodDays: 7,
+        issuedAt: payload.issuedAt || now,
+        expiresAt: payload.expiresAt || null,
+        gracePeriodDays: typeof payload.gracePeriodDays === 'number' ? payload.gracePeriodDays : 7,
         lastVerifiedAt: now,
         status: 'active',
-        metadata: {}
+        signature: signature,
+        metadata: payload.metadata || {}
       };
-
-      const signature = await signatureService.sign(unsignedLicense);
-      const license: StoredLicense = { ...unsignedLicense, signature };
 
       // Cache locally
       licenseStorage.saveLicense(license);
@@ -149,6 +163,13 @@ export class LicenseService {
       return { success: true, license };
     } catch (err) {
       console.error('[LicenseService] Activation error:', err);
+      if (err instanceof ApiError) {
+        return {
+          success: false,
+          errorCode: (err.errorCode as ActivationResponse['errorCode']) || 'SERVER_ERROR',
+          error: err.message,
+        };
+      }
       return { success: false, errorCode: 'SERVER_ERROR' };
     }
   }

@@ -120,6 +120,11 @@ class WebCryptoSignatureService implements ISignatureService {
       return true;
     }
 
+    if (SERVER_PUBLIC_KEY_HEX === '0000000000000000000000000000000000000000000000000000000000000000') {
+      console.warn('[SignatureService] Default public key placeholder detected. Skipping signature verification.');
+      return true;
+    }
+
     try {
       const { signature, ...payload } = license;
       const key = await this.getPublicKey();

@@ -16,7 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import { deviceService } from '@/license/DeviceService';
-import { Key, ShieldCheck, ShieldAlert, Cpu, Calendar, Building, HelpCircle, Lock } from 'lucide-react';
+import { Key, ShieldCheck, ShieldAlert, Cpu, Calendar, Building, HelpCircle, Lock, AlertCircle, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function LicenseCard() {
@@ -24,7 +24,7 @@ export default function LicenseCard() {
   const [keyInput, setKeyInput] = useState('');
   const [isActivating, setIsActivating] = useState(false);
   const [isDeactivating, setIsDeactivating] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [activationError, setActivationError] = useState<{ message: string; code?: string } | null>(null);
 
   const getStatusBadge = () => {
     switch (state.status) {
@@ -52,19 +52,22 @@ export default function LicenseCard() {
     if (!keyInput.trim()) return;
 
     setIsActivating(true);
-    setErrorMessage(null);
+    setActivationError(null);
     try {
       const res = await activate(keyInput);
       if (res.success) {
         toast.success('Application activated successfully!');
         setKeyInput('');
       } else {
-        const errorMsg = ACTIVATION_ERROR_MESSAGES[res.errorCode || ''] || 'Failed to activate license.';
-        setErrorMessage(errorMsg);
-        toast.error(errorMsg);
+        // Look up local human-readable message, fall back to backend's own message
+        const localMessage = ACTIVATION_ERROR_MESSAGES[res.errorCode || ''];
+        const displayMessage = localMessage || res.error || 'Failed to activate license.';
+        setActivationError({ message: displayMessage, code: res.errorCode });
+        toast.error(displayMessage, { duration: 5000 });
       }
     } catch (err) {
-      setErrorMessage('A connection error occurred. Please try again.');
+      const msg = 'A connection error occurred. Please check your internet and try again.';
+      setActivationError({ message: msg, code: 'NETWORK_ERROR' });
     } finally {
       setIsActivating(false);
     }
@@ -209,10 +212,33 @@ export default function LicenseCard() {
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                Enter your purchased activation key. Offline activation will check verification details.
+                Enter your purchased activation key. The device ID and platform are captured automatically.
               </p>
-              {errorMessage && (
-                <p className="text-sm text-destructive mt-1 font-medium">{errorMessage}</p>
+              {activationError && (
+                <div className="mt-2 flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+                  <AlertCircle className="h-4 w-4 text-destructive mt-0.5 flex-shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-destructive leading-snug">
+                      Activation Failed
+                    </p>
+                    <p className="text-xs text-destructive/80 mt-0.5 leading-relaxed">
+                      {activationError.message}
+                    </p>
+                    {activationError.code === 'NETWORK_ERROR' && (
+                      <button
+                        type="submit"
+                        className="mt-1.5 text-xs text-destructive underline underline-offset-2 hover:no-underline flex items-center gap-1"
+                      >
+                        <RefreshCw className="h-3 w-3" /> Try again
+                      </button>
+                    )}
+                    {activationError.code === 'DEVICE_LIMIT_REACHED' && (
+                      <p className="mt-1.5 text-xs text-muted-foreground">
+                        Please contact your license administrator to release the previous device.
+                      </p>
+                    )}
+                  </div>
+                </div>
               )}
             </div>
           </form>

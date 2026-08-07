@@ -13,6 +13,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { LicenseState, ActivationResponse, DeactivationResponse } from './types';
 import { licenseService } from './LicenseService';
 import { isDomainFeatureAllowed } from './LicenseValidator';
+import { useApp } from '@/contexts/AppContext';
 
 interface LicenseContextType {
   state: LicenseState;
@@ -43,12 +44,17 @@ export function LicenseProvider({ children }: { children: React.ReactNode }) {
     init();
   }, [init]);
 
+  const { updateSettings } = useApp();
+
   const activate = useCallback(async (key: string): Promise<ActivationResponse> => {
     setState((prev) => ({ ...prev, isLoading: true }));
     const result = await licenseService.activate(key);
     setState(licenseService.getState());
+    if (result.success && result.license?.businessName) {
+      updateSettings({ businessName: result.license.businessName });
+    }
     return result;
-  }, []);
+  }, [updateSettings]);
 
   const deactivate = useCallback(async (): Promise<DeactivationResponse> => {
     setState((prev) => ({ ...prev, isLoading: true }));

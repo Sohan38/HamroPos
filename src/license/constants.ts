@@ -32,7 +32,7 @@ export const LICENSE_SCHEMA_VERSION = 1;
 // ─── Durations ────────────────────────────────────────────────────────────────
 
 /** Number of days from first install before the trial expires. */
-export const TRIAL_DURATION_DAYS = 30;
+export const TRIAL_DURATION_DAYS = 3;
 
 /**
  * Default grace period in days after license expiry.
@@ -115,11 +115,16 @@ export const PLAN_LABELS: Record<string, string> = {
  * Centralised here so the UI never contains error string logic.
  */
 export const ACTIVATION_ERROR_MESSAGES: Record<string, string> = {
-  INVALID_KEY:           'The activation key is invalid. Please check and try again.',
-  KEY_ALREADY_USED:      'This key has already been used on another device.',
-  DEVICE_LIMIT_REACHED:  'The maximum number of activations for this key has been reached.',
-  LICENSE_SUSPENDED:     'This license has been suspended. Please contact support.',
-  LICENSE_EXPIRED:       'This license has expired. Please renew to continue.',
-  SERVER_ERROR:          'A server error occurred. Please try again in a few minutes.',
-  NETWORK_ERROR:         'No internet connection. Please check your network and try again.',
+  // ── Frontend / Client-side codes ──────────────────────────────────────────
+  INVALID_KEY:                'The activation key is invalid. Please check and try again.',
+  KEY_ALREADY_USED:           'This key has already been used on another device.',
+  DEVICE_LIMIT_REACHED:       'The maximum number of activations for this key has been reached.',
+  LICENSE_SUSPENDED:          'This license has been suspended. Please contact support.',
+  LICENSE_EXPIRED:            'This license has expired. Please renew to continue.',
+  SERVER_ERROR:               'A server error occurred. Please try again in a few minutes.',
+  NETWORK_ERROR:              'No internet connection. Please check your network and try again.',
+
+  // ── Backend error codes (errors[].code) ────────────────────────────────────
+  INVALID_ACTIVATION_KEY:     'The activation key is invalid or does not exist. Please check and try again.',
+  SIGNING_DISABLED:           'License signing is currently unavailable. Please contact support.',
 };

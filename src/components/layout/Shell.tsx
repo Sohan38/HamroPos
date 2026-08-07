@@ -2,10 +2,12 @@ import React from 'react';
 import { TopNav } from './TopNav';
 import { BottomNav } from './BottomNav';
 import { DesktopSidebar } from './DesktopSidebar';
+import { LicenseBanner } from '../LicenseBanner';
 
 export function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-[100dvh] flex flex-col bg-background">
+      <LicenseBanner />
       <TopNav />
       <div className="flex flex-1">
         <DesktopSidebar />
