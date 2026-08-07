@@ -347,6 +347,7 @@ export default function SalesPos() {
           customerName: selectedCustomer.name,
           phone: selectedCustomer.phone,
           amount: dueAmount,
+          paidAmount: 0,
           description: `POS sale • ${cart.length} item${cart.length !== 1 ? 's' : ''}`,
           date: new Date().toISOString(),
           dueDate: null,
@@ -354,6 +355,7 @@ export default function SalesPos() {
           paidAt: null,
           notes: paidNow > 0 ? `Paid ${format(paidNow)} at checkout` : 'Full credit sale',
           sourceSaleId: savedSale.id,
+          payments: [],
         });
       }
       for (const item of cart) {

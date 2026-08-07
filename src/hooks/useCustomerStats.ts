@@ -51,9 +51,9 @@ export function useAllCustomerStats(): Map<string, CustomerStats> {
         }
 
         for (const credit of credits) {
-            if (!credit.customerId || credit.status !== 'pending') continue;
+            if (!credit.customerId || credit.status === 'paid') continue;
             const s: CustomerStats = map.get(credit.customerId) ?? { ...EMPTY_STATS, sales: [] };
-            s.outstandingCredit += credit.amount;
+            s.outstandingCredit += Math.max(0, credit.amount - (credit.paidAmount ?? 0));
             map.set(credit.customerId, s);
         }
 

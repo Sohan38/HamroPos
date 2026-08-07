@@ -225,18 +225,26 @@ export interface CashBookEntry extends StorageRecord {
   notes: string;
 }
 
+export interface CreditPayment {
+  date: string;
+  amount: number;
+  note: string;
+}
+
 export interface Credit extends StorageRecord {
   customerId: string;
   customerName: string;
   phone: string;
   description: string;
   amount: number;
+  paidAmount: number;
   date: string;
   dueDate: string | null;
-  status: 'pending' | 'paid';
+  status: 'pending' | 'partial' | 'paid';
   paidAt: string | null;
   notes: string;
   sourceSaleId?: string;
+  payments: CreditPayment[];
 }
 
 export interface FeatureConfig {

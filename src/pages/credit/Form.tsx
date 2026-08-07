@@ -58,12 +58,14 @@ export default function CreditForm() {
       customerName: selectedCustomer!.name,
       phone: selectedCustomer!.phone,
       amount: Number(formData.amount),
+      paidAmount: 0,
       description: formData.description || 'Credit sale',
       date: new Date().toISOString(),
       dueDate: formData.dueDate ? new Date(formData.dueDate).toISOString() : null,
       status: 'pending',
       paidAt: null,
       notes: '',
+      payments: [],
     });
 
     toast.success('Credit record added');

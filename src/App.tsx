@@ -55,6 +55,7 @@ const PurchaseForm = retryLazy(() => import('@/pages/purchases/Form'));
 const PurchaseDetail = retryLazy(() => import('@/pages/purchases/Detail'));
 const CreditList = retryLazy(() => import('@/pages/credit/List'));
 const CreditForm = retryLazy(() => import('@/pages/credit/Form'));
+const CreditDetail = retryLazy(() => import('@/pages/credit/Detail'));
 const CashBookList = retryLazy(() => import('@/pages/cash-book/List'));
 const CashBookForm = retryLazy(() => import('@/pages/cash-book/Form'));
 const HotelGrid = retryLazy(() => import('@/pages/hotel/Grid'));
@@ -142,6 +143,7 @@ function Router() {
 
             <Route path="/credit" component={CreditList} />
             <Route path="/credit/new" component={CreditForm} />
+            <Route path="/credit/:id" component={CreditDetail} />
 
             <Route path="/customers" component={CustomerList} />
             <Route path="/customers/:id" component={CustomerDetail} />
