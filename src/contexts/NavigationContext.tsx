@@ -33,6 +33,7 @@ const PARENT_ROUTE_MAP: Array<{ pattern: RegExp; parent: string }> = [
   { pattern: /^\/expenses\/.+$/, parent: '/expenses' },
   { pattern: /^\/cash-book\/.+$/, parent: '/cash-book' },
   { pattern: /^\/credit\/.+$/, parent: '/credit' },
+  { pattern: /^\/payables\/.+$/, parent: '/payables' },
   { pattern: /^\/hotel\/rooms\/.+$/, parent: '/hotel' },
   { pattern: /^\/hotel\/billing\/.+$/, parent: '/hotel/billing' },
   { pattern: /^\/restaurant\/.+$/, parent: '/restaurant' },

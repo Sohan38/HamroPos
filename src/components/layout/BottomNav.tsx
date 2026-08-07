@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'wouter';
-import { Home, Package, ShoppingCart, Hotel, MoreHorizontal, Settings, Users, Truck, FileText, UtensilsCrossed, Receipt, Wallet, Banknote } from 'lucide-react';
+import { Home, Package, ShoppingCart, Hotel, MoreHorizontal, Settings, Users, Truck, FileText, UtensilsCrossed, Receipt, Wallet, Banknote, ArrowUpFromLine } from 'lucide-react';
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
@@ -36,6 +36,7 @@ export function BottomNav() {
     { href: '/expenses', label: 'Expenses', icon: Receipt, show: true },
     { href: '/cash-book', label: 'Cash Book', icon: Wallet, show: true },
     { href: '/credit', label: 'Credit', icon: Banknote, show: true },
+    { href: '/payables', label: 'Payables', icon: ArrowUpFromLine, show: true },
     // If reports is already in mainNavItems, don't show it here to prevent duplication
     { href: '/reports', label: 'Reports', icon: FileText, show: isHotelEnabled },
     { href: '/customers', label: 'Customers', icon: Users, show: true },

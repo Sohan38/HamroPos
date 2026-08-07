@@ -137,6 +137,17 @@ export default function Reports() {
       return s + inRangePayments.reduce((ps, p) => ps + p.amount, 0);
     }, 0);
 
+    // Payables outstanding in selected period
+    const pendingPayables = filteredPurchases
+      .filter(p => (p.paymentStatus ?? (p.paidAmount && p.paidAmount > 0 ? 'partial' : 'unpaid')) !== 'paid' && (p.status ?? 'received') !== 'cancelled')
+      .reduce((s, p) => s + Math.max(0, p.grandTotal - (p.paidAmount ?? 0)), 0);
+
+    // Payables paid in selected period: sum of all payment entries recorded in the timeframe across all purchases
+    const collectedPayables = purchases.reduce((s, p) => {
+      const inRangePayments = (p.payments ?? []).filter(pay => inRange(pay.date));
+      return s + inRangePayments.reduce((ps, pay) => ps + pay.amount, 0);
+    }, 0);
+
     // Sales by customer (for filtered period)
     const customerSalesMap: Record<string, { name: string; revenue: number; visits: number; avgOrder: number }> = {};
     for (const sale of filteredSales) {
@@ -166,6 +177,7 @@ export default function Reports() {
       totalRevenue, totalExpenses, totalPurchases, totalDiscount, totalTax,
       cogs, grossProfit, netProfit, grossMargin,
       topProducts, expensePieData, paymentPieData, pendingCredit, collectedCredit,
+      pendingPayables, collectedPayables,
       salesCount: filteredSales.length,
       topCustomers, customerSalesCount, walkinRevenue,
     };
@@ -271,16 +283,28 @@ export default function Reports() {
             <p className="text-lg font-bold mt-1">{format(stats.totalPurchases)}</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="cursor-pointer hover:bg-muted/40 transition-colors" onClick={() => setLocation('/credit')}>
           <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">Pending Credit</p>
+            <p className="text-xs text-muted-foreground font-medium">Pending Credit (Udharo)</p>
             <p className="text-lg font-bold text-orange-500 mt-1">{format(stats.pendingCredit)}</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="cursor-pointer hover:bg-muted/40 transition-colors" onClick={() => setLocation('/payables')}>
           <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">Collected Credit</p>
+            <p className="text-xs text-muted-foreground font-medium">Pending Payables</p>
+            <p className="text-lg font-bold text-red-500 mt-1">{format(stats.pendingPayables)}</p>
+          </CardContent>
+        </Card>
+        <Card className="cursor-pointer hover:bg-muted/40 transition-colors" onClick={() => setLocation('/credit')}>
+          <CardContent className="p-4">
+            <p className="text-xs text-muted-foreground font-medium">Collected Credit</p>
             <p className="text-lg font-bold text-green-600 mt-1">{format(stats.collectedCredit)}</p>
+          </CardContent>
+        </Card>
+        <Card className="cursor-pointer hover:bg-muted/40 transition-colors" onClick={() => setLocation('/payables')}>
+          <CardContent className="p-4">
+            <p className="text-xs text-muted-foreground font-medium">Paid Payables</p>
+            <p className="text-lg font-bold text-emerald-600 mt-1">{format(stats.collectedPayables)}</p>
           </CardContent>
         </Card>
       </div>

@@ -98,6 +98,17 @@ export default function Dashboard() {
       return s + todayPayments.reduce((ps, p) => ps + p.amount, 0);
     }, 0);
 
+    // Payables outstanding = sum of remaining balances for all unpaid/partial purchases
+    const pendingPayablesTotal = purchases
+      .filter(p => (p.paymentStatus ?? (p.paidAmount && p.paidAmount > 0 ? 'partial' : 'unpaid')) !== 'paid' && (p.status ?? 'received') !== 'cancelled')
+      .reduce((s, p) => s + Math.max(0, p.grandTotal - (p.paidAmount ?? 0)), 0);
+
+    // Payables paid today = sum of individual payment entries recorded today across all purchases
+    const payablesPaidToday = purchases.reduce((s, p) => {
+      const todayPayments = (p.payments ?? []).filter(pay => pay.date.startsWith(todayStr));
+      return s + todayPayments.reduce((ps, pay) => ps + pay.amount, 0);
+    }, 0);
+
     const lowStockItems = inventory.filter(i => i.quantity <= i.minimumStock && i.quantity > 0);
     const outOfStockItems = inventory.filter(i => i.quantity === 0);
 
@@ -149,6 +160,7 @@ export default function Dashboard() {
       todayRevenue, todayExpensesTotal, todayGrossProfit, todayNetProfit,
       qrSalesToday, todayPurchaseTotal,
       pendingCreditTotal, creditReceivedToday,
+      pendingPayablesTotal, payablesPaidToday,
       lowStockItems, outOfStockItems,
       expiredBatches, expiringSoonBatches,
       inventoryPurchaseValue, inventorySellingValue, estimatedInventoryProfit,
@@ -284,10 +296,16 @@ export default function Dashboard() {
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="cursor-pointer hover:bg-muted/40 transition-colors" onClick={() => setLocation('/credit')}>
           <CardContent className="p-4">
-            <p className="text-xs font-medium text-muted-foreground">Pending Credit</p>
+            <p className="text-xs font-medium text-muted-foreground">Pending Credit (Udharo)</p>
             <h2 className="text-xl font-bold mt-1 text-orange-500">{formatCurrency(metrics.pendingCreditTotal)}</h2>
+          </CardContent>
+        </Card>
+        <Card className="cursor-pointer hover:bg-muted/40 transition-colors" onClick={() => setLocation('/payables')}>
+          <CardContent className="p-4">
+            <p className="text-xs font-medium text-muted-foreground">Pending Payables</p>
+            <h2 className="text-xl font-bold mt-1 text-red-500">{formatCurrency(metrics.pendingPayablesTotal)}</h2>
           </CardContent>
         </Card>
       </div>
@@ -306,10 +324,16 @@ export default function Dashboard() {
             <p className="font-bold text-lg mt-1">{formatCurrency(metrics.todayPurchaseTotal)}</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="cursor-pointer hover:bg-muted/40 transition-colors" onClick={() => setLocation('/credit')}>
           <CardContent className="p-4">
             <p className="text-xs text-muted-foreground">Credit Received Today</p>
             <p className="font-bold text-lg mt-1 text-green-600">{formatCurrency(metrics.creditReceivedToday)}</p>
+          </CardContent>
+        </Card>
+        <Card className="cursor-pointer hover:bg-muted/40 transition-colors" onClick={() => setLocation('/payables')}>
+          <CardContent className="p-4">
+            <p className="text-xs text-muted-foreground">Payables Paid Today</p>
+            <p className="font-bold text-lg mt-1 text-red-500">{formatCurrency(metrics.payablesPaidToday)}</p>
           </CardContent>
         </Card>
         <Card>
