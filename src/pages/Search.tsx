@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { useLocation } from 'wouter';
 import { useInventory, useCustomers, useSuppliers, useCredit } from '@/contexts/GlobalProviders';
+import { useCurrency } from '@/hooks/useCurrency';
 import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
 import { Search as SearchIcon, Package, Users, Banknote, ArrowRight } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { rankSearch } from '@/utils/search/rank';
@@ -9,6 +11,7 @@ import { rankSearch } from '@/utils/search/rank';
 export default function Search() {
   const [, setLocation] = useLocation();
   const [query, setQuery] = useState('');
+  const { format } = useCurrency();
 
   const { items: inventory } = useInventory();
   const { items: customers } = useCustomers();
@@ -98,17 +101,31 @@ export default function Search() {
               <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
                 <Banknote className="h-4 w-4" /> Credit Records
               </h3>
-              {results.credits.map(item => (
-                <Card key={item.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setLocation('/credit')}>
-                  <CardContent className="p-4 flex justify-between items-center">
-                    <div>
-                      <div className="font-semibold">{item.customerName}</div>
-                      <div className="text-sm text-muted-foreground">Amount: {item.amount} • {item.status}</div>
-                    </div>
-                    <ArrowRight className="h-4 w-4 text-muted-foreground" />
-                  </CardContent>
-                </Card>
-              ))}
+              {results.credits.map(item => {
+                const remaining = Math.max(0, item.amount - (item.paidAmount ?? 0));
+                const statusLabel = item.status === 'paid' ? 'Settled' : item.status === 'partial' ? 'Partial' : 'Pending';
+                const statusClass = item.status === 'paid'
+                  ? 'bg-green-500/10 text-green-600 border-green-200'
+                  : item.status === 'partial'
+                    ? 'bg-blue-500/10 text-blue-600 border-blue-200'
+                    : 'bg-orange-500/10 text-orange-600 border-orange-200';
+                return (
+                  <Card key={item.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setLocation(`/credit/${item.id}`)}>
+                    <CardContent className="p-4 flex justify-between items-center gap-3">
+                      <div className="min-w-0">
+                        <div className="font-semibold truncate">{item.customerName}</div>
+                        <div className="text-sm text-muted-foreground">
+                          {item.status !== 'paid' ? `Remaining: ${format(remaining)}` : `Settled: ${format(item.amount)}`}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <Badge variant="outline" className={statusClass}>{statusLabel}</Badge>
+                        <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           )}
         </div>

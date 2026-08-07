@@ -124,9 +124,18 @@ export default function Reports() {
     const paymentPieData = Object.entries(payByMethod)
       .map(([name, value]) => ({ name: name.toUpperCase(), value }));
 
-    // Pending vs paid credit
-    const pendingCredit = filteredCredits.filter(c => c.status === 'pending').reduce((s, c) => s + c.amount, 0);
-    const collectedCredit = filteredCredits.filter(c => c.status === 'paid').reduce((s, c) => s + c.amount, 0);
+    // Outstanding receivable: sum of remaining balances for credits created in period that are unpaid/partial
+    const pendingCredit = filteredCredits
+      .filter(c => c.status !== 'paid')
+      .reduce((s, c) => s + Math.max(0, c.amount - (c.paidAmount ?? 0)), 0);
+
+    // Collected in period: sum of all payment entries whose date falls in the selected range
+    // (across ALL credits, not just those created in the period — a credit from last month
+    //  paid this month should count toward this month's collections)
+    const collectedCredit = credits.reduce((s, c) => {
+      const inRangePayments = (c.payments ?? []).filter(p => inRange(p.date));
+      return s + inRangePayments.reduce((ps, p) => ps + p.amount, 0);
+    }, 0);
 
     // Sales by customer (for filtered period)
     const customerSalesMap: Record<string, { name: string; revenue: number; visits: number; avgOrder: number }> = {};
@@ -160,7 +169,7 @@ export default function Reports() {
       salesCount: filteredSales.length,
       topCustomers, customerSalesCount, walkinRevenue,
     };
-  }, [filteredSales, filteredExpenses, filteredPurchases, filteredCredits, inventory, customers]);
+  }, [filteredSales, filteredExpenses, filteredPurchases, filteredCredits, credits, inventory, customers]);
 
   // Daily chart (last 30 days or filtered range)
   const dailyChart = useMemo(() => {

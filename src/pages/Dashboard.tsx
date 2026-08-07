@@ -86,10 +86,17 @@ export default function Dashboard() {
     });
     const todayPurchaseTotal = todayPurchases.reduce((s, x) => s + x.grandTotal, 0);
 
-    const pendingCreditTotal = credits.filter(c => c.status === 'pending').reduce((s, c) => s + c.amount, 0);
-    const creditReceivedToday = credits.filter(c => c.status === 'paid' && c.paidAt && (() => {
-      try { return isToday(parseISO(c.paidAt!)); } catch { return isToday(new Date(c.paidAt!)); }
-    })()).reduce((s, c) => s + c.amount, 0);
+    // Outstanding = sum of remaining balances for all unpaid/partial credits
+    const pendingCreditTotal = credits
+      .filter(c => c.status !== 'paid')
+      .reduce((s, c) => s + Math.max(0, c.amount - (c.paidAmount ?? 0)), 0);
+
+    // Collected today = sum of individual payment entries recorded today across all credits
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const creditReceivedToday = credits.reduce((s, c) => {
+      const todayPayments = (c.payments ?? []).filter(p => p.date.startsWith(todayStr));
+      return s + todayPayments.reduce((ps, p) => ps + p.amount, 0);
+    }, 0);
 
     const lowStockItems = inventory.filter(i => i.quantity <= i.minimumStock && i.quantity > 0);
     const outOfStockItems = inventory.filter(i => i.quantity === 0);
