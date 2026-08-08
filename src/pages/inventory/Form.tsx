@@ -59,9 +59,20 @@ export default function InventoryForm() {
   const storage = useStorageProvider();
 
   // Extract supplierId from query parameters
-  const queryParams = new URLSearchParams(location.split('?')[1] || '');
+  const query = typeof window !== 'undefined' && window.location.search
+    ? window.location.search.slice(1)
+    : (location.includes('?') ? location.split('?')[1] : '');
+  const queryParams = new URLSearchParams(query);
   const supplierIdFromQuery = queryParams.get('supplierId');
   const returnTo = queryParams.get('returnTo');
+  const decodedReturnTo = (() => {
+    if (!returnTo) return '';
+    try {
+      return decodeURIComponent(returnTo);
+    } catch {
+      return returnTo;
+    }
+  })();
 
   const isNew = !id || id === 'new';
   const existingProduct = !isNew ? items.find(i => i.id === id) : null;
@@ -150,7 +161,7 @@ export default function InventoryForm() {
 
   const hasExpiry = (isExpiryEnabled && isBatchesEnabled) ? (rawHasExpiry ?? false) : false;
   const hasVariants = isVariantsEnabled ? (rawHasVariants ?? false) : false;
-  const showPurchaseCreationSection = isNew && Boolean(returnTo && returnTo.includes('/purchases'));
+  const showPurchaseCreationSection = isNew && Boolean(decodedReturnTo && decodedReturnTo.includes('/purchases'));
 
   // Multi-supplier mode: 2+ suppliers selected
   const isMultiSupplier = !hasExpiry && !hasVariants && watchedSupplierIds.length >= 2;
@@ -490,14 +501,16 @@ export default function InventoryForm() {
 
       const productData = {
         ...data,
-        quantity: showPurchaseCreationSection ? 0 : calculatedStock,
+        quantity: isNew ? 0 : calculatedStock,
         barcode: data.barcode ?? '',
         brand: data.brand ?? '',
         supplierId: resolvedSupplierIds[0] ?? '',
         supplierIds: resolvedSupplierIds,
-        supplierStocks: showPurchaseCreationSection
+        supplierStocks: isNew
           ? normalizedSupplierStocks.map((stock: any) => ({ ...stock, stock: 0 }))
-          : normalizedSupplierStocks,
+          : showPurchaseCreationSection
+            ? normalizedSupplierStocks.map((stock: any) => ({ ...stock, stock: 0 }))
+            : normalizedSupplierStocks,
         notes: data.notes ?? '',
         hasExpiry: data.hasExpiry ?? false,
         hasVariants: data.hasVariants ?? false,
@@ -528,7 +541,7 @@ export default function InventoryForm() {
           if (newId && resolvedSupplierIds.length > 0) {
             for (const supplierId of resolvedSupplierIds) {
               const draft = supplierPurchaseDrafts[supplierId];
-              const supplierStock = (productData.supplierStocks as any[]).find(record => record.supplierId === supplierId);
+              const supplierStock = (resolvedSupplierStocks as any[]).find(record => record.supplierId === supplierId);
               const supplier = suppliers.find(candidate => candidate.id === supplierId);
               const purchaseDate = (draft?.purchaseDate || new Date().toISOString().slice(0, 10)).trim();
               const inferredInvoice = ((draft?.invoiceNumber || supplierStock?.supplierSku || '').trim()) || generateSupplierInvoiceNumber(purchases, supplier?.name, purchaseDate);
@@ -555,7 +568,11 @@ export default function InventoryForm() {
                   notes: batch.notes,
                 }))
                 : (() => {
-                  const quantity = Math.max(0, Number(supplierStock?.stock ?? (resolvedSupplierIds.length === 1 ? data.quantity : 0)) || 0);
+                  const quantity = Math.max(0, Number(
+                    (supplierStock && Number(supplierStock.stock) > 0)
+                      ? supplierStock.stock
+                      : (resolvedSupplierIds.length === 1 ? data.quantity : 0)
+                  ) || 0);
                   const purchaseRate = Number(supplierStock?.cost ?? productData.purchaseRate) || 0;
                   if (quantity <= 0) return [];
                   return [{
