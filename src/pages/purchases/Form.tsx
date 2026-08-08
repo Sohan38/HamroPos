@@ -1,16 +1,18 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useParams } from 'wouter';
+import { addMonths, format as formatDate, parseISO } from 'date-fns';
 import { usePurchases, useSuppliers, useInventory, useProductBatches } from '@/contexts/GlobalProviders';
 import { useStorageProvider } from '@/storage/StorageContext';
 import { useSmartBack } from '@/contexts/NavigationContext';
 import { useCurrency } from '@/hooks/useCurrency';
 import { useApp } from '@/contexts/AppContext';
 import { Card, CardContent } from '@/components/ui/card';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Save, PackagePlus, Trash2 } from 'lucide-react';
+import { ArrowLeft, Save, PackagePlus, Trash2, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { PurchaseItem, PurchasePaymentStatus, PurchaseStatus } from '@/types';
 import { createPurchase, updatePurchase } from '@/services/purchaseService';
@@ -18,6 +20,8 @@ import { SearchablePicker } from '@/components/SearchablePicker';
 import { generateBatchNumber, generateSupplierInvoiceNumber } from '@/utils/numbering';
 
 type DraftItem = PurchaseItem & {
+  initialPurchaseRate?: number | null;
+  expiryMode?: 'months' | 'manual';
   manufacturingDate?: string | null;
   expiryDate?: string | null;
 };
@@ -51,7 +55,7 @@ export default function PurchaseForm() {
   const [paymentStatus, setPaymentStatus] = useState<PurchasePaymentStatus>(existing?.paymentStatus ?? 'unpaid');
   const [paidAmount, setPaidAmount] = useState(String(existing?.paidAmount ?? 0));
   const [notes, setNotes] = useState(existing?.notes ?? '');
-  const [items, setItems] = useState<DraftItem[]>(existing?.items ?? []);
+  const [items, setItems] = useState<DraftItem[]>(() => (existing?.items ?? []).map(item => ({ ...item, initialPurchaseRate: item.purchaseRate })));
   const [discount, setDiscount] = useState(String(existing?.discount ?? 0));
   const [tax, setTax] = useState(String(existing?.tax ?? 0));
   const [saving, setSaving] = useState(false);
@@ -66,6 +70,20 @@ export default function PurchaseForm() {
   }, [productIdFromQuery, inventory]);
 
   const selectedSupplier = suppliers.find(supplier => supplier.id === supplierId);
+
+  function handleSupplierSelect(id: string) {
+    if (id !== supplierId && items.length > 0) {
+      setItems([]);
+    }
+    setSupplierId(id);
+  }
+
+  function handleSupplierRemove() {
+    if (items.length > 0) {
+      setItems([]);
+    }
+    setSupplierId('');
+  }
 
   useEffect(() => {
     if (!isNew) return;
@@ -98,20 +116,36 @@ export default function PurchaseForm() {
   // Product picker items for SearchablePicker — filter out already-added products
   const addedProductIds = useMemo(() => new Set(items.map(i => i.productId)), [items]);
   const productPickerItems = useMemo(() =>
-    inventory.map(p => ({
-      id: p.id,
-      name: p.name,
-      barcode: p.barcode,
-      category: p.category,
-      sublabel: `Stock: ${p.quantity} ${p.unit ?? ''}`.trim(),
-    })),
-    [inventory],
+    inventory
+      .filter(product => {
+        if (!supplierId) return false;
+        const productSuppliers = product.supplierIds ?? (product.supplierId ? [product.supplierId] : []);
+        return productSuppliers.includes(supplierId);
+      })
+      .map(p => ({
+        id: p.id,
+        name: p.name,
+        barcode: p.barcode,
+        category: p.category,
+        sublabel: `Stock: ${p.quantity} ${p.unit ?? ''}`.trim(),
+      })),
+    [inventory, supplierId],
   );
   // Only show products not yet in the cart
   const availableProductItems = useMemo(
     () => productPickerItems.filter(p => !addedProductIds.has(p.id)),
     [productPickerItems, addedProductIds],
   );
+
+  function getComputedExpiryDate(manufacturingDate: string | null | undefined, expiryMonths: number | null | undefined) {
+    if (!manufacturingDate || !expiryMonths || Number(expiryMonths) <= 0) return null;
+
+    try {
+      return addMonths(parseISO(manufacturingDate), Number(expiryMonths)).toISOString().split('T')[0];
+    } catch {
+      return null;
+    }
+  }
 
   function addItem(product: typeof inventory[number]) {
     const existingIndex = items.findIndex(item => item.productId === product.id);
@@ -137,9 +171,12 @@ export default function PurchaseForm() {
         quantity: 1,
         purchaseRate,
         subtotal: purchaseRate,
+        initialPurchaseRate: purchaseRate,
         variantName: defaultVariantName,
         batchNumber: defaultBatchNumber,
+        expiryMode: product.hasExpiry ? 'manual' : undefined,
         manufacturingDate: null,
+        expiryMonths: null,
         expiryDate: null,
         notes: '',
       }]);
@@ -154,10 +191,27 @@ export default function PurchaseForm() {
   function updateItem(index: number, field: keyof DraftItem, value: string | number | null) {
     setItems(current => current.map((item, itemIndex) => {
       if (itemIndex !== index) return item;
-      const next = { ...item, [field]: value };
+      const next = { ...item, [field]: value } as DraftItem;
       if (field === 'quantity' || field === 'purchaseRate') {
         next.subtotal = Math.max(0, Number(next.quantity) || 0) * Math.max(0, Number(next.purchaseRate) || 0);
       }
+
+      if (field === 'manufacturingDate' || field === 'expiryMonths' || field === 'expiryMode') {
+        const expiryMode = field === 'expiryMode' ? (value as DraftItem['expiryMode']) : (item.expiryMode ?? 'manual');
+        const manufacturingDate = field === 'manufacturingDate' ? (value as string | null) : item.manufacturingDate;
+        const expiryMonths = field === 'expiryMonths' ? (value as number | string | null) : item.expiryMonths;
+
+        if (expiryMode === 'months') {
+          const months = Number(expiryMonths ?? 0);
+          next.expiryMode = 'months';
+          next.expiryMonths = months > 0 ? months : null;
+          next.expiryDate = getComputedExpiryDate(manufacturingDate, months > 0 ? months : null);
+        } else {
+          next.expiryMode = 'manual';
+          next.expiryMonths = null;
+        }
+      }
+
       return next;
     }));
   }
@@ -210,6 +264,23 @@ export default function PurchaseForm() {
       return;
     }
 
+    const expiryProductMissingDates = items.some(item => {
+      const product = inventory.find(candidate => candidate.id === item.productId);
+      if (!product?.hasExpiry) return false;
+
+      const expiryMode = item.expiryMode ?? (item.expiryMonths ? 'months' : 'manual');
+      if (expiryMode === 'months') {
+        return !item.manufacturingDate || !item.expiryMonths || Number(item.expiryMonths) <= 0;
+      }
+
+      return !item.manufacturingDate || !item.expiryDate;
+    });
+
+    if (expiryProductMissingDates) {
+      toast.error('Expiry-tracked items need both manufactured and expiry dates before saving.');
+      return;
+    }
+
     setSaving(true);
     try {
       const validatedPayment = getValidatedPaymentState();
@@ -218,12 +289,23 @@ export default function PurchaseForm() {
         supplierId,
         supplierName: selectedSupplier?.name ?? null,
         date: new Date(`${purchaseDate}T12:00:00`).toISOString(),
-        items: items.map(item => ({
-          ...item,
-          quantity: Number(item.quantity),
-          purchaseRate: Number(item.purchaseRate),
-          subtotal: Number(item.quantity) * Number(item.purchaseRate),
-        })),
+        items: items.map(item => {
+          const expiryMode = item.expiryMode ?? (item.expiryMonths ? 'months' : 'manual');
+          const resolvedExpiryDate = expiryMode === 'months'
+            ? getComputedExpiryDate(item.manufacturingDate, item.expiryMonths)
+            : item.expiryDate ?? null;
+
+          return {
+            ...item,
+            quantity: Number(item.quantity),
+            purchaseRate: Number(item.purchaseRate),
+            subtotal: Number(item.quantity) * Number(item.purchaseRate),
+            expiryMode,
+            expiryMonths: expiryMode === 'months' ? (Number(item.expiryMonths) > 0 ? Number(item.expiryMonths) : null) : null,
+            expiryDate: resolvedExpiryDate,
+            manufacturingDate: item.manufacturingDate ?? null,
+          };
+        }),
         discount: discountValue,
         tax: taxValue,
         grandTotal,
@@ -263,8 +345,8 @@ export default function PurchaseForm() {
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
-        <div className="space-y-6">
+      <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-6">
+        <div className="space-y-6 min-w-0">
           {/* ── Section 1: Supplier & Invoice Details ─── */}
           <Card>
             <CardContent className="p-4 md:p-6 space-y-4">
@@ -273,11 +355,12 @@ export default function PurchaseForm() {
                 label="Supplier *"
                 items={supplierPickerItems}
                 selectedIds={supplierId ? [supplierId] : []}
-                onSelect={id => setSupplierId(id)}
-                onRemove={() => setSupplierId('')}
+                onSelect={handleSupplierSelect}
+                onRemove={handleSupplierRemove}
                 placeholder="Search suppliers by name or phone..."
                 emptyMessage="No suppliers yet. Add one from the Suppliers page."
                 multi={false}
+                singleRow
               />
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
@@ -331,6 +414,7 @@ export default function PurchaseForm() {
                 disabled={!supplierId}
                 defaultLimit={8}
                 multi
+                singleRow
               />
 
               {/* Cart items */}
@@ -342,6 +426,16 @@ export default function PurchaseForm() {
                 <div className="space-y-3">
                   {items.map((item, index) => {
                     const product = inventory.find(candidate => candidate.id === item.productId);
+                    const priceChanged = item.initialPurchaseRate != null && Number(item.purchaseRate) !== Number(item.initialPurchaseRate);
+                    const expiryMode = item.expiryMode ?? (item.expiryMonths ? 'months' : 'manual');
+                    const previewExpiry = expiryMode === 'months' && item.manufacturingDate && item.expiryMonths && Number(item.expiryMonths) > 0
+                      ? getComputedExpiryDate(item.manufacturingDate, Number(item.expiryMonths))
+                      : null;
+                    const batchDateIncomplete = Boolean(product?.hasExpiry) && (
+                      expiryMode === 'months'
+                        ? (!item.manufacturingDate || !item.expiryMonths || Number(item.expiryMonths) <= 0)
+                        : (!item.manufacturingDate || !item.expiryDate)
+                    );
                     return (
                       <div key={`${item.productId}-${index}`} className="rounded-lg border p-3 space-y-3">
                         <div className="flex items-start justify-between gap-3">
@@ -374,17 +468,73 @@ export default function PurchaseForm() {
                           )}
                           <div className={`flex items-end justify-end font-bold text-primary pb-2 ${product?.hasVariants ? '' : 'col-span-2'}`}>{format(item.subtotal)}</div>
                         </div>
+                        {priceChanged && (
+                          <Alert className="border-blue-200 bg-blue-50/70 text-blue-950">
+                            <AlertCircle className="h-4 w-4 text-blue-600" />
+                            <AlertDescription>
+                              Price changed from {format(Number(item.initialPurchaseRate ?? 0))} to {format(Number(item.purchaseRate))} for now.
+                            </AlertDescription>
+                          </Alert>
+                        )}
                         {product?.hasExpiry && (
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 border-t pt-3">
-                            <label className="space-y-1 text-xs font-medium">Batch number
-                              <Input value={item.batchNumber ?? ''} onChange={event => updateItem(index, 'batchNumber', event.target.value)} placeholder="Optional batch #" />
-                            </label>
-                            <label className="space-y-1 text-xs font-medium">Manufactured
-                              <Input type="date" value={item.manufacturingDate ?? ''} onChange={event => updateItem(index, 'manufacturingDate', event.target.value || null)} />
-                            </label>
-                            <label className="space-y-1 text-xs font-medium">Expiry
-                              <Input type="date" value={item.expiryDate ?? ''} onChange={event => updateItem(index, 'expiryDate', event.target.value || null)} />
-                            </label>
+                          <div className="space-y-2 border-t pt-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <label className="space-y-1 text-xs font-medium">Batch number
+                                <Input value={item.batchNumber ?? ''} onChange={event => updateItem(index, 'batchNumber', event.target.value)} placeholder="Optional batch #" />
+                              </label>
+                              <label className="space-y-1 text-xs font-medium">Manufactured
+                                <Input type="date" value={item.manufacturingDate ?? ''} onChange={event => updateItem(index, 'manufacturingDate', event.target.value || null)} />
+                              </label>
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-xs font-medium">Expiry mode</label>
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => updateItem(index, 'expiryMode', 'months')}
+                                  className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${expiryMode === 'months' ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background hover:bg-muted'}`}
+                                >
+                                  Auto (months)
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => updateItem(index, 'expiryMode', 'manual')}
+                                  className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${expiryMode === 'manual' ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background hover:bg-muted'}`}
+                                >
+                                  Manual date
+                                </button>
+                              </div>
+                            </div>
+                            {expiryMode === 'months' ? (
+                              <label className="space-y-1 text-xs font-medium">Months after manufacturing
+                                <Input type="number" min="1" max="120" value={item.expiryMonths ?? ''} onChange={event => updateItem(index, 'expiryMonths', event.target.value === '' ? null : Number(event.target.value))} placeholder="e.g. 12" />
+                              </label>
+                            ) : (
+                              <label className="space-y-1 text-xs font-medium">Expiry
+                                <Input type="date" value={item.expiryDate ?? ''} onChange={event => updateItem(index, 'expiryDate', event.target.value || null)} />
+                              </label>
+                            )}
+                            {previewExpiry && (
+                              <p className="text-xs text-muted-foreground">
+                                Estimated expiry: <span className="font-semibold text-foreground">{formatDate(parseISO(previewExpiry), 'dd MMM yyyy')}</span>
+                              </p>
+                            )}
+                            {batchDateIncomplete && (
+                              <Alert className="border-amber-200 bg-amber-50/70 text-amber-950">
+                                <AlertCircle className="h-4 w-4 text-amber-600" />
+                                <AlertDescription>
+                                  {expiryMode === 'months'
+                                    ? (!item.manufacturingDate || !item.expiryMonths || Number(item.expiryMonths) <= 0)
+                                      ? 'Manufactured date and shelf life in months are required before saving.'
+                                      : 'Manufactured date is required for the expiry calculation.'
+                                    : (!item.manufacturingDate && !item.expiryDate)
+                                      ? 'Manufactured and expiry dates are required for this batch before saving.'
+                                      : !item.manufacturingDate
+                                        ? 'Manufactured date is required for this batch.'
+                                        : 'Expiry date is required for this batch.'}
+                                </AlertDescription>
+                              </Alert>
+                            )}
                           </div>
                         )}
                       </div>

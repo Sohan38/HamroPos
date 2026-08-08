@@ -99,7 +99,7 @@ export function SearchablePicker({
   const showPicker = multi || selectedIds.length === 0;
 
   return (
-    <div className={cn('space-y-2', className)}>
+    <div className={cn('space-y-2 min-w-0', className)}>
       {label && (
         <p className="text-sm font-medium">{label}</p>
       )}
@@ -168,7 +168,7 @@ export function SearchablePicker({
               className={cn(
                 singleRow
                   // Single row: scroll left-right, never wrap, add padding to show scroll affordance
-                  ? 'flex gap-2 overflow-x-auto pb-1 scrollbar-none [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden'
+                  ? 'min-w-0 w-full flex gap-2 flex-nowrap overflow-x-auto pb-1 scrollbar-none [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden'
                   : 'flex gap-1.5 flex-wrap',
               )}
             >
