@@ -405,7 +405,7 @@ export default function SalesPos() {
     onSetTaxPercent: setTaxPercent,
     onSetPaymentMethod: (method: PaymentMethod) => {
       setPaymentMethod(method);
-      if (method === 'credit' && paidAmount === '') setPaidAmount(0);
+      if (method === 'credit' && paidAmount === '') setPaidAmount('');
       if (method !== 'credit' && paidAmount === 0) setPaidAmount('');
     },
     onSetPaidAmount: setPaidAmount,

@@ -10,10 +10,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Save, Plus, Trash2, Search, PackagePlus } from 'lucide-react';
+import { ArrowLeft, Save, PackagePlus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { PurchaseItem, PurchasePaymentStatus, PurchaseStatus } from '@/types';
 import { createPurchase, updatePurchase } from '@/services/purchaseService';
+import { SearchablePicker } from '@/components/SearchablePicker';
 
 type DraftItem = PurchaseItem & {
   manufacturingDate?: string | null;
@@ -52,7 +53,6 @@ export default function PurchaseForm() {
   const [items, setItems] = useState<DraftItem[]>(existing?.items ?? []);
   const [discount, setDiscount] = useState(String(existing?.discount ?? 0));
   const [tax, setTax] = useState(String(existing?.tax ?? 0));
-  const [searchQuery, setSearchQuery] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -70,15 +70,35 @@ export default function PurchaseForm() {
   const taxValue = Math.max(0, Number(tax) || 0);
   const grandTotal = Math.max(0, subtotal - discountValue + taxValue);
 
-  const searchResults = inventory
-    .filter(product => {
-      const query = searchQuery.trim().toLowerCase();
-      return query && (
-        product.name.toLowerCase().includes(query) ||
-        product.barcode.toLowerCase().includes(query)
-      );
-    })
-    .slice(0, 8);
+  // Supplier picker items for SearchablePicker
+  const supplierPickerItems = useMemo(() =>
+    suppliers.map(s => ({
+      id: s.id,
+      name: s.name,
+      phone: s.phone,
+      sublabel: s.phone ?? undefined,
+      inactive: (s.status ?? 'active') === 'inactive',
+    })),
+    [suppliers],
+  );
+
+  // Product picker items for SearchablePicker — filter out already-added products
+  const addedProductIds = useMemo(() => new Set(items.map(i => i.productId)), [items]);
+  const productPickerItems = useMemo(() =>
+    inventory.map(p => ({
+      id: p.id,
+      name: p.name,
+      barcode: p.barcode,
+      category: p.category,
+      sublabel: `Stock: ${p.quantity} ${p.unit ?? ''}`.trim(),
+    })),
+    [inventory],
+  );
+  // Only show products not yet in the cart
+  const availableProductItems = useMemo(
+    () => productPickerItems.filter(p => !addedProductIds.has(p.id)),
+    [productPickerItems, addedProductIds],
+  );
 
   function addItem(product: typeof inventory[number]) {
     const existingIndex = items.findIndex(item => item.productId === product.id);
@@ -99,7 +119,11 @@ export default function PurchaseForm() {
         notes: '',
       }]);
     }
-    setSearchQuery('');
+  }
+
+  function addItemById(productId: string) {
+    const product = inventory.find(p => p.id === productId);
+    if (product) addItem(product);
   }
 
   function updateItem(index: number, field: keyof DraftItem, value: string | number | null) {
@@ -191,20 +215,22 @@ export default function PurchaseForm() {
 
       <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
         <div className="space-y-6">
+          {/* ── Section 1: Supplier & Invoice Details ─── */}
           <Card>
             <CardContent className="p-4 md:p-6 space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <label className="space-y-2 text-sm font-medium">
-                  Supplier *
-                  <Select value={supplierId} onValueChange={setSupplierId}>
-                    <SelectTrigger><SelectValue placeholder="Select supplier" /></SelectTrigger>
-                    <SelectContent>
-                      {suppliers.map(supplier => (
-                        <SelectItem key={supplier.id} value={supplier.id}>{supplier.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </label>
+              {/* Supplier — SearchablePicker (single-select) */}
+              <SearchablePicker
+                label="Supplier *"
+                items={supplierPickerItems}
+                selectedIds={supplierId ? [supplierId] : []}
+                onSelect={id => setSupplierId(id)}
+                onRemove={() => setSupplierId('')}
+                placeholder="Search suppliers by name or phone..."
+                emptyMessage="No suppliers yet. Add one from the Suppliers page."
+                multi={false}
+              />
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
                 <label className="space-y-2 text-sm font-medium">
                   Purchase date
                   <Input type="date" value={purchaseDate} onChange={event => setPurchaseDate(event.target.value)} />
@@ -231,45 +257,36 @@ export default function PurchaseForm() {
             </CardContent>
           </Card>
 
+          {/* ── Section 2: Products ───────────────────── */}
           <Card>
             <CardContent className="p-4 md:p-6 space-y-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <h2 className="font-semibold">Products received</h2>
-                  <p className="text-xs text-muted-foreground">Choose a product, then enter quantity and actual supplier cost.</p>
+                  <p className="text-xs text-muted-foreground">Search and tap to add, then enter quantity and cost.</p>
                 </div>
                 <Button type="button" size="sm" variant="outline" onClick={openAddProduct} disabled={!supplierId}>
-                  <PackagePlus className="h-4 w-4 mr-1" /> Add product
+                  <PackagePlus className="h-4 w-4 mr-1" /> New product
                 </Button>
               </div>
 
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  value={searchQuery}
-                  onChange={event => setSearchQuery(event.target.value)}
-                  placeholder={supplierId ? 'Search by product name or barcode...' : 'Select a supplier first'}
-                  disabled={!supplierId}
-                  className="pl-9"
-                />
-                {searchResults.length > 0 && (
-                  <div className="absolute z-20 left-0 right-0 top-full mt-1 rounded-md border bg-card shadow-lg overflow-hidden">
-                    {searchResults.map(product => (
-                      <button type="button" key={product.id} className="w-full text-left flex items-center justify-between gap-3 p-3 hover:bg-muted" onClick={() => addItem(product)}>
-                        <span>
-                          <span className="block font-medium text-sm">{product.name}</span>
-                          <span className="block text-xs text-muted-foreground">Stock {product.quantity} {product.unit}</span>
-                        </span>
-                        <span className="text-sm font-medium">{format(product.supplierStocks?.find(record => record.supplierId === supplierId)?.cost ?? product.purchaseRate)}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              {/* Product Picker — SearchablePicker (multi-add, chips don't persist selected) */}
+              <SearchablePicker
+                items={availableProductItems}
+                selectedIds={[]}   // Products are immediately added to cart, no chip stays
+                onSelect={addItemById}
+                onRemove={() => {}}
+                placeholder={supplierId ? 'Search by product name or barcode...' : 'Select a supplier first'}
+                emptyMessage="No products in inventory yet."
+                disabled={!supplierId}
+                defaultLimit={8}
+                multi
+              />
 
+              {/* Cart items */}
               {items.length === 0 ? (
-                <div className="rounded-lg border border-dashed py-12 text-center text-sm text-muted-foreground">
-                  Search for products or add a new product to begin.
+                <div className="rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground">
+                  Search for products above or tap <strong>New product</strong> to create one.
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -316,6 +333,7 @@ export default function PurchaseForm() {
             </CardContent>
           </Card>
 
+          {/* ── Section 3: Notes ─────────────────────── */}
           <Card>
             <CardContent className="p-4 md:p-6 space-y-2">
               <label className="text-sm font-medium">Notes</label>
@@ -324,6 +342,7 @@ export default function PurchaseForm() {
           </Card>
         </div>
 
+        {/* ── Sidebar: Purchase summary ──────────────── */}
         <div>
           <Card className="lg:sticky lg:top-20">
             <CardContent className="p-4 md:p-6 space-y-4">

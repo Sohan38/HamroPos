@@ -294,7 +294,7 @@ export const CartPanel = React.memo(({
           inputMode="decimal"
           placeholder={paymentMethod === 'credit' ? '0 for full credit' : `${format(grandTotal)} (exact)`}
           className={`h-11 text-base font-bold ${paidAmount !== '' && Number(paidAmount) < grandTotal ? 'border-destructive' : ''}`}
-          value={paidAmount}
+          value={paidAmount === 0 ? '' : paidAmount}
           onChange={e => onSetPaidAmount(e.target.value ? Number(e.target.value) : '')}
         />
         {paidAmount !== '' && Number(paidAmount) < grandTotal && (
