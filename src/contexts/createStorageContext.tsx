@@ -32,6 +32,20 @@ export function createStorageContext<T extends { id: string }>(key: string) {
 
     useEffect(() => {
       refresh();
+
+      const handleStorageChanged = () => {
+        refresh();
+      };
+
+      if (typeof window !== 'undefined') {
+        window.addEventListener('sohan-storage-changed', handleStorageChanged);
+      }
+
+      return () => {
+        if (typeof window !== 'undefined') {
+          window.removeEventListener('sohan-storage-changed', handleStorageChanged);
+        }
+      };
     }, [refresh]);
 
     const add = useCallback(async (item: any) => {
@@ -59,7 +73,7 @@ export function createStorageContext<T extends { id: string }>(key: string) {
         return;
       }
       await storage.softDelete(key, id);
-      
+
       // Cascade delete batches if product is deleted
       if (key === 'inventory') {
         try {
@@ -72,7 +86,7 @@ export function createStorageContext<T extends { id: string }>(key: string) {
           console.error("Failed to cascade delete product batches:", err);
         }
       }
-      
+
       refresh();
     }, [storage, refresh]);
 
@@ -88,7 +102,7 @@ export function createStorageContext<T extends { id: string }>(key: string) {
         return;
       }
       await storage.hardDelete(key, id);
-      
+
       // Cascade delete batches if product is deleted
       if (key === 'inventory') {
         try {
@@ -101,7 +115,7 @@ export function createStorageContext<T extends { id: string }>(key: string) {
           console.error("Failed to cascade delete product batches:", err);
         }
       }
-      
+
       refresh();
     }, [storage, refresh]);
 

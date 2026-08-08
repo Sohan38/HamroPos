@@ -79,6 +79,11 @@ export class DexieProvider implements IStorageProvider {
   /** Write-through memory cache — same zero-latency read pattern as before */
   private readonly memCache = new Map<string, StorageRecord[]>();
 
+  private notifyStorageChanged(key?: string) {
+    if (typeof window === 'undefined') return;
+    window.dispatchEvent(new CustomEvent('sohan-storage-changed', { detail: { key } }));
+  }
+
   private table(key: string): Table<StorageRecord, string> {
     return (db as any)[key] as Table<StorageRecord, string>;
   }
@@ -108,6 +113,7 @@ export class DexieProvider implements IStorageProvider {
           await this.table(key).bulkPut(data as StorageRecord[]);
         }
       });
+      this.notifyStorageChanged(key);
     } catch (error) {
       console.error(`[DexieProvider] set("${key}") failed:`, error);
     }
@@ -157,6 +163,7 @@ export class DexieProvider implements IStorageProvider {
         }
       }
 
+      this.notifyStorageChanged(key);
       return saved;
     } catch (error) {
       console.error(`[DexieProvider] save("${key}") failed:`, error);
@@ -180,6 +187,7 @@ export class DexieProvider implements IStorageProvider {
           record.updatedAt = now;
         }
       }
+      this.notifyStorageChanged(key);
     } catch (error) {
       console.error(`[DexieProvider] softDelete("${key}", "${id}") failed:`, error);
     }
@@ -200,6 +208,7 @@ export class DexieProvider implements IStorageProvider {
           record.updatedAt = now;
         }
       }
+      this.notifyStorageChanged(key);
     } catch (error) {
       console.error(`[DexieProvider] undoSoftDelete("${key}", "${id}") failed:`, error);
     }
@@ -213,6 +222,7 @@ export class DexieProvider implements IStorageProvider {
         const idx = cached.findIndex((r) => r.id === id);
         if (idx >= 0) cached.splice(idx, 1);
       }
+      this.notifyStorageChanged(key);
     } catch (error) {
       console.error(`[DexieProvider] hardDelete("${key}", "${id}") failed:`, error);
     }
