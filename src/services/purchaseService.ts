@@ -267,6 +267,83 @@ async function persistTransition(
 
     await storage.set('inventory', inventory);
     await storage.set('productBatches', batches);
+
+    // Reconcile auto-generated expense records tied to this purchase.
+    // Behavior:
+    // - If the purchase is cancelled/deleted, remove all auto-generated expenses for it.
+    // - If paid amount decreased, reduce/remove auto expenses starting from newest.
+    // - If paid amount increased, create a new auto expense for the incremental amount (except for credit payments).
+    try {
+        const purchaseId = candidate.id ?? previous?.id;
+        const expenses = await storage.get<any>('expenses');
+        const ts = now();
+
+        // Helper predicate for auto-generated expenses we created earlier
+        const isAutoExpenseFor = (e: any, id?: string) => e && e.sourcePurchaseId === id && e.notes === 'Auto-generated from purchase payment';
+
+        // If purchase cancelled/deleted -> remove all auto expenses for it
+        if (candidate.deletedAt || candidate.status === 'cancelled') {
+            const remaining = expenses.filter((e: any) => !isAutoExpenseFor(e, purchaseId));
+            if (remaining.length !== expenses.length) {
+                await storage.set('expenses', remaining);
+            }
+        } else {
+            const previousPaid = previous?.paidAmount ?? 0;
+            const candidatePaid = Number(candidate.paidAmount ?? 0);
+
+            if (candidatePaid < previousPaid) {
+                // Need to roll back previously created auto expenses by the delta
+                let remainingDelta = previousPaid - candidatePaid;
+                // Find auto expenses for this purchase, newest first
+                const autoExpenses = expenses
+                    .filter((e: any) => isAutoExpenseFor(e, purchaseId))
+                    .sort((a: any, b: any) => (b.createdAt || b.date || '').localeCompare(a.createdAt || a.date || ''));
+
+                for (const exp of autoExpenses) {
+                    if (remainingDelta <= 0) break;
+                    if (exp.amount <= remainingDelta + 0.000001) {
+                        // remove entire expense
+                        remainingDelta -= exp.amount;
+                        const idx = expenses.findIndex((x: any) => x.id === exp.id);
+                        if (idx >= 0) expenses.splice(idx, 1);
+                    } else {
+                        // partially reduce this expense
+                        exp.amount = Number((exp.amount - remainingDelta).toFixed(2));
+                        exp.updatedAt = ts;
+                        remainingDelta = 0;
+                    }
+                }
+
+                if (remainingDelta > 0.000001) {
+                    // Could not reconcile fully — log for diagnostics
+                    console.warn(`Unreconciled negative payment delta for purchase ${purchaseId}: ${remainingDelta}`);
+                }
+
+                await storage.set('expenses', expenses);
+            } else if (candidatePaid > previousPaid && (candidate.paymentMethod ?? 'cash') !== 'credit') {
+                const paidDelta = candidatePaid - previousPaid;
+                const expense = {
+                    id: uuidv4(),
+                    date: candidate.date ?? ts,
+                    category: 'purchase',
+                    description: `Payment for purchase ${candidate.invoiceNumber ?? candidate.id}` + (candidate.supplierName ? ` — ${candidate.supplierName}` : ''),
+                    amount: paidDelta,
+                    paymentMethod: candidate.paymentMethod ?? 'cash',
+                    notes: 'Auto-generated from purchase payment',
+                    sourcePurchaseId: purchaseId,
+                    createdAt: ts,
+                    updatedAt: ts,
+                    deletedAt: null,
+                    version: 1,
+                };
+                expenses.push(expense);
+                await storage.set('expenses', expenses);
+            }
+        }
+    } catch (err) {
+        console.error('Failed to reconcile expenses for purchase payment:', err);
+    }
+
     await storage.set('purchases', nextPurchases);
     return saved;
 }
