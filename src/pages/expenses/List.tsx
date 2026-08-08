@@ -5,7 +5,7 @@ import { useCurrency } from '@/hooks/useCurrency';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Receipt, Plus, Calendar, Search } from 'lucide-react';
+import { Receipt, Plus, Calendar, Edit } from 'lucide-react';
 import { format as formatDate, parseISO } from 'date-fns';
 import { Input } from '@/components/ui/input';
 
@@ -34,26 +34,36 @@ export default function ExpenseList() {
       ) : (
         <div className="space-y-4">
           {items.map((expense) => (
-            <Card key={expense.id} className="hover:bg-muted/50 transition-colors cursor-pointer">
+            <Card key={expense.id} className="hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => setLocation(`/expenses/${expense.id}`)}>
               <CardContent className="p-4 flex flex-col md:flex-row gap-4 justify-between md:items-center">
                 <div className="flex items-start gap-4">
-                  <div className="h-10 w-10 rounded-full bg-red-500/10 flex items-center justify-center text-red-600 flex-shrink-0">
+                  <div className="h-10 w-10 rounded-full bg-red-500/10 flex items-center justify-center text-red-600 shrink-0">
                     <Receipt className="h-5 w-5" />
                   </div>
                   <div>
-                    <div className="font-semibold">{expense.description || expense.category}</div>
+                    <div className="font-semibold flex items-center gap-2">
+                      {expense.description || expense.category}
+                      {expense.sourcePurchaseId && (
+                        <Badge className="ml-2 text-xs" variant="secondary">Auto</Badge>
+                      )}
+                    </div>
                     <div className="text-sm flex items-center gap-2 text-muted-foreground mt-1">
                       <Calendar className="h-3 w-3" />
                       {formatDate(parseISO(expense.date), 'MMM d, yyyy')} • <span className="capitalize">{expense.category}</span>
                     </div>
                   </div>
                 </div>
-                
+
                 <div className="flex justify-between md:flex-col items-end md:items-end w-full md:w-auto mt-2 md:mt-0 pt-3 md:pt-0 border-t md:border-t-0 border-border md:pl-6">
-                  <div className="font-bold text-lg text-red-600">{format(expense.amount)}</div>
-                  <Badge variant="outline" className="capitalize text-xs">
-                    {expense.paymentMethod}
-                  </Badge>
+                  <div className="flex items-center gap-3">
+                    <div className="font-bold text-lg text-red-600">{format(expense.amount)}</div>
+                    <Badge variant="outline" className="capitalize text-xs">
+                      {expense.paymentMethod}
+                    </Badge>
+                    <Button size="icon" variant="ghost" onClick={(ev) => { ev.stopPropagation(); setLocation(`/expenses/${expense.id}/edit`); }} aria-label="Edit expense">
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
               </CardContent>
             </Card>

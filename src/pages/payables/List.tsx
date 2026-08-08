@@ -22,8 +22,10 @@ export default function PayablesList() {
   const payables = useMemo(() =>
     purchases
       .filter(p => {
-        const ps = p.paymentStatus ?? (p.paidAmount && p.paidAmount > 0 ? 'partial' : 'unpaid');
-        return ps !== 'paid' && (p.status ?? 'received') !== 'cancelled';
+        const paidAmount = Number(p.paidAmount ?? 0);
+        const remaining = Math.max(0, Number(p.grandTotal ?? 0) - paidAmount);
+        const ps = p.paymentStatus ?? (paidAmount > 0 ? 'partial' : 'unpaid');
+        return remaining > 0 && ps !== 'paid' && (p.status ?? 'received') !== 'cancelled';
       })
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
     [purchases],

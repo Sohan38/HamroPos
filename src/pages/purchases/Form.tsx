@@ -142,6 +142,30 @@ export default function PurchaseForm() {
     setLocation(`/inventory/new?supplierId=${encodeURIComponent(supplierId)}&returnTo=${returnTo}`);
   }
 
+  function getValidatedPaymentState() {
+    const normalizedPaidAmount = Math.max(0, Number(paidAmount) || 0);
+    const normalizedGrandTotal = Math.max(0, grandTotal);
+
+    if (paymentStatus === 'partial') {
+      if (normalizedPaidAmount <= 0) {
+        throw new Error('Partial payments must be greater than zero.');
+      }
+      if (normalizedPaidAmount > normalizedGrandTotal) {
+        throw new Error('Paid amount cannot exceed the invoice total.');
+      }
+      if (normalizedPaidAmount === normalizedGrandTotal) {
+        return { paymentStatus: 'paid' as PurchasePaymentStatus, paidAmount: normalizedGrandTotal };
+      }
+      return { paymentStatus: 'partial' as PurchasePaymentStatus, paidAmount: normalizedPaidAmount };
+    }
+
+    if (paymentStatus === 'paid') {
+      return { paymentStatus: 'paid' as PurchasePaymentStatus, paidAmount: normalizedGrandTotal };
+    }
+
+    return { paymentStatus: 'unpaid' as PurchasePaymentStatus, paidAmount: 0 };
+  }
+
   async function handleSubmit(event: React.FormEvent): Promise<void> {
     event.preventDefault();
     if (!supplierId) {
@@ -163,6 +187,7 @@ export default function PurchaseForm() {
 
     setSaving(true);
     try {
+      const validatedPayment = getValidatedPaymentState();
       const payload = {
         invoiceNumber: invoiceNumber.trim(),
         supplierId,
@@ -178,8 +203,8 @@ export default function PurchaseForm() {
         tax: taxValue,
         grandTotal,
         paymentMethod,
-        paymentStatus,
-        paidAmount: Math.max(0, Number(paidAmount) || 0),
+        paymentStatus: validatedPayment.paymentStatus,
+        paidAmount: validatedPayment.paidAmount,
         referenceNumber: referenceNumber.trim(),
         notes: notes.trim(),
         status,
@@ -275,7 +300,7 @@ export default function PurchaseForm() {
                 items={availableProductItems}
                 selectedIds={[]}   // Products are immediately added to cart, no chip stays
                 onSelect={addItemById}
-                onRemove={() => {}}
+                onRemove={() => { }}
                 placeholder={supplierId ? 'Search by product name or barcode...' : 'Select a supplier first'}
                 emptyMessage="No products in inventory yet."
                 disabled={!supplierId}

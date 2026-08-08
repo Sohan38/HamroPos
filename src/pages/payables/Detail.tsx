@@ -90,6 +90,7 @@ export default function PayableDetail() {
     try {
       const newPaidAmount = paidAmount + amt;
       const isFullyPaid = newPaidAmount >= invoice.grandTotal - 0.001;
+      const nextPaidAmount = isFullyPaid ? invoice.grandTotal : newPaidAmount;
       const newPayment: CreditPayment = {
         date: new Date().toISOString(),
         amount: amt,
@@ -97,7 +98,7 @@ export default function PayableDetail() {
       };
 
       await update(invoice.id, {
-        paidAmount: newPaidAmount,
+        paidAmount: nextPaidAmount,
         payments: [...payments, newPayment],
         paymentStatus: isFullyPaid ? 'paid' : 'partial',
       });

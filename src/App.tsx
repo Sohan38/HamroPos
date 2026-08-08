@@ -50,6 +50,7 @@ const SupplierDetail = retryLazy(() => import('@/pages/suppliers/Detail'));
 const SupplierForm = retryLazy(() => import('@/pages/suppliers/Form'));
 const ExpenseList = retryLazy(() => import('@/pages/expenses/List'));
 const ExpenseForm = retryLazy(() => import('@/pages/expenses/Form'));
+const ExpenseDetail = retryLazy(() => import('@/pages/expenses/Detail'));
 const PurchaseList = retryLazy(() => import('@/pages/purchases/List'));
 const PurchaseForm = retryLazy(() => import('@/pages/purchases/Form'));
 const PurchaseDetail = retryLazy(() => import('@/pages/purchases/Detail'));
@@ -139,6 +140,8 @@ function Router() {
 
             <Route path="/expenses" component={ExpenseList} />
             <Route path="/expenses/new" component={ExpenseForm} />
+            <Route path="/expenses/:id/edit" component={ExpenseForm} />
+            <Route path="/expenses/:id" component={ExpenseDetail} />
 
             <Route path="/cash-book" component={CashBookList} />
             <Route path="/cash-book/entry/:type" component={CashBookForm} />

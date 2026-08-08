@@ -205,7 +205,7 @@ export interface RestaurantBill extends StorageRecord {
   notes: string;
 }
 
-export type ExpenseCategory = 'salary' | 'electricity' | 'water' | 'internet' | 'food' | 'fuel' | 'maintenance' | 'tax' | 'miscellaneous';
+export type ExpenseCategory = 'salary' | 'electricity' | 'water' | 'internet' | 'food' | 'fuel' | 'maintenance' | 'tax' | 'purchase' | 'miscellaneous';
 
 export interface Expense extends StorageRecord {
   date: string;
@@ -214,6 +214,8 @@ export interface Expense extends StorageRecord {
   amount: number;
   paymentMethod: PaymentMethod;
   notes: string;
+  /** Optional link to a purchase that auto-generated this expense */
+  sourcePurchaseId?: string;
 }
 
 export interface CashBookEntry extends StorageRecord {
