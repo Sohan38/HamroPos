@@ -90,7 +90,7 @@ export default function Dashboard() {
       .reduce((s, c) => s + Math.max(0, c.amount - (c.paidAmount ?? 0)), 0);
 
     // Collected today = sum of individual payment entries recorded today across all credits
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = new Date().toLocaleDateString('en-CA');
     const creditReceivedToday = credits.reduce((s, c) => {
       const todayPayments = (c.payments ?? []).filter(p => p.date.startsWith(todayStr));
       return s + todayPayments.reduce((ps, p) => ps + p.amount, 0);
@@ -236,7 +236,7 @@ export default function Dashboard() {
 
   // Customers who bought today
   const customersToday = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = new Date().toLocaleDateString('en-CA');
     const ids = new Set(
       sales.filter(s => s.customerId && s.date.startsWith(today)).map(s => s.customerId!)
     );
@@ -269,7 +269,7 @@ export default function Dashboard() {
 
       {/* Primary Key Metrics Section */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        <Card className="border border-primary/10 bg-primary/[0.03] dark:bg-primary/[0.01] rounded-2xl shadow-sm hover:shadow-md transition-all duration-300">
+        <Card className="border border-primary/10 bg-primary/3 dark:bg-primary/1 rounded-2xl shadow-sm hover:shadow-md transition-all duration-300">
           <CardContent className="p-5 flex items-center justify-between">
             <div className="space-y-1">
               <p className="text-[11px] font-bold text-primary/80 uppercase tracking-wider">Today's Sales</p>
@@ -281,7 +281,7 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border border-rose-500/10 bg-rose-500/[0.02] dark:bg-rose-500/[0.01] rounded-2xl shadow-sm hover:shadow-md transition-all duration-300">
+        <Card className="border border-rose-500/10 bg-rose-500/2 dark:bg-rose-500/1 rounded-2xl shadow-sm hover:shadow-md transition-all duration-300">
           <CardContent className="p-5 flex items-center justify-between">
             <div className="space-y-1">
               <p className="text-[11px] font-bold text-rose-700/80 uppercase tracking-wider">Today's Expenses</p>
@@ -295,9 +295,9 @@ export default function Dashboard() {
 
         <Card className={cn(
           "border rounded-2xl shadow-sm hover:shadow-md transition-all duration-300",
-          metrics.todayGrossProfit >= 0 
-            ? "border-emerald-500/10 bg-emerald-500/[0.02] dark:bg-emerald-500/[0.01]" 
-            : "border-rose-500/10 bg-rose-500/[0.02] dark:bg-rose-500/[0.01]"
+          metrics.todayGrossProfit >= 0
+            ? "border-emerald-500/10 bg-emerald-500/2 dark:bg-emerald-500/1"
+            : "border-rose-500/10 bg-rose-500/2 dark:bg-rose-500/1"
         )}>
           <CardContent className="p-5 flex items-center justify-between">
             <div className="space-y-1">
@@ -320,7 +320,7 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border border-orange-500/10 bg-orange-500/[0.02] dark:bg-orange-500/[0.01] rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer hover:bg-orange-500/[0.04]" onClick={() => setLocation('/credit')}>
+        <Card className="border border-orange-500/10 bg-orange-500/2 dark:bg-orange-500/1 rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer hover:bg-orange-500/4" onClick={() => setLocation('/credit')}>
           <CardContent className="p-5 flex items-center justify-between">
             <div className="space-y-1">
               <p className="text-[11px] font-bold text-orange-700/80 uppercase tracking-wider">Pending Credit</p>
@@ -332,7 +332,7 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border border-red-500/10 bg-red-500/[0.02] dark:bg-red-500/[0.01] rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer hover:bg-red-500/[0.04]" onClick={() => setLocation('/payables')}>
+        <Card className="border border-red-500/10 bg-red-500/2 dark:bg-red-500/1 rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer hover:bg-red-500/4" onClick={() => setLocation('/payables')}>
           <CardContent className="p-5 flex items-center justify-between">
             <div className="space-y-1">
               <p className="text-[11px] font-bold text-red-700/80 uppercase tracking-wider">Pending Payables</p>
@@ -628,7 +628,7 @@ export default function Dashboard() {
             <CardTitle className="text-base">Revenue vs Expenses — Last 7 Days</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="h-[240px]">
+            <div className="h-60">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                   <defs>

@@ -8,7 +8,7 @@ import { ScrollToTop } from './ScrollToTop';
 
 export function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-[100dvh] flex flex-col bg-background">
+    <div className="min-h-dvh flex flex-col bg-background">
       <ScrollToTop />
       <ActivationBlocker />
       <LicenseBanner />

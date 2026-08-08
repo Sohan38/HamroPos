@@ -112,7 +112,8 @@ export default function PurchaseList() {
       results = results.filter(invoice => matchesDateRange(invoice.date));
     }
 
-    return sortByLatestFirst(results, item => item.date, item => item.createdAt);
+    const sorted = sortByLatestFirst(results, item => item.date, item => item.createdAt);
+    return sorted;
   }, [items, suppliers, query, statusFilter, dateFrom, dateTo]);
 
   const totalValue = processedPurchases

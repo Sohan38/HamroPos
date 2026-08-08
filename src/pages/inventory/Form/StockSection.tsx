@@ -33,8 +33,8 @@ const NumericField = ({
   hint?: string;
   required?: boolean;
 }) => {
-  const value   = useWatch({ control: form.control, name }) ?? 0;
-  const error   = form.formState.errors[name]?.message;
+  const value = useWatch({ control: form.control, name }) ?? 0;
+  const error = form.formState.errors[name]?.message;
   const touched = form.formState.touchedFields[name];
   const isValid = touched && !error;
 
@@ -55,8 +55,8 @@ const NumericField = ({
             onChange={e => field.onChange(e.target.value === '' ? 0 : Number(e.target.value))}
             className={cn(
               'transition-colors h-11 text-base font-medium',
-              error    && 'border-destructive focus-visible:ring-destructive/30',
-              isValid  && 'border-green-400 focus-visible:ring-green-400/30'
+              error && 'border-destructive focus-visible:ring-destructive/30',
+              isValid && 'border-green-400 focus-visible:ring-green-400/30'
             )}
           />
         </FormControl>
@@ -97,7 +97,7 @@ export const StockSection = React.memo(({
       {/* Header row: label + unit selector */}
       <div className="flex items-center justify-between">
         <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Stock & Unit</p>
-        <div className="w-[116px]">
+        <div className="w-29">
           <FormField control={form.control} name="unit" render={({ field }) => (
             <FormItem>
               <Select onValueChange={field.onChange} defaultValue={field.value}>

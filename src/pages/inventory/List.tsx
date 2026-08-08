@@ -161,7 +161,7 @@ export default function InventoryList() {
         </div>
         <div className="flex gap-2 flex-wrap">
           <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-            <SelectTrigger className="w-[140px] bg-card">
+            <SelectTrigger className="w-35 bg-card">
               <SelectValue placeholder="Category" />
             </SelectTrigger>
             <SelectContent>
@@ -170,7 +170,7 @@ export default function InventoryList() {
             </SelectContent>
           </Select>
           <Select value={stockFilter} onValueChange={(v: any) => setStockFilter(v)}>
-            <SelectTrigger className="w-[150px] bg-card">
+            <SelectTrigger className="w-37.5 bg-card">
               <SelectValue placeholder="Stock" />
             </SelectTrigger>
             <SelectContent>
@@ -233,11 +233,11 @@ export default function InventoryList() {
                   >
                     {item.imageBase64 ? (
                       <div
-                        className="h-14 w-14 rounded-md bg-muted flex-shrink-0"
+                        className="h-14 w-14 rounded-md bg-muted shrink-0"
                         style={{ backgroundImage: `url(${item.imageBase64})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
                       />
                     ) : (
-                      <div className="h-14 w-14 rounded-md bg-primary/10 flex items-center justify-center flex-shrink-0 text-primary font-bold text-lg">
+                      <div className="h-14 w-14 rounded-md bg-primary/10 flex items-center justify-center shrink-0 text-primary font-bold text-lg">
                         {item.name.charAt(0).toUpperCase()}
                       </div>
                     )}

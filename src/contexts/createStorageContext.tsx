@@ -25,7 +25,8 @@ export function createStorageContext<T extends { id: string }>(key: string) {
 
     const refresh = useCallback(() => {
       storage.get<any>(key).then((data) => {
-        setItems(data.filter((i: any) => !i.deletedAt));
+        const activeItems = data.filter((i: any) => !i.deletedAt);
+        setItems(activeItems);
         setLoading(false);
       });
     }, [storage]);

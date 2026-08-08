@@ -20,6 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { useStorageProvider } from '@/storage/StorageContext';
 import { createPurchase } from '@/services/purchaseService';
+import { createPurchaseForNewItem } from '@/services/purchaseHelpers';
 
 // Subcomponents
 import { productSchema, ProductFormValues } from './Form/types';
@@ -54,7 +55,7 @@ export default function InventoryForm() {
   const { id } = useParams();
   const { items, add, update } = useInventory();
   const { items: suppliers } = useSuppliers();
-  const { items: allBatches, add: addBatch, update: updateBatch, hardRemove: removeBatch } = useProductBatches();
+  const { items: allBatches, add: addBatch, update: updateBatch, hardRemove: removeBatch, refresh: refreshBatches } = useProductBatches();
   const { items: purchases, refresh: refreshPurchases } = usePurchases();
   const storage = useStorageProvider();
 
@@ -280,7 +281,7 @@ export default function InventoryForm() {
       for (const supplierId of purchaseSupplierIds) {
         const existing = next[supplierId];
         const supplier = suppliers.find(candidate => candidate.id === supplierId);
-        const defaultDate = new Date().toISOString().slice(0, 10);
+        const defaultDate = new Date().toLocaleDateString('en-CA');
 
         if (!existing || !existing.invoiceNumber?.trim()) {
           next[supplierId] = {
@@ -405,7 +406,7 @@ export default function InventoryForm() {
       [supplierId]: {
         ...(prev[supplierId] ?? {
           invoiceNumber: '',
-          purchaseDate: new Date().toISOString().slice(0, 10),
+          purchaseDate: new Date().toLocaleDateString('en-CA'),
           referenceNumber: '',
           paymentMethod: 'cash',
           paymentStatus: 'unpaid',
@@ -463,7 +464,11 @@ export default function InventoryForm() {
         }
       }
 
-      const resolvedSupplierIds = data.supplierIds ?? [];
+      let resolvedSupplierIds = data.supplierIds ?? [];
+      // If expiry/batches mode and no explicit suppliers selected, infer suppliers from local batches
+      if (hasExpiry && resolvedSupplierIds.length === 0 && localBatches.length > 0) {
+        resolvedSupplierIds = Array.from(new Set(localBatches.map(b => b.supplierId).filter(Boolean)));
+      }
       const resolvedSupplierStocks = data.supplierStocks ?? [];
       const isMultiSup = !data.hasExpiry && !data.hasVariants && resolvedSupplierIds.length >= 2;
 
@@ -508,9 +513,7 @@ export default function InventoryForm() {
         supplierIds: resolvedSupplierIds,
         supplierStocks: isNew
           ? normalizedSupplierStocks.map((stock: any) => ({ ...stock, stock: 0 }))
-          : showPurchaseCreationSection
-            ? normalizedSupplierStocks.map((stock: any) => ({ ...stock, stock: 0 }))
-            : normalizedSupplierStocks,
+          : normalizedSupplierStocks,
         notes: data.notes ?? '',
         hasExpiry: data.hasExpiry ?? false,
         hasVariants: data.hasVariants ?? false,
@@ -531,90 +534,73 @@ export default function InventoryForm() {
         } as any);
 
         for (const batch of localBatches) {
-          await addBatch({
+          // Persist batch metadata with zero stock for the new product.
+          // The incoming purchase will then create the actual stock via purchase apply logic.
+          await storage.save('productBatches', {
             ...batch,
             productId: newId,
+            quantity: 0,
+            initialQuantity: 0,
           } as any);
         }
+        // Refresh batches once after saving all
+        try { await refreshBatches(); } catch (err) { /* ignore */ }
 
         try {
-          if (newId && resolvedSupplierIds.length > 0) {
-            for (const supplierId of resolvedSupplierIds) {
-              const draft = supplierPurchaseDrafts[supplierId];
-              const supplierStock = (resolvedSupplierStocks as any[]).find(record => record.supplierId === supplierId);
-              const supplier = suppliers.find(candidate => candidate.id === supplierId);
-              const purchaseDate = (draft?.purchaseDate || new Date().toISOString().slice(0, 10)).trim();
-              const inferredInvoice = ((draft?.invoiceNumber || supplierStock?.supplierSku || '').trim()) || generateSupplierInvoiceNumber(purchases, supplier?.name, purchaseDate);
-              const fallbackPayment = {
-                paymentMethod: (draft?.paymentMethod ?? 'cash') as PaymentMethod,
-                paymentStatus: (draft?.paymentStatus ?? 'unpaid') as PurchasePaymentStatus,
-                paidAmount: (draft?.paidAmount ?? '0') as string,
-                referenceNumber: (draft?.referenceNumber ?? '').trim(),
-                notes: (draft?.notes ?? '').trim(),
-              };
+          if (newId) {
+            const purchasePromises: Array<Promise<any>> = [];
 
-              const supplierBatches = localBatches.filter(batch => batch.supplierId === supplierId);
-              const purchaseItems = supplierBatches.length > 0
-                ? supplierBatches.map(batch => ({
+            if (localBatches.length > 0) {
+              for (const batch of localBatches) {
+                const quantity = Number(batch.quantity || 0);
+                if (quantity <= 0) continue;
+
+                const supplierId = batch.supplierId || resolvedSupplierIds[0] || productData.supplierId || undefined;
+                const supplier = suppliers.find(candidate => candidate.id === supplierId);
+                const purchaseRate = Number(batch.purchaseRate ?? productData.purchaseRate ?? 0) || 0;
+                const purchaseDate = new Date().toLocaleDateString('en-CA');
+                purchasePromises.push(createPurchaseForNewItem(storage, {
                   productId: newId,
-                  productName: data.name,
-                  quantity: Number(batch.quantity) || 0,
-                  purchaseRate: Number(batch.purchaseRate) || 0,
-                  subtotal: (Number(batch.quantity) || 0) * (Number(batch.purchaseRate) || 0),
+                  quantity,
+                  purchaseRate,
+                  supplierId,
+                  supplierName: supplier?.name ?? undefined,
+                  invoiceNumber: undefined,
+                  date: `${purchaseDate}T${new Date().toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}`,
+                  notes: batch.notes ?? 'Opening stock from product creation',
+                  batchId: batch.id,
                   batchNumber: batch.batchNumber,
-                  manufacturingDate: batch.manufacturingDate,
-                  expiryMonths: batch.expiryMonths,
-                  expiryDate: batch.expiryDate,
-                  notes: batch.notes,
-                }))
-                : (() => {
-                  const quantity = Math.max(0, Number(
-                    (supplierStock && Number(supplierStock.stock) > 0)
-                      ? supplierStock.stock
-                      : (resolvedSupplierIds.length === 1 ? data.quantity : 0)
-                  ) || 0);
-                  const purchaseRate = Number(supplierStock?.cost ?? productData.purchaseRate) || 0;
-                  if (quantity <= 0) return [];
-                  return [{
-                    productId: newId,
-                    productName: data.name,
-                    quantity,
-                    purchaseRate,
-                    subtotal: quantity * purchaseRate,
-                    notes: '',
-                  }];
-                })();
+                  manufacturingDate: batch.manufacturingDate ?? undefined,
+                  expiryMonths: batch.expiryMonths ?? undefined,
+                  expiryDate: batch.expiryDate ?? undefined,
+                } as any));
+              }
+            }
 
-              if (purchaseItems.length === 0) continue;
+            if (purchasePromises.length === 0) {
+              const supplierStockTotal = resolvedSupplierStocks.reduce((sum: number, ss: any) => sum + (Number(ss.stock) || 0), 0);
+              const totalQty = Number(calculatedStock || data.quantity || supplierStockTotal) || 0;
 
-              const subtotal = purchaseItems.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
-              const validatedPayment = getValidatedPurchaseDraft({
-                invoiceNumber: inferredInvoice,
-                purchaseDate,
-                referenceNumber: fallbackPayment.referenceNumber,
-                paymentMethod: fallbackPayment.paymentMethod,
-                paymentStatus: fallbackPayment.paymentStatus,
-                paidAmount: fallbackPayment.paidAmount,
-                notes: fallbackPayment.notes,
-              }, subtotal);
-              const purchasePayload = {
-                invoiceNumber: inferredInvoice,
-                supplierId,
-                supplierName: supplier?.name ?? null,
-                date: new Date(`${purchaseDate}T${new Date().toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}`).toISOString(),
-                items: purchaseItems,
-                discount: 0,
-                tax: 0,
-                grandTotal: subtotal,
-                paymentMethod: fallbackPayment.paymentMethod,
-                paymentStatus: validatedPayment.paymentStatus,
-                paidAmount: validatedPayment.paidAmount,
-                referenceNumber: fallbackPayment.referenceNumber,
-                notes: fallbackPayment.notes,
-                status: 'received' as const,
-              };
 
-              const createdPurchase = await createPurchase(storage, purchasePayload as any);
+              if (totalQty > 0) {
+                const fallbackSupplier = resolvedSupplierIds[0] ?? undefined;
+                const supplier = suppliers.find(candidate => candidate.id === fallbackSupplier);
+                const purchaseDate = new Date().toLocaleDateString('en-CA');
+                purchasePromises.push(createPurchaseForNewItem(storage, {
+                  productId: newId,
+                  quantity: totalQty,
+                  purchaseRate: productData.purchaseRate || undefined,
+                  supplierId: fallbackSupplier,
+                  supplierName: supplier?.name ?? undefined,
+                  invoiceNumber: undefined,
+                  date: `${purchaseDate}T${new Date().toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}`,
+                  notes: 'Opening stock from product creation',
+                } as any));
+              }
+            }
+
+            const createdPurchases = await Promise.all(purchasePromises);
+            for (const createdPurchase of createdPurchases) {
               if (createdPurchase?.id) createdPurchaseIds.push(createdPurchase.id);
             }
           }
@@ -636,8 +622,32 @@ export default function InventoryForm() {
           return;
         }
 
-        refreshPurchases();
-        toast.success('Product added successfully');
+        try {
+          // If no purchases were created by supplier/batch logic above, create a fallback purchase
+          if (createdPurchaseIds.length === 0) {
+            const totalQty = Number(calculatedStock || (data.quantity || 0)) || 0;
+            if (totalQty > 0) {
+              try {
+                const fallbackSupplier = resolvedSupplierIds[0] ?? undefined;
+                const created = await createPurchaseForNewItem(storage, {
+                  productId: newId!,
+                  quantity: totalQty,
+                  purchaseRate: productData.purchaseRate || undefined,
+                  supplierId: fallbackSupplier,
+                  notes: 'Opening stock from product creation',
+                } as any);
+                if (created?.id) createdPurchaseIds.push(created.id);
+              } catch (err) {
+                console.error('InventoryForm: fallback createPurchase failed', err);
+              }
+            }
+          }
+
+          await refreshPurchases();
+          toast.success('Product added successfully');
+        } catch (err) {
+          console.warn('InventoryForm: refreshPurchases failed', err);
+        }
       } else if (existingProduct) {
         update(existingProduct.id, productData);
 

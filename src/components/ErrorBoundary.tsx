@@ -46,7 +46,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
       }
 
       return (
-        <div className="fixed inset-0 z-[9999] w-screen h-screen flex items-center justify-center p-4 bg-background">
+        <div className="fixed inset-0 z-9999 w-screen h-screen flex items-center justify-center p-4 bg-background">
           <div className="w-full max-w-md p-6 md:p-8 rounded-2xl border bg-card text-card-foreground shadow-2xl flex flex-col items-center text-center space-y-6 animate-in fade-in duration-300">
             {/* Warning Icon Container */}
             <div className="h-16 w-16 rounded-full bg-destructive/10 flex items-center justify-center text-destructive shrink-0">

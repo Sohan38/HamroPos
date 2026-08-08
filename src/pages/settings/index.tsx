@@ -208,16 +208,16 @@ export default function Settings() {
         {/* Horizontal overflow scrollable tab bar for mobile viewports */}
         <div className="w-full overflow-x-auto scrollbar-none -mx-3 px-3 sm:mx-0 sm:px-0">
           <TabsList className="flex w-max sm:w-full border border-border bg-muted/40 p-1 rounded-lg gap-1 min-w-full">
-            <TabsTrigger value="profile" className="flex-1 min-w-[80px] sm:min-w-0 flex items-center justify-center gap-1.5 text-xs py-2 px-3">
+            <TabsTrigger value="profile" className="flex-1 min-w-20 sm:min-w-0 flex items-center justify-center gap-1.5 text-xs py-2 px-3">
               <Building className="h-3.5 w-3.5" /> Profile
             </TabsTrigger>
-            <TabsTrigger value="preferences" className="flex-1 min-w-[90px] sm:min-w-0 flex items-center justify-center gap-1.5 text-xs py-2 px-3">
+            <TabsTrigger value="preferences" className="flex-1 min-w-22.5 sm:min-w-0 flex items-center justify-center gap-1.5 text-xs py-2 px-3">
               <Globe className="h-3.5 w-3.5" /> Preferences
             </TabsTrigger>
-            <TabsTrigger value="license" className="flex-1 min-w-[80px] sm:min-w-0 flex items-center justify-center gap-1.5 text-xs py-2 px-3">
+            <TabsTrigger value="license" className="flex-1 min-w-20 sm:min-w-0 flex items-center justify-center gap-1.5 text-xs py-2 px-3">
               <Key className="h-3.5 w-3.5" /> Activation
             </TabsTrigger>
-            <TabsTrigger value="data" className="flex-1 min-w-[85px] sm:min-w-0 flex items-center justify-center gap-1.5 text-xs py-2 px-3">
+            <TabsTrigger value="data" className="flex-1 min-w-21.25 sm:min-w-0 flex items-center justify-center gap-1.5 text-xs py-2 px-3">
               <Database className="h-3.5 w-3.5" /> Database
             </TabsTrigger>
           </TabsList>
@@ -381,7 +381,7 @@ export default function Settings() {
                   <span className="flex-1 text-left truncate">
                     {isExporting ? 'Exporting...' : 'Export Backup JSON'}
                   </span>
-                  {state.status === 'trial' && <Lock className="h-3.5 w-3.5 text-muted-foreground/60 flex-shrink-0 ml-1.5" />}
+                  {state.status === 'trial' && <Lock className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0 ml-1.5" />}
                 </Button>
                 <div className="relative">
                   <input
@@ -401,7 +401,7 @@ export default function Settings() {
                     <span className="flex-1 text-left truncate">
                       {isImporting ? 'Restoring...' : 'Restore Backup File'}
                     </span>
-                    {state.status === 'trial' && <Lock className="h-3.5 w-3.5 text-muted-foreground/60 flex-shrink-0 ml-1.5" />}
+                    {state.status === 'trial' && <Lock className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0 ml-1.5" />}
                   </Button>
                 </div>
                 <Button variant="outline" onClick={() => setShowSeedConfirm(true)} disabled={isExporting || isImporting || isResetting || isSeeding} className="w-full justify-start h-12 text-xs text-primary border-primary/20 hover:bg-primary/5">
@@ -413,7 +413,7 @@ export default function Settings() {
               {/* Trial mode backup locked notice */}
               {showBackupLockedNotice && state.status === 'trial' && (
                 <div className="flex items-start gap-3 rounded-lg border border-amber-400/30 bg-amber-50/60 dark:bg-amber-950/20 p-3.5 animate-in fade-in slide-in-from-top-1 duration-200">
-                  <Lock className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                  <Lock className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">
                       Feature Locked — Trial Plan
@@ -451,7 +451,7 @@ export default function Settings() {
 
       {/* Floating Bottom Sticky Action Bar for Mobile (rendered only when dirty on profile/preferences tabs) */}
       {isDirty && (activeTab === 'profile' || activeTab === 'preferences') && (
-        <div className="sm:hidden fixed bottom-[76px] left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-sm bg-card/90 dark:bg-card/95 backdrop-blur-md border border-border p-2 rounded-full flex items-center justify-between z-30 shadow-xl animate-in fade-in slide-in-from-bottom-5 duration-300">
+        <div className="sm:hidden fixed bottom-19 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-sm bg-card/90 dark:bg-card/95 backdrop-blur-md border border-border p-2 rounded-full flex items-center justify-between z-30 shadow-xl animate-in fade-in slide-in-from-bottom-5 duration-300">
           <span className="text-xs font-medium text-foreground pl-3">
             Unsaved changes
           </span>

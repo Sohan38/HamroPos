@@ -24,7 +24,7 @@ export function ActivationBlocker() {
   // During initial app boot, show a clean fullscreen loading state.
   if (state.isLoading && !isActivating) {
     return (
-      <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-background">
+      <div className="fixed inset-0 z-9999 flex items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-3">
           <Spinner className="h-8 w-8 text-primary animate-spin" />
           <p className="text-xs text-muted-foreground animate-pulse font-medium">Verifying license status...</p>
@@ -75,7 +75,7 @@ export function ActivationBlocker() {
   };
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-background/90 backdrop-blur-md overflow-y-auto select-none">
+    <div className="fixed inset-0 z-9999 flex items-center justify-center p-4 bg-background/90 backdrop-blur-md overflow-y-auto select-none">
       <Card className="w-full max-w-md shadow-2xl border-destructive/20 relative animate-in zoom-in-95 duration-200">
         <CardHeader className="text-center pb-4">
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10 text-destructive mb-3">
@@ -111,7 +111,7 @@ export function ActivationBlocker() {
               </div>
               {activationError && (
                 <div className="mt-3 flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/5 p-3">
-                  <AlertCircle className="h-4 w-4 text-destructive mt-0.5 flex-shrink-0" />
+                  <AlertCircle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
                   <div className="min-w-0 text-left">
                     <p className="text-xs font-semibold text-destructive">
                       Activation Failed

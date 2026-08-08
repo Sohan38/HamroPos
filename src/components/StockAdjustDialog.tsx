@@ -10,6 +10,8 @@ import { toast } from 'sonner';
 import { Product } from '@/types';
 import { useBackModal } from '@/contexts/NavigationContext';
 import { useInventory, useProductBatches, useSuppliers } from '@/contexts/GlobalProviders';
+import { useStorageProvider } from '@/storage/StorageContext';
+import { createPurchaseForStockIncrease } from '@/services/purchaseHelpers';
 import { rankSearch } from '@/utils/search/rank';
 import { cn } from '@/lib/utils';
 import { Users, X } from 'lucide-react';
@@ -111,7 +113,9 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
   // Validation logic
   const isInvalid = !amount || numericAmount < 0 || (mode === 'remove' && numericAmount > currentQty) || (isMultiSupplier && !selectedSupplierId);
 
-  const handleSave = () => {
+  const storage = useStorageProvider();
+
+  const handleSave = async () => {
     if (isMultiSupplier && !selectedSupplierId) {
       toast.error('Please select a supplier');
       return;
@@ -134,6 +138,21 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
         variants: updatedVariants,
         quantity: newTotalQty
       });
+      if (diff > 0) {
+        try {
+          await createPurchaseForStockIncrease(storage, {
+            productId: product.id,
+            quantity: diff,
+            purchaseRate: product.purchaseRate || undefined,
+            supplierId: product.supplierId || product.supplierIds?.[0] || undefined,
+            supplierName: undefined,
+            notes: finalReason,
+          });
+        } catch (err) {
+          console.error('Failed to create purchase for variant stock increase', err);
+          toast.error('Failed to create purchase for stock increase');
+        }
+      }
       toast.success(`Updated variant "${selectedVariantName}": ${diff > 0 ? `+${diff}` : diff} → ${newQty} ${product.unit}. ${finalReason}`);
     } else if (hasExpiry) {
       updateBatch(selectedBatchId, { quantity: newQty });
@@ -148,6 +167,26 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
       });
       const batch = productBatches.find(b => b.id === selectedBatchId);
       toast.success(`Updated batch "${batch?.batchNumber}": ${diff > 0 ? `+${diff}` : diff} → ${newQty} ${product.unit}. ${finalReason}`);
+      if (diff > 0) {
+        try {
+          await createPurchaseForStockIncrease(storage, {
+            productId: product.id,
+            quantity: diff,
+            purchaseRate: batch?.purchaseRate ?? product.purchaseRate ?? undefined,
+            supplierId: batch?.supplierId || product.supplierId || product.supplierIds?.[0] || undefined,
+            supplierName: undefined,
+            notes: finalReason,
+            batchId: batch?.id,
+            batchNumber: batch?.batchNumber,
+            manufacturingDate: batch?.manufacturingDate ?? null,
+            expiryMonths: batch?.expiryMonths ?? null,
+            expiryDate: batch?.expiryDate ?? null,
+          });
+        } catch (err) {
+          console.error('Failed to create purchase for batch stock increase', err);
+          toast.error('Failed to create purchase for stock increase');
+        }
+      }
     } else if (isMultiSupplier) {
       const currentStocks = product.supplierStocks || [];
       const updatedStocks = product.supplierIds?.map(sid => {
@@ -174,12 +213,45 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
       });
       const supplier = suppliers.find(s => s.id === selectedSupplierId);
       toast.success(`Updated stock for supplier "${supplier?.name}": ${diff > 0 ? `+${diff}` : diff} → ${newQty} ${product.unit}. ${finalReason}`);
+      if (diff > 0) {
+        // find the record we updated to get the cost
+        const updatedRecord = updatedStocks.find(ss => ss.supplierId === selectedSupplierId);
+        try {
+          await createPurchaseForStockIncrease(storage, {
+            productId: product.id,
+            quantity: diff,
+            purchaseRate: updatedRecord?.cost ?? product.purchaseRate ?? undefined,
+            supplierId: selectedSupplierId,
+            supplierName: supplier?.name ?? undefined,
+            notes: finalReason,
+          });
+        } catch (err) {
+          console.error('Failed to create purchase for supplier stock increase', err);
+          toast.error('Failed to create purchase for stock increase');
+        }
+      }
     } else {
       updateProduct(product.id, { quantity: newQty });
       if (onAdjust) {
         onAdjust(product.id, newQty, finalReason);
       } else {
         toast.success(`Updated product stock: ${diff > 0 ? `+${diff}` : diff} → ${newQty} ${product.unit}. ${finalReason}`);
+      }
+      if (diff > 0) {
+        try {
+          const supplierId = product.supplierId || product.supplierIds?.[0] || undefined;
+          await createPurchaseForStockIncrease(storage, {
+            productId: product.id,
+            quantity: diff,
+            purchaseRate: product.purchaseRate || undefined,
+            supplierId,
+            supplierName: undefined,
+            notes: finalReason,
+          });
+        } catch (err) {
+          console.error('Failed to create purchase for stock increase', err);
+          toast.error('Failed to create purchase for stock increase');
+        }
       }
     }
     onClose();
@@ -199,13 +271,16 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-sm w-[95vw]">
-        <form onSubmit={(e) => { e.preventDefault(); handleSave(); }} className="contents">
+      <DialogContent className="w-[95vw] max-w-sm min-w-0 overflow-hidden">
+        <form
+          onSubmit={(e) => { e.preventDefault(); handleSave(); }}
+          className="min-w-0 w-full"
+        >
           <DialogHeader>
             <DialogTitle>Adjust Stock</DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-4">
+          <div className="space-y-4 min-w-0 w-full">
             <div className="bg-muted/50 rounded-lg p-3">
               <div className="font-semibold truncate">{product.name}</div>
               <div className="text-sm text-muted-foreground mt-0.5">
@@ -237,13 +312,22 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
               <div className="space-y-1">
                 <Label>Select Batch</Label>
                 <Select value={selectedBatchId} onValueChange={setSelectedBatchId}>
-                  <SelectTrigger className="w-full bg-card">
+                  <SelectTrigger className="w-full min-w-0 bg-card">
                     <SelectValue placeholder="Select batch" />
                   </SelectTrigger>
-                  <SelectContent>
+
+                  <SelectContent className="max-w-[95vw]">
                     {productBatches.map(b => (
-                      <SelectItem key={b.id} value={b.id}>
-                        {b.batchNumber} {b.expiryDate ? `(Exp: ${b.expiryDate})` : ''} - Current: {b.quantity} {product.unit}
+                      <SelectItem
+                        key={b.id}
+                        value={b.id}
+                        className="max-w-full"
+                      >
+                        <span className="block max-w-full truncate">
+                          {b.batchNumber}
+                          {b.expiryDate ? ` (Exp: ${b.expiryDate})` : ''}
+                          {` - Current: ${b.quantity} ${product.unit}`}
+                        </span>
                       </SelectItem>
                     ))}
                   </SelectContent>

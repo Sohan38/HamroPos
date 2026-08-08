@@ -175,26 +175,61 @@ function applyPurchase(
         product.supplierStocks = supplierState.records;
 
         if (product.hasExpiry) {
-            const batch: ProductBatch = {
-                id: uuidv4(),
-                productId: product.id,
-                supplierId: purchase.supplierId,
-                purchaseInvoiceId: purchase.id,
-                batchNumber: item.batchNumber?.trim() || `B-${new Date(purchase.date).getFullYear()}-${uuidv4().slice(0, 6).toUpperCase()}`,
-                manufacturingDate: item.manufacturingDate ?? null,
-                expiryMonths: item.expiryMonths ?? null,
-                expiryDate: item.expiryDate ?? null,
-                initialQuantity: item.quantity,
-                quantity: item.quantity,
-                purchaseRate: item.purchaseRate,
-                notes: item.notes ?? '',
-                createdAt: now(),
-                updatedAt: now(),
-                deletedAt: null,
-                version: 1,
-            };
-            batches.push(batch);
-            items[index] = { ...item, batchId: batch.id, batchNumber: batch.batchNumber };
+            // If the incoming item references an existing batch, merge quantities into it
+            if (item.batchId) {
+                const existing = batches.find(b => b.id === item.batchId && b.productId === product.id);
+                if (existing) {
+                    existing.initialQuantity = (existing.initialQuantity || 0) + item.quantity;
+                    existing.quantity = (existing.quantity || 0) + item.quantity;
+                    existing.purchaseRate = item.purchaseRate;
+                    existing.updatedAt = now();
+                    existing.notes = item.notes ?? existing.notes;
+                    items[index] = { ...item, batchId: existing.id, batchNumber: existing.batchNumber };
+                } else {
+                    // referenced batch not found — fall back to creating a new batch
+                    const batch: ProductBatch = {
+                        id: uuidv4(),
+                        productId: product.id,
+                        supplierId: purchase.supplierId,
+                        purchaseInvoiceId: purchase.id,
+                        batchNumber: item.batchNumber?.trim() || `B-${new Date(purchase.date).getFullYear()}-${uuidv4().slice(0, 6).toUpperCase()}`,
+                        manufacturingDate: item.manufacturingDate ?? null,
+                        expiryMonths: item.expiryMonths ?? null,
+                        expiryDate: item.expiryDate ?? null,
+                        initialQuantity: item.quantity,
+                        quantity: item.quantity,
+                        purchaseRate: item.purchaseRate,
+                        notes: item.notes ?? '',
+                        createdAt: now(),
+                        updatedAt: now(),
+                        deletedAt: null,
+                        version: 1,
+                    };
+                    batches.push(batch);
+                    items[index] = { ...item, batchId: batch.id, batchNumber: batch.batchNumber };
+                }
+            } else {
+                const batch: ProductBatch = {
+                    id: uuidv4(),
+                    productId: product.id,
+                    supplierId: purchase.supplierId,
+                    purchaseInvoiceId: purchase.id,
+                    batchNumber: item.batchNumber?.trim() || `B-${new Date(purchase.date).getFullYear()}-${uuidv4().slice(0, 6).toUpperCase()}`,
+                    manufacturingDate: item.manufacturingDate ?? null,
+                    expiryMonths: item.expiryMonths ?? null,
+                    expiryDate: item.expiryDate ?? null,
+                    initialQuantity: item.quantity,
+                    quantity: item.quantity,
+                    purchaseRate: item.purchaseRate,
+                    notes: item.notes ?? '',
+                    createdAt: now(),
+                    updatedAt: now(),
+                    deletedAt: null,
+                    version: 1,
+                };
+                batches.push(batch);
+                items[index] = { ...item, batchId: batch.id, batchNumber: batch.batchNumber };
+            }
         }
     });
 
@@ -309,6 +344,8 @@ async function persistTransition(
 
     await storage.set('inventory', inventory);
     await storage.set('productBatches', batches);
+
+    await storage.set('purchases', nextPurchases);
 
     // Reconcile auto-generated expense records tied to this purchase.
     // Behavior:

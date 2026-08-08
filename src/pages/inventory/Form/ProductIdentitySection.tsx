@@ -148,7 +148,7 @@ export const ProductIdentitySection = React.memo(({ form, isNew, existingCategor
       {imageBase64 && (
         <button
           type="button"
-          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive ml-[76px] -mt-2 transition-colors"
+          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive ml-19 -mt-2 transition-colors"
           onClick={() => form.setValue('imageBase64', '')}
         >
           <X className="h-3 w-3" /> Remove photo
