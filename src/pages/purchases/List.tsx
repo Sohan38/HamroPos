@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Search, Plus, Truck, Calendar, Package, Filter, Clock, CheckCircle2, TrendingDown } from 'lucide-react';
 import { format as formatDate, parseISO, startOfDay, endOfDay, subDays, startOfMonth } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { formatDateTime, sortByLatestFirst } from '@/lib/date';
 import { rankSearch } from '@/utils/search/rank';
 
 type FilterStatus = 'all' | 'received' | 'draft' | 'cancelled';
@@ -111,7 +112,7 @@ export default function PurchaseList() {
       results = results.filter(invoice => matchesDateRange(invoice.date));
     }
 
-    return results.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    return sortByLatestFirst(results, item => item.date, item => item.createdAt);
   }, [items, suppliers, query, statusFilter, dateFrom, dateTo]);
 
   const totalValue = processedPurchases
@@ -236,7 +237,7 @@ export default function PurchaseList() {
                       </div>
                       <div className="text-sm flex items-center gap-2 text-muted-foreground mt-1">
                         <Calendar className="h-3 w-3" />
-                        {formatDate(parseISO(invoice.date), 'MMM d, yyyy')} • {supplier?.name ?? invoice.supplierName ?? 'Unknown supplier'}
+                        {formatDateTime(invoice.date)} • {supplier?.name ?? invoice.supplierName ?? 'Unknown supplier'}
                       </div>
                       <div className="text-xs text-muted-foreground flex items-center gap-1 mt-1"><Package className="h-3 w-3" /> {invoice.items.length} product{invoice.items.length !== 1 ? 's' : ''}</div>
                     </div>

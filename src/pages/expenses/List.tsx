@@ -10,6 +10,7 @@ import { Receipt, Plus, Calendar, Edit, Search } from 'lucide-react';
 import { format as formatDate, parseISO, startOfDay, endOfDay, subDays, startOfMonth } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
+import { formatDateTime, sortByLatestFirst } from '@/lib/date';
 import { rankSearch } from '@/utils/search/rank';
 
 type DatePreset = 'all' | 'today' | 'yesterday' | '7days' | 'month' | 'custom';
@@ -101,7 +102,7 @@ export default function ExpenseList() {
       results = results.filter(expense => matchesDateRange(expense.date));
     }
 
-    return results.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    return sortByLatestFirst(results, item => item.date, item => item.createdAt);
   }, [items, query, dateFrom, dateTo]);
 
   return (
@@ -175,7 +176,7 @@ export default function ExpenseList() {
                     </div>
                     <div className="text-sm flex items-center gap-2 text-muted-foreground mt-1">
                       <Calendar className="h-3 w-3" />
-                      {formatDate(parseISO(expense.date), 'MMM d, yyyy')} • <span className="capitalize">{expense.category}</span>
+                      {formatDateTime(expense.date)} • <span className="capitalize">{expense.category}</span>
                     </div>
                   </div>
                 </div>

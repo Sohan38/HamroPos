@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { format as formatDate, parseISO, startOfDay, endOfDay, subDays, startOfMonth } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { formatDateTime, sortByLatestFirst } from '@/lib/date';
 import { rankSearch } from '@/utils/search/rank';
 
 type FilterStatus = 'all' | 'unpaid' | 'partial';
@@ -122,7 +123,7 @@ export default function PayablesList() {
       results = results.filter(invoice => matchesDateRange(invoice.date));
     }
 
-    return results.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    return sortByLatestFirst(results, item => item.date, item => item.createdAt);
   }, [purchases, suppliers, searchQuery, statusFilter, dateFrom, dateTo]);
 
   const totalOwed = useMemo(() =>
@@ -318,7 +319,7 @@ export default function PayablesList() {
                             <span>•</span>
                             <span className="flex items-center gap-1">
                               <Calendar className="h-3 w-3" />
-                              {formatDate(parseISO(invoice.date), 'MMM d, yyyy')}
+                              {formatDateTime(invoice.date)}
                             </span>
                           </div>
                         </div>

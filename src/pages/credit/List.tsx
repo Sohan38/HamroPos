@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { format as formatDate, parseISO, startOfDay, endOfDay, subDays, startOfMonth } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { formatDateTime, sortByLatestFirst } from '@/lib/date';
 import { rankSearch } from '@/utils/search/rank';
 
 type FilterStatus = 'all' | 'pending' | 'partial' | 'paid';
@@ -139,8 +140,7 @@ export default function CreditList() {
       results = results.filter(c => matchesDateRange(c.date));
     }
 
-    // Sort: Newest up (newest date first) to Older down
-    return results.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    return sortByLatestFirst(results, item => item.date, item => item.createdAt);
   }, [items, searchQuery, statusFilter, dateFrom, dateTo]);
 
   return (
@@ -311,7 +311,7 @@ export default function CreditList() {
                             )}
                             <span className="flex items-center gap-1">
                               <Calendar className="h-3 w-3" />
-                              {formatDate(parseISO(credit.date), 'MMM d, yyyy')}
+                              {formatDateTime(credit.date)}
                             </span>
                             {credit.dueDate && (
                               <>

@@ -284,11 +284,32 @@ export default function PurchaseForm() {
     setSaving(true);
     try {
       const validatedPayment = getValidatedPaymentState();
+      const buildPurchaseDate = () => {
+        const datePart = purchaseDate;
+        const localTime = new Date().toLocaleTimeString('en-GB', {
+          hour12: false,
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+        });
+
+        if (isNew) {
+          return new Date(`${datePart}T${localTime}`);
+        }
+
+        const priorDate = existing?.date ? parseISO(existing.date) : null;
+        const priorTime = priorDate && Number.isFinite(priorDate.getTime())
+          ? priorDate.toTimeString().slice(0, 8)
+          : localTime;
+
+        return new Date(`${datePart}T${priorTime}`);
+      };
+
       const payload = {
         invoiceNumber: invoiceNumber.trim(),
         supplierId,
         supplierName: selectedSupplier?.name ?? null,
-        date: new Date(`${purchaseDate}T12:00:00`).toISOString(),
+        date: buildPurchaseDate().toISOString(),
         items: items.map(item => {
           const expiryMode = item.expiryMode ?? (item.expiryMonths ? 'months' : 'manual');
           const resolvedExpiryDate = expiryMode === 'months'
