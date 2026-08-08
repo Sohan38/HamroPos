@@ -426,7 +426,7 @@ export default function SalesPos() {
            Fixed fullscreen. Input at top → keyboard opens below → results stay
            visible in the space between input and keyboard. Never covered.     */}
       {searchOpen && (
-        <div className="fixed inset-0 z-[9999] bg-background flex flex-col lg:hidden">
+        <div className="fixed inset-0 z-9999 bg-background flex flex-col lg:hidden">
           {/* Search bar row */}
           <div className="flex items-center gap-2 px-3 py-3 border-b bg-background shrink-0">
             <button
@@ -523,7 +523,7 @@ export default function SalesPos() {
       {/* ── MOBILE CART DRAWER ─────────────────────────────────────────────────
            Bottom sheet that slides up when cart bar is tapped.               */}
       {cartOpen && (
-        <div className="fixed inset-0 z-[9998] lg:hidden flex flex-col justify-end">
+        <div className="fixed inset-0 z-9998 lg:hidden flex flex-col justify-end">
           {/* Scrim */}
           <div
             className="absolute inset-0 bg-black/40"
@@ -576,7 +576,7 @@ export default function SalesPos() {
                 onFocus={() => setSearchQuery(searchQuery)}
               />
               {searchQuery.trim() && (
-                <div className="absolute top-[46px] left-0 right-0 bg-card border rounded-xl shadow-2xl z-50 overflow-hidden max-h-80 flex flex-col">
+                <div className="absolute top-11.5 left-0 right-0 bg-card border rounded-xl shadow-2xl z-50 overflow-hidden max-h-80 flex flex-col">
                   {searchResults.length > 0 ? (
                     <div className="overflow-y-auto divide-y flex-1">
                       {searchResults.map(product => (
@@ -661,7 +661,7 @@ export default function SalesPos() {
         </div>
 
         {/* Right — Cart (desktop sidebar) */}
-        <div className="hidden lg:flex w-[380px] xl:w-[420px] bg-card border-l flex-col shadow-xl z-10">
+        <div className="hidden lg:flex w-95 xl:w-105 bg-card border-l flex-col shadow-xl z-10">
           <ScrollArea className="flex-1">
             <CartPanel {...cartPanelProps} />
           </ScrollArea>
