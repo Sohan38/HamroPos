@@ -15,6 +15,7 @@ import { addMonths, format as fmtDate, isAfter, isBefore, parseISO, startOfDay }
 import { useBackModal } from '@/contexts/NavigationContext';
 import { rankSearch } from '@/utils/search/rank';
 import { cn } from '@/lib/utils';
+import { generateBatchNumber, generateSupplierInvoiceNumber } from '@/utils/numbering';
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
 const batchSchema = z.object({
@@ -87,14 +88,18 @@ interface BatchFormDialogProps {
   productId: string;
   editBatch?: ProductBatch | null;
   nextBatchNumber: string;
+  productName?: string;
+  existingBatches?: ProductBatch[];
+  existingPurchases?: Array<{ invoiceNumber?: string | null; date?: string | null }>;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export function BatchFormDialog({
-  open, onClose, onSave, suppliers, productId, editBatch, nextBatchNumber,
+  open, onClose, onSave, suppliers, productId, editBatch, nextBatchNumber, productName, existingBatches = [], existingPurchases = [],
 }: BatchFormDialogProps) {
   const [previewExpiry, setPreviewExpiry] = useState<string | null>(null);
   const [filterQuery, setFilterQuery] = useState('');
+  const [supplierInvoiceNumber, setSupplierInvoiceNumber] = useState('');
 
   const selectableSuppliers = useMemo(() => {
     const query = filterQuery.trim();
@@ -124,6 +129,8 @@ export function BatchFormDialog({
   const expiryMode = form.watch('expiryMode');
   const mfgDate = form.watch('manufacturingDate');
   const expiryMonths = form.watch('expiryMonths');
+  const selectedSupplierId = form.watch('supplierId');
+  const selectedSupplier = suppliers.find(s => s.id === selectedSupplierId);
 
   // Auto-compute expiry date preview when using months mode
   useEffect(() => {
@@ -152,8 +159,35 @@ export function BatchFormDialog({
         purchaseRate: editBatch?.purchaseRate ?? 0,
         notes: editBatch?.notes ?? '',
       });
+      if (editBatch) {
+        setSupplierInvoiceNumber('');
+      }
     }
   }, [open, editBatch, nextBatchNumber]); // eslint-disable-line
+
+  useEffect(() => {
+    if (!open) return;
+
+    if (!selectedSupplierId) {
+      form.setValue('batchNumber', '', { shouldDirty: true, shouldValidate: false });
+      setSupplierInvoiceNumber('');
+      return;
+    }
+
+    if (editBatch) {
+      return;
+    }
+
+    const generatedBatchNumber = generateBatchNumber(existingBatches, {
+      productName,
+      supplierName: selectedSupplier?.name ?? '',
+      date: new Date(),
+    });
+    const generatedInvoiceNumber = generateSupplierInvoiceNumber(existingPurchases, selectedSupplier?.name ?? '', new Date());
+
+    form.setValue('batchNumber', generatedBatchNumber, { shouldDirty: true, shouldValidate: false });
+    setSupplierInvoiceNumber(generatedInvoiceNumber);
+  }, [open, editBatch, existingBatches, existingPurchases, form, nextBatchNumber, productName, selectedSupplier, selectedSupplierId]);
 
   const onSubmit = (data: BatchFormValues) => {
     let finalExpiryDate: string | null = null;
@@ -265,6 +299,13 @@ export function BatchFormDialog({
                 </FormItem>
               );
             }} />
+
+            <div className="grid grid-cols-1 gap-3">
+              <label className="space-y-1 text-sm font-medium">
+                Supplier invoice / SKU
+                <Input value={supplierInvoiceNumber} readOnly placeholder="Auto-generated after supplier selection" className="h-9 bg-muted/40" />
+              </label>
+            </div>
 
             {/* Batch No. + Manufacturing Date Row */}
             <div className="grid grid-cols-2 gap-3">

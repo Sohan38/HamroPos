@@ -3,16 +3,23 @@ import { useWatch, useForm } from 'react-hook-form';
 import { useLocation, useParams } from 'wouter';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { v4 as uuidv4 } from 'uuid';
-import { useInventory, useSuppliers, useProductBatches } from '@/contexts/GlobalProviders';
+import { useInventory, useSuppliers, useProductBatches, usePurchases } from '@/contexts/GlobalProviders';
 import { Form } from '@/components/ui/form';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { AlertTriangle } from 'lucide-react';
-import { ProductUnit, ProductBatch, BatchFormData } from '@/types';
+import { PaymentMethod, ProductUnit, ProductBatch, BatchFormData, PurchasePaymentStatus } from '@/types';
 import { toast } from 'sonner';
 import { BatchFormDialog, getBatchStatus } from '@/components/BatchFormDialog';
 import { useSmartBack } from '@/contexts/NavigationContext';
 import { useFeature } from '@/hooks/useFeature';
+import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
+import { useStorageProvider } from '@/storage/StorageContext';
+import { createPurchase } from '@/services/purchaseService';
 
 // Subcomponents
 import { productSchema, ProductFormValues } from './Form/types';
@@ -25,7 +32,17 @@ import { BatchSection } from './Form/BatchSection';
 import { NotesSection } from './Form/NotesSection';
 import { SaveBar } from './Form/SaveBar';
 import { SupplierFormDialog } from '@/components/SupplierFormDialog';
-import { generateBatchNumber } from '@/utils/numbering';
+import { generateBatchNumber, generateSupplierInvoiceNumber } from '@/utils/numbering';
+
+type SupplierPurchaseDraft = {
+  invoiceNumber: string;
+  purchaseDate: string;
+  referenceNumber: string;
+  paymentMethod: PaymentMethod;
+  paymentStatus: PurchasePaymentStatus;
+  paidAmount: string;
+  notes: string;
+};
 
 export default function InventoryForm() {
   const isBatchesEnabled = useFeature('inventory', 'batches');
@@ -38,6 +55,8 @@ export default function InventoryForm() {
   const { items, add, update } = useInventory();
   const { items: suppliers } = useSuppliers();
   const { items: allBatches, add: addBatch, update: updateBatch, hardRemove: removeBatch } = useProductBatches();
+  const { items: purchases, refresh: refreshPurchases } = usePurchases();
+  const storage = useStorageProvider();
 
   // Extract supplierId from query parameters
   const queryParams = new URLSearchParams(location.split('?')[1] || '');
@@ -54,6 +73,7 @@ export default function InventoryForm() {
   const [supplierAutoSelected, setSupplierAutoSelected] = useState(false);
   const [supplierPresetName, setSupplierPresetName] = useState('');
   const [supplierDialogOpen, setSupplierDialogOpen] = useState(false);
+  const [supplierPurchaseDrafts, setSupplierPurchaseDrafts] = useState<Record<string, SupplierPurchaseDraft>>({});
 
   // Local batch handlers
   useEffect(() => {
@@ -130,9 +150,14 @@ export default function InventoryForm() {
 
   const hasExpiry = (isExpiryEnabled && isBatchesEnabled) ? (rawHasExpiry ?? false) : false;
   const hasVariants = isVariantsEnabled ? (rawHasVariants ?? false) : false;
+  const showPurchaseCreationSection = isNew && Boolean(returnTo && returnTo.includes('/purchases'));
 
   // Multi-supplier mode: 2+ suppliers selected
   const isMultiSupplier = !hasExpiry && !hasVariants && watchedSupplierIds.length >= 2;
+  const purchaseSupplierIds = useMemo(() => {
+    if (watchedSupplierIds.length > 0) return watchedSupplierIds;
+    return supplierIdFromQuery ? [supplierIdFromQuery] : [];
+  }, [watchedSupplierIds, supplierIdFromQuery]);
 
   // Total stock from all supplier entries (memoized)
   const totalSupplierStockQuantity = useMemo(() => {
@@ -158,6 +183,16 @@ export default function InventoryForm() {
       if (item.brand?.trim()) brands.add(item.brand.trim());
     }
     return Array.from(brands).sort();
+  }, [items]);
+
+  const existingProductNameLookup = useMemo(() => {
+    const lookup = new Set<string>();
+    for (const item of items) {
+      if (item.deletedAt) continue;
+      const normalizedName = item.name?.trim().toLowerCase();
+      if (normalizedName) lookup.add(normalizedName);
+    }
+    return lookup;
   }, [items]);
 
   // Compute average purchase cost from batches (expiry mode)
@@ -220,14 +255,51 @@ export default function InventoryForm() {
     }
   }, [hasExpiry, hasVariants, isMultiSupplier, totalBatchQuantity, totalVariantQuantity, totalSupplierStockQuantity, form]);
 
+  useEffect(() => {
+    if (!showPurchaseCreationSection) return;
+
+    setSupplierPurchaseDrafts(prev => {
+      const next = { ...prev };
+      const validIds = new Set(purchaseSupplierIds);
+
+      for (const supplierId of Object.keys(next)) {
+        if (!validIds.has(supplierId)) delete next[supplierId];
+      }
+
+      for (const supplierId of purchaseSupplierIds) {
+        const existing = next[supplierId];
+        const supplier = suppliers.find(candidate => candidate.id === supplierId);
+        const defaultDate = new Date().toISOString().slice(0, 10);
+
+        if (!existing || !existing.invoiceNumber?.trim()) {
+          next[supplierId] = {
+            invoiceNumber: generateSupplierInvoiceNumber(purchases, supplier?.name, defaultDate),
+            purchaseDate: existing?.purchaseDate || defaultDate,
+            referenceNumber: existing?.referenceNumber ?? '',
+            paymentMethod: existing?.paymentMethod ?? 'cash',
+            paymentStatus: existing?.paymentStatus ?? 'unpaid',
+            paidAmount: existing?.paidAmount ?? '0',
+            notes: existing?.notes ?? '',
+          };
+        }
+      }
+
+      return next;
+    });
+  }, [showPurchaseCreationSection, purchaseSupplierIds, suppliers, purchases]);
+
+  const buildBatchNumberForSupplier = useCallback((supplierId: string | null | undefined, existingBatchList: ProductBatch[] = localBatches) => {
+    const supplierName = suppliers.find(candidate => candidate.id === supplierId)?.name ?? '';
+    const productName = form.getValues('name') ?? '';
+    return generateBatchNumber(existingBatchList, { productName, supplierName, date: new Date() });
+  }, [form, localBatches, suppliers]);
+
   // Next batch number generator helper
   const nextBatchNumber = useMemo(() => {
     const all = isNew ? localBatches : allBatches.filter(b => b.productId === (existingProduct?.id ?? ''));
-    const supplierId = watchedSupplierIds[0] ?? '';
-    const supplierName = suppliers.find(s => s.id === supplierId)?.name ?? '';
-    const productName = form.getValues('name') ?? '';
-    return generateBatchNumber(all, { productName, supplierName, date: new Date() });
-  }, [localBatches, allBatches, existingProduct, isNew, watchedSupplierIds, suppliers, form]);
+    const supplierId = watchedSupplierIds[0] ?? purchaseSupplierIds[0] ?? '';
+    return buildBatchNumberForSupplier(supplierId, all);
+  }, [allBatches, buildBatchNumberForSupplier, existingProduct, isNew, localBatches, purchaseSupplierIds, watchedSupplierIds]);
 
   // Map barcodes for duplicates validation
   const barcodeLookup = useMemo(() => {
@@ -316,9 +388,60 @@ export default function InventoryForm() {
     }
   }, [form]);
 
+  function updatePurchaseDraft(supplierId: string, field: keyof SupplierPurchaseDraft, value: string) {
+    setSupplierPurchaseDrafts(prev => ({
+      ...prev,
+      [supplierId]: {
+        ...(prev[supplierId] ?? {
+          invoiceNumber: '',
+          purchaseDate: new Date().toISOString().slice(0, 10),
+          referenceNumber: '',
+          paymentMethod: 'cash',
+          paymentStatus: 'unpaid',
+          paidAmount: '0',
+          notes: '',
+        }),
+        [field]: value,
+      },
+    }));
+  }
+
+  function getValidatedPurchaseDraft(draft: SupplierPurchaseDraft, grandTotal: number) {
+    const normalizedPaidAmount = Math.max(0, Number(draft.paidAmount) || 0);
+    const normalizedGrandTotal = Math.max(0, grandTotal);
+
+    if (draft.paymentStatus === 'partial') {
+      if (normalizedPaidAmount <= 0) {
+        throw new Error('Partial payments must be greater than zero.');
+      }
+      if (normalizedPaidAmount > normalizedGrandTotal) {
+        throw new Error('Paid amount cannot exceed the invoice total.');
+      }
+      if (normalizedPaidAmount === normalizedGrandTotal) {
+        return { paymentStatus: 'paid' as PurchasePaymentStatus, paidAmount: normalizedGrandTotal };
+      }
+      return { paymentStatus: 'partial' as PurchasePaymentStatus, paidAmount: normalizedPaidAmount };
+    }
+
+    if (draft.paymentStatus === 'paid') {
+      return { paymentStatus: 'paid' as PurchasePaymentStatus, paidAmount: normalizedGrandTotal };
+    }
+
+    return { paymentStatus: 'unpaid' as PurchasePaymentStatus, paidAmount: 0 };
+  }
+
   // Save onSubmit handler
-  const onSubmit = (data: ProductFormValues) => {
+  const onSubmit = async (data: ProductFormValues) => {
     try {
+      const normalizedName = (data.name ?? '').trim().toLowerCase();
+      if (isNew && normalizedName && existingProductNameLookup.has(normalizedName)) {
+        form.setError('name', {
+          type: 'duplicateName',
+          message: `A product named "${data.name}" already exists.`,
+        });
+        return;
+      }
+
       if (data.barcode) {
         const duplicate = barcodeLookup.get(data.barcode);
         if (duplicate && duplicate.id !== existingProduct?.id) {
@@ -367,12 +490,14 @@ export default function InventoryForm() {
 
       const productData = {
         ...data,
-        quantity: calculatedStock,
+        quantity: showPurchaseCreationSection ? 0 : calculatedStock,
         barcode: data.barcode ?? '',
         brand: data.brand ?? '',
         supplierId: resolvedSupplierIds[0] ?? '',
         supplierIds: resolvedSupplierIds,
-        supplierStocks: normalizedSupplierStocks,
+        supplierStocks: showPurchaseCreationSection
+          ? normalizedSupplierStocks.map((stock: any) => ({ ...stock, stock: 0 }))
+          : normalizedSupplierStocks,
         notes: data.notes ?? '',
         hasExpiry: data.hasExpiry ?? false,
         hasVariants: data.hasVariants ?? false,
@@ -385,18 +510,116 @@ export default function InventoryForm() {
 
       const newId = isNew ? uuidv4() : null;
       if (isNew) {
-        add({
+        const createdPurchaseIds: string[] = [];
+
+        await add({
           ...productData,
           id: newId!,
         } as any);
 
         for (const batch of localBatches) {
-          addBatch({
+          await addBatch({
             ...batch,
             productId: newId,
           } as any);
         }
 
+        try {
+          if (newId && resolvedSupplierIds.length > 0) {
+            for (const supplierId of resolvedSupplierIds) {
+              const draft = supplierPurchaseDrafts[supplierId];
+              const supplierStock = (productData.supplierStocks as any[]).find(record => record.supplierId === supplierId);
+              const supplier = suppliers.find(candidate => candidate.id === supplierId);
+              const purchaseDate = (draft?.purchaseDate || new Date().toISOString().slice(0, 10)).trim();
+              const inferredInvoice = ((draft?.invoiceNumber || supplierStock?.supplierSku || '').trim()) || generateSupplierInvoiceNumber(purchases, supplier?.name, purchaseDate);
+              const fallbackPayment = {
+                paymentMethod: (draft?.paymentMethod ?? 'cash') as PaymentMethod,
+                paymentStatus: (draft?.paymentStatus ?? 'unpaid') as PurchasePaymentStatus,
+                paidAmount: (draft?.paidAmount ?? '0') as string,
+                referenceNumber: (draft?.referenceNumber ?? '').trim(),
+                notes: (draft?.notes ?? '').trim(),
+              };
+
+              const supplierBatches = localBatches.filter(batch => batch.supplierId === supplierId);
+              const purchaseItems = supplierBatches.length > 0
+                ? supplierBatches.map(batch => ({
+                  productId: newId,
+                  productName: data.name,
+                  quantity: Number(batch.quantity) || 0,
+                  purchaseRate: Number(batch.purchaseRate) || 0,
+                  subtotal: (Number(batch.quantity) || 0) * (Number(batch.purchaseRate) || 0),
+                  batchNumber: batch.batchNumber,
+                  manufacturingDate: batch.manufacturingDate,
+                  expiryMonths: batch.expiryMonths,
+                  expiryDate: batch.expiryDate,
+                  notes: batch.notes,
+                }))
+                : (() => {
+                  const quantity = Math.max(0, Number(supplierStock?.stock ?? (resolvedSupplierIds.length === 1 ? data.quantity : 0)) || 0);
+                  const purchaseRate = Number(supplierStock?.cost ?? productData.purchaseRate) || 0;
+                  if (quantity <= 0) return [];
+                  return [{
+                    productId: newId,
+                    productName: data.name,
+                    quantity,
+                    purchaseRate,
+                    subtotal: quantity * purchaseRate,
+                    notes: '',
+                  }];
+                })();
+
+              if (purchaseItems.length === 0) continue;
+
+              const subtotal = purchaseItems.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
+              const validatedPayment = getValidatedPurchaseDraft({
+                invoiceNumber: inferredInvoice,
+                purchaseDate,
+                referenceNumber: fallbackPayment.referenceNumber,
+                paymentMethod: fallbackPayment.paymentMethod,
+                paymentStatus: fallbackPayment.paymentStatus,
+                paidAmount: fallbackPayment.paidAmount,
+                notes: fallbackPayment.notes,
+              }, subtotal);
+              const purchasePayload = {
+                invoiceNumber: inferredInvoice,
+                supplierId,
+                supplierName: supplier?.name ?? null,
+                date: new Date(`${purchaseDate}T${new Date().toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}`).toISOString(),
+                items: purchaseItems,
+                discount: 0,
+                tax: 0,
+                grandTotal: subtotal,
+                paymentMethod: fallbackPayment.paymentMethod,
+                paymentStatus: validatedPayment.paymentStatus,
+                paidAmount: validatedPayment.paidAmount,
+                referenceNumber: fallbackPayment.referenceNumber,
+                notes: fallbackPayment.notes,
+                status: 'received' as const,
+              };
+
+              const createdPurchase = await createPurchase(storage, purchasePayload as any);
+              if (createdPurchase?.id) createdPurchaseIds.push(createdPurchase.id);
+            }
+          }
+        } catch (purchaseError) {
+          const rollbackInventory = await storage.get<any>('inventory');
+          const rollbackBatches = await storage.get<any>('productBatches');
+          const rollbackPurchases = await storage.get<any>('purchases');
+
+          const inventoryWithoutNewProduct = rollbackInventory.filter((record: any) => record.id !== newId);
+          const batchesWithoutNewProduct = rollbackBatches.filter((batch: any) => batch.productId !== newId);
+          const purchasesWithoutNewOnes = rollbackPurchases.filter((purchase: any) => !createdPurchaseIds.includes(purchase.id));
+
+          await storage.set('inventory', inventoryWithoutNewProduct);
+          await storage.set('productBatches', batchesWithoutNewProduct);
+          await storage.set('purchases', purchasesWithoutNewOnes);
+
+          console.error('Failed to create purchase for new product:', purchaseError);
+          toast.error('Failed to create purchase. Product was not saved.');
+          return;
+        }
+
+        refreshPurchases();
         toast.success('Product added successfully');
       } else if (existingProduct) {
         update(existingProduct.id, productData);
@@ -507,6 +730,7 @@ export default function InventoryForm() {
               isNew={isNew}
               existingCategories={existingCategories}
               existingBrands={existingBrands}
+              existingNameLookup={existingProductNameLookup}
             />
 
             <Separator />
@@ -566,11 +790,96 @@ export default function InventoryForm() {
                 <SupplierSection
                   form={form}
                   suppliers={suppliers}
+                  existingPurchases={purchases}
                   onSupplierNew={(nameValue) => {
                     setSupplierPresetName(nameValue ?? '');
                     setSupplierDialogOpen(true);
                   }}
                 />
+                <Separator />
+              </>
+            )}
+
+            {showPurchaseCreationSection && (
+              <>
+                <div className="p-6 md:p-8 bg-muted/20">
+                  <div className="flex items-start justify-between gap-3 mb-4">
+                    <div>
+                      <h3 className="font-semibold">Purchase capture</h3>
+                      <p className="text-xs text-muted-foreground">Create one purchase document per supplier for this item. Batch tracking uses the batch entries below.</p>
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                    {purchaseSupplierIds.map((supplierId) => {
+                      const draft = supplierPurchaseDrafts[supplierId];
+                      const supplier = suppliers.find(candidate => candidate.id === supplierId);
+                      if (!draft) return null;
+                      return (
+                        <Card key={supplierId} className="border-dashed">
+                          <CardContent className="p-4 md:p-5 space-y-4">
+                            <div className="flex items-center justify-between gap-3">
+                              <div>
+                                <p className="font-medium">{supplier?.name ?? 'Supplier'}</p>
+                                <p className="text-xs text-muted-foreground">Invoice, payment, and reference details</p>
+                              </div>
+                              <div className="rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                {draft.paymentStatus}
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              <label className="space-y-1 text-sm font-medium">
+                                Supplier invoice #
+                                <Input value={draft.invoiceNumber} onChange={event => updatePurchaseDraft(supplierId, 'invoiceNumber', event.target.value)} placeholder="e.g. SUP-2026-001" />
+                              </label>
+                              <label className="space-y-1 text-sm font-medium">
+                                Purchase date
+                                <Input type="date" value={draft.purchaseDate} onChange={event => updatePurchaseDraft(supplierId, 'purchaseDate', event.target.value)} />
+                              </label>
+                              <label className="space-y-1 text-sm font-medium">
+                                Reference number
+                                <Input value={draft.referenceNumber} onChange={event => updatePurchaseDraft(supplierId, 'referenceNumber', event.target.value)} placeholder="Optional PO or delivery ref" />
+                              </label>
+                              <label className="space-y-1 text-sm font-medium">
+                                Payment method
+                                <Select value={draft.paymentMethod} onValueChange={value => updatePurchaseDraft(supplierId, 'paymentMethod', value)}>
+                                  <SelectTrigger><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    {(['cash', 'qr', 'card', 'bank', 'split'] as PaymentMethod[]).map(method => (
+                                      <SelectItem className="capitalize" key={method} value={method}>{method}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </label>
+                              <label className="space-y-1 text-sm font-medium">
+                                Payment status
+                                <Select value={draft.paymentStatus} onValueChange={value => updatePurchaseDraft(supplierId, 'paymentStatus', value)}>
+                                  <SelectTrigger><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="unpaid">Unpaid</SelectItem>
+                                    <SelectItem value="partial">Partially paid</SelectItem>
+                                    <SelectItem value="paid">Paid</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </label>
+                              {draft.paymentStatus === 'partial' && (
+                                <label className="space-y-1 text-sm font-medium">
+                                  Paid amount
+                                  <Input type="number" min="0" step="0.01" value={draft.paidAmount} onChange={event => updatePurchaseDraft(supplierId, 'paidAmount', event.target.value)} />
+                                </label>
+                              )}
+                            </div>
+
+                            <label className="space-y-1 text-sm font-medium block">
+                              Notes
+                              <Textarea value={draft.notes} onChange={event => updatePurchaseDraft(supplierId, 'notes', event.target.value)} placeholder="Delivery notes or payment terms" rows={2} />
+                            </label>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                </div>
                 <Separator />
               </>
             )}
@@ -593,6 +902,9 @@ export default function InventoryForm() {
         nextBatchNumber={nextBatchNumber}
         suppliers={suppliers}
         productId={existingProduct?.id || ''}
+        productName={form.getValues('name') || ''}
+        existingBatches={localBatches}
+        existingPurchases={purchases}
       />
 
       {/* Supplier Dialog */}

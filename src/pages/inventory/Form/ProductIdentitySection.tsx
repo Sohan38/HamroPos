@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo } from 'react';
 import { FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Camera, CheckCircle2, X } from 'lucide-react';
@@ -13,13 +13,14 @@ interface ProductIdentitySectionProps extends SectionProps {
   isNew: boolean;
   existingCategories: string[];
   existingBrands: string[];
+  existingNameLookup?: Set<string>;
 }
 
-export const ProductIdentitySection = React.memo(({ form, isNew, existingCategories, existingBrands }: ProductIdentitySectionProps) => {
-  const imageBase64   = useWatch({ control: form.control, name: 'imageBase64' }) ?? '';
-  const nameValue     = useWatch({ control: form.control, name: 'name' })        ?? '';
-  const categoryValue = useWatch({ control: form.control, name: 'category' })   ?? '';
-  const brandValue    = useWatch({ control: form.control, name: 'brand' })      ?? '';
+export const ProductIdentitySection = React.memo(({ form, isNew, existingCategories, existingBrands, existingNameLookup }: ProductIdentitySectionProps) => {
+  const imageBase64 = useWatch({ control: form.control, name: 'imageBase64' }) ?? '';
+  const nameValue = useWatch({ control: form.control, name: 'name' }) ?? '';
+  const categoryValue = useWatch({ control: form.control, name: 'category' }) ?? '';
+  const brandValue = useWatch({ control: form.control, name: 'brand' }) ?? '';
 
   const handleImageUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -30,10 +31,43 @@ export const ProductIdentitySection = React.memo(({ form, isNew, existingCategor
     reader.readAsDataURL(file);
   }, [form]);
 
-  const nameError     = form.formState.errors.name?.message;
+  useEffect(() => {
+    if (!isNew) {
+      if (form.formState.errors.name?.type === 'duplicateName') {
+        form.clearErrors('name');
+      }
+      return;
+    }
+
+    const trimmedName = nameValue.trim();
+    if (trimmedName.length < 2) {
+      if (form.formState.errors.name?.type === 'duplicateName') {
+        form.clearErrors('name');
+      }
+      return;
+    }
+
+    const isDuplicateName = existingNameLookup?.has(trimmedName.toLowerCase()) ?? false;
+    if (isDuplicateName) {
+      form.setError('name', {
+        type: 'duplicateName',
+        message: `A product named "${trimmedName}" already exists.`,
+      });
+      return;
+    }
+
+    if (form.formState.errors.name?.type === 'duplicateName') {
+      form.clearErrors('name');
+      form.trigger('name');
+    }
+  }, [existingNameLookup, form, isNew, nameValue]);
+
+  const nameError = form.formState.errors.name?.message;
   const categoryError = form.formState.errors.category?.message;
-  const nameOk        = !nameError && nameValue.length >= 2;
-  const categoryOk    = !categoryError && categoryValue.length > 0;
+  const hasDuplicateName = isNew && nameValue.trim().length >= 2 && (existingNameLookup?.has(nameValue.trim().toLowerCase()) ?? false);
+  const duplicateNameMessage = hasDuplicateName ? 'Name already exists.' : undefined;
+  const nameOk = !nameError && !hasDuplicateName && nameValue.length >= 2;
+  const categoryOk = !categoryError && categoryValue.length > 0;
 
   // Optimize searches: compute ranked results only when input query changes, preventing excessive re-runs
   const filteredCategories = useMemo(() => {
@@ -94,13 +128,17 @@ export const ProductIdentitySection = React.memo(({ form, isNew, existingCategor
                     className={cn(
                       'pr-8 transition-colors',
                       nameError && 'border-destructive focus-visible:ring-destructive/30',
-                      nameOk    && 'border-green-400 focus-visible:ring-green-400/30'
+                      nameOk && 'border-green-400 focus-visible:ring-green-400/30'
                     )}
                   />
                   {nameOk && <CheckCircle2 className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-green-500 pointer-events-none" />}
                 </div>
               </FormControl>
-              <FormMessage className="text-xs" />
+              {duplicateNameMessage ? (
+                <p className="mt-1 text-xs text-destructive">{duplicateNameMessage}</p>
+              ) : (
+                <FormMessage className="text-xs" />
+              )}
             </FormItem>
           )} />
         </div>
@@ -135,7 +173,7 @@ export const ProductIdentitySection = React.memo(({ form, isNew, existingCategor
               className={cn(
                 'transition-colors',
                 categoryError && 'border-destructive focus-visible:ring-destructive/30',
-                categoryOk    && 'border-green-400 focus-visible:ring-green-400/30'
+                categoryOk && 'border-green-400 focus-visible:ring-green-400/30'
               )}
             />
           </FormControl>

@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo } from 'react';
 import { useWatch } from 'react-hook-form';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -9,16 +9,18 @@ import { Supplier } from '@/types';
 import { Plus, X, Truck, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { rankSearch } from '@/utils/search/rank';
+import { generateSupplierInvoiceNumber } from '@/utils/numbering';
 
 interface SupplierSectionProps extends SectionProps {
   suppliers: Supplier[];
+  existingPurchases?: Array<{ invoiceNumber?: string | null; date?: string | null }>;
   onSupplierNew: (name?: string) => void;
 }
 
-export const SupplierSection = React.memo(({ form, suppliers, onSupplierNew }: SupplierSectionProps) => {
+export const SupplierSection = React.memo(({ form, suppliers, existingPurchases = [], onSupplierNew }: SupplierSectionProps) => {
   const selectedSupplierIds: string[] = useWatch({ control: form.control, name: 'supplierIds' }) ?? [];
-  const supplierStocks: any[]         = useWatch({ control: form.control, name: 'supplierStocks' }) ?? [];
-  const isMultiSupplier               = selectedSupplierIds.length >= 2;
+  const supplierStocks: any[] = useWatch({ control: form.control, name: 'supplierStocks' }) ?? [];
+  const isMultiSupplier = selectedSupplierIds.length >= 2;
 
   // Watch the filter input value (we'll read it locally, no need to register in schema)
   const [filterQuery, setFilterQuery] = React.useState('');
@@ -38,10 +40,10 @@ export const SupplierSection = React.memo(({ form, suppliers, onSupplierNew }: S
     const next = [...selectedSupplierIds, sid];
     form.setValue('supplierIds', next, { shouldDirty: true });
 
-    const currentStocks: any[]  = form.getValues('supplierStocks') ?? [];
-    const currentPurchaseRate    = form.getValues('purchaseRate')   ?? 0;
-    const isFirst                = next.length === 1;
-    const globalStock            = isFirst ? (form.getValues('quantity') ?? 0) : 0;
+    const currentStocks: any[] = form.getValues('supplierStocks') ?? [];
+    const currentPurchaseRate = form.getValues('purchaseRate') ?? 0;
+    const isFirst = next.length === 1;
+    const globalStock = isFirst ? (form.getValues('quantity') ?? 0) : 0;
 
     if (!currentStocks.find((ss: any) => ss.supplierId === sid)) {
       form.setValue('supplierStocks', [
@@ -66,6 +68,28 @@ export const SupplierSection = React.memo(({ form, suppliers, onSupplierNew }: S
       ss.supplierId === supplierId ? { ...ss, [field]: value } : ss
     ), { shouldDirty: true });
   }, [form]);
+
+  useEffect(() => {
+    const currentStocks: any[] = form.getValues('supplierStocks') ?? [];
+    let changed = false;
+    const nextStocks = currentStocks.map((stock: any) => {
+      if (!selectedSupplierIds.includes(stock.supplierId)) return stock;
+      const supplier = suppliers.find(candidate => candidate.id === stock.supplierId);
+      const currentValue = typeof stock.supplierSku === 'string' ? stock.supplierSku.trim() : '';
+      if (currentValue) return stock;
+
+      const generatedInvoice = generateSupplierInvoiceNumber(existingPurchases, supplier?.name, new Date());
+      if (generatedInvoice !== currentValue) {
+        changed = true;
+        return { ...stock, supplierSku: generatedInvoice };
+      }
+      return stock;
+    });
+
+    if (changed) {
+      form.setValue('supplierStocks', nextStocks, { shouldDirty: true });
+    }
+  }, [existingPurchases, form, selectedSupplierIds, suppliers]);
 
   return (
     <section className="px-4 py-4 space-y-4">
@@ -169,7 +193,7 @@ export const SupplierSection = React.memo(({ form, suppliers, onSupplierNew }: S
           {selectedSupplierIds.length > 0 && (
             <div className="space-y-3">
               {selectedSupplierIds.map((sid, idx) => {
-                const supplier   = suppliers.find(s => s.id === sid);
+                const supplier = suppliers.find(s => s.id === sid);
                 if (!supplier) return null;
                 const stockEntry = supplierStocks.find((ss: any) => ss.supplierId === sid)
                   ?? { supplierId: sid, cost: 0, stock: 0, supplierSku: '', reorderLevel: undefined };
@@ -228,10 +252,10 @@ export const SupplierSection = React.memo(({ form, suppliers, onSupplierNew }: S
                       <div className="grid grid-cols-2 gap-2.5">
                         <div className="space-y-1.5">
                           <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                            SKU <span className="font-normal normal-case opacity-50">(opt.)</span>
+                            Invoice <span className="font-normal normal-case opacity-50">(auto)</span>
                           </Label>
                           <Input
-                            type="text" placeholder="e.g. SUP-001"
+                            type="text" placeholder="Auto-generated invoice"
                             value={stockEntry.supplierSku ?? ''}
                             onChange={e => updateSupplierStock(sid, 'supplierSku', e.target.value)}
                             className="h-10 text-sm"
