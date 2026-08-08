@@ -40,8 +40,9 @@ export default function ExpenseForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.amount || !formData.category) {
-      toast.error('Please fill required fields');
+    const amountNum = Number(formData.amount);
+    if (!formData.category || !formData.amount || Number.isNaN(amountNum) || amountNum <= 0) {
+      toast.error('Please enter a positive amount and category');
       return;
     }
 
