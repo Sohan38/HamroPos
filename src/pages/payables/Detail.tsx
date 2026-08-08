@@ -172,7 +172,7 @@ export default function PayableDetail() {
               <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Invoice Value</p>
               <p className="text-xl font-extrabold text-foreground">{format(invoice.grandTotal)}</p>
             </div>
-            <div className="rounded-2xl bg-sky-500/[0.03] border border-sky-500/10 p-4 text-center">
+            <div className="rounded-2xl bg-sky-500/3 border border-sky-500/10 p-4 text-center">
               <p className="text-[11px] font-bold text-sky-700/80 uppercase tracking-wider mb-1">Settled So Far</p>
               <p className="text-xl font-extrabold text-sky-600">{format(paidAmount)}</p>
             </div>
@@ -372,7 +372,7 @@ function DetailRow({ icon, label, value }: { icon: React.ReactNode; label: strin
       <span className="mt-0.5 shrink-0">{icon}</span>
       <div className="min-w-0">
         <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">{label}</p>
-        <p className="text-sm font-medium text-foreground break-words">{value}</p>
+        <p className="text-sm font-medium text-foreground wrap-break-word">{value}</p>
       </div>
     </div>
   );

@@ -115,7 +115,7 @@ export function SearchablePicker({
               <span className="h-5 w-5 rounded-full bg-primary/20 flex items-center justify-center text-[10px] font-bold shrink-0">
                 {item.name.charAt(0).toUpperCase()}
               </span>
-              <span className="truncate max-w-[160px]">{item.name}</span>
+              <span className="truncate max-w-40">{item.name}</span>
               {item.sublabel && (
                 <span className="text-primary/60 text-xs font-normal">{item.sublabel}</span>
               )}
@@ -168,7 +168,7 @@ export function SearchablePicker({
               className={cn(
                 singleRow
                   // Single row: scroll left-right, never wrap, add padding to show scroll affordance
-                  ? 'flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden'
+                  ? 'flex gap-2 overflow-x-auto pb-1 scrollbar-none [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden'
                   : 'flex gap-1.5 flex-wrap',
               )}
             >
@@ -191,7 +191,7 @@ export function SearchablePicker({
                       {item.name.charAt(0).toUpperCase()}
                     </span>
                   )}
-                  <span className={cn('whitespace-nowrap', !singleRow && 'truncate max-w-[140px]')}>{item.name}</span>
+                  <span className={cn('whitespace-nowrap', !singleRow && 'truncate max-w-35')}>{item.name}</span>
                   {item.sublabel && (
                     <span className="text-muted-foreground/70 whitespace-nowrap">{item.sublabel}</span>
                   )}

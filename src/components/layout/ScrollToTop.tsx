@@ -26,7 +26,7 @@ export function ScrollToTop() {
         window.requestAnimationFrame(() => {
           const scrollTop = window.scrollY;
           const docHeight = document.documentElement.scrollHeight - window.innerHeight;
-          
+
           if (docHeight > 0) {
             setScrollProgress(Math.min((scrollTop / docHeight) * 100, 100));
           } else {
@@ -67,13 +67,13 @@ export function ScrollToTop() {
         "hover:bg-primary hover:scale-110 hover:shadow-xl hover:border-primary/20",
         "active:scale-90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2",
         // Position above bottom navigation bar on mobile (typically 20/24), standard on larger screens
-        "bottom-[88px] md:bottom-8",
+        "bottom-22 md:bottom-8",
         isVisible ? "opacity-100 translate-y-0 scale-100" : "opacity-0 translate-y-10 scale-75 pointer-events-none"
       )}
       aria-label="Scroll to top"
     >
       {/* Scroll Progress Ring */}
-      <svg className="absolute -rotate-90 w-[44px] h-[44px]" viewBox="0 0 44 44">
+      <svg className="absolute -rotate-90 w-11 h-11" viewBox="0 0 44 44">
         <circle
           cx="22"
           cy="22"

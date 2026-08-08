@@ -48,6 +48,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import type { SaleInvoice, PaymentMethod } from '@/types';
 
 const SaleBillPrint = lazy(() =>
@@ -58,7 +59,7 @@ const SaleBillPrint = lazy(() =>
 
 const PAGE_SIZE = 30;
 
-type DatePreset = 'today' | 'yesterday' | 'week' | 'month' | 'all';
+type DatePreset = 'today' | 'yesterday' | 'week' | 'month' | 'all' | 'custom';
 
 interface DatePresetOption {
   id: DatePreset;
@@ -70,6 +71,7 @@ const DATE_PRESETS: DatePresetOption[] = [
   { id: 'yesterday', label: 'Yesterday' },
   { id: 'week', label: 'This Week' },
   { id: 'month', label: 'This Month' },
+  { id: 'custom', label: 'Custom' },
   { id: 'all', label: 'All Time' },
 ];
 
@@ -163,6 +165,9 @@ export default function SalesList() {
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [displayCount, setDisplayCount] = useState(PAGE_SIZE);
+  const [customOpen, setCustomOpen] = useState(false);
+  const [customDateFrom, setCustomDateFrom] = useState('');
+  const [customDateTo, setCustomDateTo] = useState('');
 
   // Print dialog state
   const [printSale, setPrintSale] = useState<SaleInvoice | null>(null);
@@ -187,6 +192,16 @@ export default function SalesList() {
   // ── 2. Date preset filter ──────────────────────────────────────────────────
   const dateFilteredSales = useMemo(() => {
     if (datePreset === 'all') return sortedSales;
+
+    if (datePreset === 'custom') {
+      return sortedSales.filter(sale => {
+        const day = sale.date.slice(0, 10);
+        if (customDateFrom && day < customDateFrom) return false;
+        if (customDateTo && day > customDateTo) return false;
+        return true;
+      });
+    }
+
     const { today, yesterday, weekStart, monthStart } = getDateBoundaries();
 
     return sortedSales.filter(sale => {
@@ -200,7 +215,7 @@ export default function SalesList() {
         default: return true;
       }
     });
-  }, [sortedSales, datePreset]);
+  }, [sortedSales, datePreset, customDateFrom, customDateTo]);
 
   // ── 3. Payment method filter ───────────────────────────────────────────────
   const paymentFilteredSales = useMemo(() => {
@@ -282,10 +297,24 @@ export default function SalesList() {
     setDatePreset('all');
     setPaymentFilter('all');
     setQuery('');
+    setCustomDateFrom('');
+    setCustomDateTo('');
+    setCustomOpen(false);
   }, []);
 
   const handleDatePreset = useCallback((p: DatePreset) => {
+    if (p === 'custom') {
+      setDatePreset('custom');
+      setCustomOpen(true);
+      return;
+    }
+
     setDatePreset(p);
+  }, []);
+
+  const applyCustomDates = useCallback(() => {
+    setDatePreset('custom');
+    setCustomOpen(false);
   }, []);
 
   const handlePaymentFilter = useCallback((p: string) => {
@@ -367,6 +396,30 @@ export default function SalesList() {
           </button>
         )}
       </div>
+
+      <Dialog open={customOpen} onOpenChange={setCustomOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Custom date range</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <label className="text-sm font-medium text-muted-foreground space-y-2 block">
+              <span>From date</span>
+              <Input type="date" value={customDateFrom} onChange={e => setCustomDateFrom(e.target.value)} />
+            </label>
+            <label className="text-sm font-medium text-muted-foreground space-y-2 block">
+              <span>To date</span>
+              <Input type="date" value={customDateTo} onChange={e => setCustomDateTo(e.target.value)} />
+            </label>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="outline" onClick={() => { setCustomDateFrom(''); setCustomDateTo(''); setDatePreset('all'); setCustomOpen(false); }}>
+              Clear
+            </Button>
+            <Button onClick={applyCustomDates}>Apply</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Summary card ─────────────────────────────────────────────────── */}
       <Card>
