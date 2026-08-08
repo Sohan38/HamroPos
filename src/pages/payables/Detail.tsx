@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useParams, useLocation } from 'wouter';
 import { usePurchases, useSuppliers } from '@/contexts/GlobalProviders';
+import { useStorageProvider } from '../../storage/StorageContext';
 import { useSmartBack } from '@/contexts/NavigationContext';
 import { useCurrency } from '@/hooks/useCurrency';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,12 +17,14 @@ import { format as formatDate, parseISO } from 'date-fns';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { CreditPayment } from '@/types';
+import { patchPurchase } from '@/services/purchaseService';
 
 export default function PayableDetail() {
   const goBack = useSmartBack('/payables');
   const { id } = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
-  const { items: purchases, update } = usePurchases();
+  const storage = useStorageProvider();
+  const { items: purchases } = usePurchases();
   const { items: suppliers } = useSuppliers();
   const { format } = useCurrency();
 
@@ -97,7 +100,7 @@ export default function PayableDetail() {
         note: paymentNote.trim() || 'Payment made to supplier',
       };
 
-      await update(invoice.id, {
+      await patchPurchase(storage, invoice.id, {
         paidAmount: nextPaidAmount,
         payments: [...payments, newPayment],
         paymentStatus: isFullyPaid ? 'paid' : 'partial',

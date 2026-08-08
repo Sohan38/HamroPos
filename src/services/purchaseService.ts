@@ -412,6 +412,14 @@ export async function createPurchase(storage: IStorageProvider, input: PurchaseI
     return persistTransition(storage, null, candidate, purchases);
 }
 
+export async function patchPurchase(storage: IStorageProvider, id: string, updates: Partial<PurchaseInvoice>) {
+    const purchases = await storage.get<PurchaseInvoice>('purchases');
+    const previous = purchases.find(purchase => purchase.id === id && active(purchase));
+    if (!previous) throw new Error('Purchase not found.');
+    const candidate = makePurchase({ ...previous, ...updates, id } as PurchaseInput, previous);
+    return persistTransition(storage, previous, candidate, purchases);
+}
+
 export async function updatePurchase(storage: IStorageProvider, id: string, input: PurchaseInput) {
     const purchases = await storage.get<PurchaseInvoice>('purchases');
     const previous = purchases.find(purchase => purchase.id === id && active(purchase));
