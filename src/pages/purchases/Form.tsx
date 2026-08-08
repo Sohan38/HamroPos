@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import { PurchaseItem, PurchasePaymentStatus, PurchaseStatus } from '@/types';
 import { createPurchase, updatePurchase } from '@/services/purchaseService';
 import { SearchablePicker } from '@/components/SearchablePicker';
+import { generateBatchNumber, generateSupplierInvoiceNumber } from '@/utils/numbering';
 
 type DraftItem = PurchaseItem & {
   manufacturingDate?: string | null;
@@ -32,7 +33,7 @@ export default function PurchaseForm() {
   const { items: purchases, refresh: refreshPurchases } = usePurchases();
   const { items: suppliers } = useSuppliers();
   const { items: inventory, refresh: refreshInventory } = useInventory();
-  const { refresh: refreshBatches } = useProductBatches();
+  const { items: existingBatches, refresh: refreshBatches } = useProductBatches();
   const { format } = useCurrency();
 
   const queryParams = new URLSearchParams(location.split('?')[1] || '');
@@ -65,6 +66,18 @@ export default function PurchaseForm() {
   }, [productIdFromQuery, inventory]);
 
   const selectedSupplier = suppliers.find(supplier => supplier.id === supplierId);
+
+  useEffect(() => {
+    if (!isNew) return;
+
+    if (!supplierId) {
+      setInvoiceNumber('');
+      return;
+    }
+
+    const generated = generateSupplierInvoiceNumber(purchases, selectedSupplier?.name, purchaseDate);
+    setInvoiceNumber(generated);
+  }, [isNew, supplierId, purchaseDate, purchases, selectedSupplier?.name]);
   const subtotal = useMemo(() => items.reduce((sum, item) => sum + Number(item.subtotal || 0), 0), [items]);
   const discountValue = Math.max(0, Number(discount) || 0);
   const taxValue = Math.max(0, Number(tax) || 0);
@@ -107,13 +120,25 @@ export default function PurchaseForm() {
     } else {
       const supplierCost = product.supplierStocks?.find(record => record.supplierId === supplierId)?.cost;
       const purchaseRate = supplierCost ?? product.purchaseRate ?? 0;
+      const defaultVariantName = product.hasVariants && product.variants?.length
+        ? product.variants[0]?.name ?? ''
+        : undefined;
+      const defaultBatchNumber = product.hasExpiry
+        ? generateBatchNumber([...existingBatches, ...items.map(item => ({ batchNumber: item.batchNumber }))], {
+          productName: product.name,
+          supplierName: selectedSupplier?.name ?? '',
+          date: purchaseDate,
+        })
+        : '';
+
       setItems(current => [...current, {
         productId: product.id,
         productName: product.name,
         quantity: 1,
         purchaseRate,
         subtotal: purchaseRate,
-        batchNumber: '',
+        variantName: defaultVariantName,
+        batchNumber: defaultBatchNumber,
         manufacturingDate: null,
         expiryDate: null,
         notes: '',
@@ -335,7 +360,19 @@ export default function PurchaseForm() {
                           <label className="space-y-1 text-xs font-medium">Unit cost
                             <Input type="number" min="0" step="0.01" value={item.purchaseRate} onChange={event => updateItem(index, 'purchaseRate', event.target.value)} />
                           </label>
-                          <div className="col-span-2 flex items-end justify-end font-bold text-primary pb-2">{format(item.subtotal)}</div>
+                          {product?.hasVariants && (product.variants?.length ?? 0) > 0 && (
+                            <label className="space-y-1 text-xs font-medium">Variant
+                              <Select value={item.variantName ?? ''} onValueChange={value => updateItem(index, 'variantName', value)}>
+                                <SelectTrigger><SelectValue placeholder="Select variant" /></SelectTrigger>
+                                <SelectContent>
+                                  {product.variants?.map(variant => (
+                                    <SelectItem key={variant.name} value={variant.name}>{variant.name}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </label>
+                          )}
+                          <div className={`flex items-end justify-end font-bold text-primary pb-2 ${product?.hasVariants ? '' : 'col-span-2'}`}>{format(item.subtotal)}</div>
                         </div>
                         {product?.hasExpiry && (
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 border-t pt-3">

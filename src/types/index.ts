@@ -92,6 +92,8 @@ export interface PurchaseItem {
   quantity: number;
   purchaseRate: number;
   subtotal: number;
+  /** Optional variant selection for products that use variants. */
+  variantName?: string;
   /** Optional receiving information used when the product tracks batches. */
   batchId?: string;
   batchNumber?: string;

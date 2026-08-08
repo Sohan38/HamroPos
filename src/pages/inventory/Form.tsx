@@ -25,6 +25,7 @@ import { BatchSection } from './Form/BatchSection';
 import { NotesSection } from './Form/NotesSection';
 import { SaveBar } from './Form/SaveBar';
 import { SupplierFormDialog } from '@/components/SupplierFormDialog';
+import { generateBatchNumber } from '@/utils/numbering';
 
 export default function InventoryForm() {
   const isBatchesEnabled = useFeature('inventory', 'batches');
@@ -71,16 +72,16 @@ export default function InventoryForm() {
       supplierStocks: existingProduct.supplierStocks && existingProduct.supplierStocks.length > 0
         ? existingProduct.supplierStocks
         : (existingProduct.supplierId
-            ? [{
-                supplierId: existingProduct.supplierId,
-                cost: existingProduct.purchaseRate || 0,
-                stock: existingProduct.quantity || 0,
-                supplierSku: '',
-                reorderLevel: existingProduct.minimumStock,
-                notes: ''
-              }]
-            : []
-          ),
+          ? [{
+            supplierId: existingProduct.supplierId,
+            cost: existingProduct.purchaseRate || 0,
+            stock: existingProduct.quantity || 0,
+            supplierSku: '',
+            reorderLevel: existingProduct.minimumStock,
+            notes: ''
+          }]
+          : []
+        ),
       hasExpiry: existingProduct.hasExpiry ?? false,
       hasVariants: existingProduct.hasVariants ?? false,
       variants: existingProduct.variants ?? [],
@@ -222,10 +223,11 @@ export default function InventoryForm() {
   // Next batch number generator helper
   const nextBatchNumber = useMemo(() => {
     const all = isNew ? localBatches : allBatches.filter(b => b.productId === (existingProduct?.id ?? ''));
-    const year = new Date().getFullYear();
-    const n = all.length + 1;
-    return `B-${year}-${String(n).padStart(3, '0')}`;
-  }, [localBatches, allBatches, existingProduct, isNew]);
+    const supplierId = watchedSupplierIds[0] ?? '';
+    const supplierName = suppliers.find(s => s.id === supplierId)?.name ?? '';
+    const productName = form.getValues('name') ?? '';
+    return generateBatchNumber(all, { productName, supplierName, date: new Date() });
+  }, [localBatches, allBatches, existingProduct, isNew, watchedSupplierIds, suppliers, form]);
 
   // Map barcodes for duplicates validation
   const barcodeLookup = useMemo(() => {
@@ -500,7 +502,7 @@ export default function InventoryForm() {
         <form onSubmit={form.handleSubmit(onSubmit)}>
           <div className="md:rounded-2xl md:border md:bg-card md:overflow-hidden md:shadow-sm">
             {/* Identity */}
-             <ProductIdentitySection
+            <ProductIdentitySection
               form={form}
               isNew={isNew}
               existingCategories={existingCategories}

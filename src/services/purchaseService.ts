@@ -88,6 +88,25 @@ function getBatchForPurchase(
     return matching[itemIndex] ?? matching[0];
 }
 
+function updateVariantQuantity(product: Product, variantName: string | null | undefined, delta: number) {
+    if (!product.hasVariants || !variantName?.trim()) return;
+
+    const normalizedName = variantName.trim();
+    const variants = Array.isArray(product.variants) ? [...product.variants] : [];
+    const existing = variants.find(candidate => candidate.name === normalizedName);
+
+    if (existing) {
+        existing.quantity = Math.max(0, Number(existing.quantity || 0) + delta);
+        product.variants = variants;
+        return;
+    }
+
+    if (delta > 0) {
+        variants.push({ name: normalizedName, quantity: delta });
+        product.variants = variants;
+    }
+}
+
 function revertPurchase(
     inventory: Product[],
     batches: ProductBatch[],
@@ -103,6 +122,7 @@ function revertPurchase(
         }
 
         product.quantity -= item.quantity;
+        updateVariantQuantity(product, item.variantName, -item.quantity);
         const supplierState = ensureSupplierRecords(product, purchase.supplierId);
         const supplierRecord = supplierState.records.find(record => record.supplierId === purchase.supplierId);
         if (supplierRecord) {
@@ -143,6 +163,7 @@ function applyPurchase(
         const previousQuantity = product.quantity;
         const supplierState = ensureSupplierRecords(product, purchase.supplierId, previousQuantity);
         product.quantity += item.quantity;
+        updateVariantQuantity(product, item.variantName, item.quantity);
         const supplierRecord = supplierState.records.find(record => record.supplierId === purchase.supplierId);
         if (!supplierRecord) throw new Error(`Supplier stock could not be initialized for ${product.name}.`);
         supplierRecord.stock += item.quantity;
