@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { PaymentMethodPicker, SettlePaymentMethod } from '@/components/PaymentMethodPicker';
 import {
   ArrowLeft, User, Calendar, Banknote, CheckCircle2,
   Clock, TrendingDown, History, ChevronRight, Phone,
@@ -26,7 +27,7 @@ export default function CreditDetail() {
   const { format } = useCurrency();
 
   const [paymentAmount, setPaymentAmount] = useState('');
-  const [paymentNote, setPaymentNote] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<SettlePaymentMethod>('cash');
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -76,6 +77,14 @@ export default function CreditDetail() {
   };
   const status = statusConfig[credit.status] ?? statusConfig.pending;
 
+  const PAYMENT_METHOD_LABELS: Record<SettlePaymentMethod, string> = {
+    cash: 'Cash',
+    qr: 'QR / Mobile Pay',
+    card: 'Card',
+    bank: 'Bank Transfer',
+    other: 'Other',
+  };
+
   const handleRecordPayment = async () => {
     const amt = Number(paymentAmount);
     if (!paymentAmount || isNaN(amt) || amt <= 0) {
@@ -94,7 +103,7 @@ export default function CreditDetail() {
       const newPayment = {
         date: new Date().toISOString(),
         amount: amt,
-        note: paymentNote.trim() || 'Payment received',
+        note: PAYMENT_METHOD_LABELS[paymentMethod],
       };
 
       await update(credit.id, {
@@ -106,7 +115,7 @@ export default function CreditDetail() {
 
       toast.success(isFullyPaid ? 'Credit fully settled!' : `${format(amt)} payment recorded`);
       setPaymentAmount('');
-      setPaymentNote('');
+      setPaymentMethod('cash');
       setShowPaymentForm(false);
     } finally {
       setSaving(false);
@@ -191,32 +200,28 @@ export default function CreditDetail() {
               ) : (
                 <div className="space-y-3 bg-muted/40 rounded-xl p-4 border border-border">
                   <p className="text-sm font-semibold">Record a payment</p>
-                  <div className="space-y-2">
-                    <label className="text-xs text-muted-foreground font-medium">
-                      Amount <span className="text-foreground">(max {format(remainingAmount)})</span>
-                    </label>
-                    <Input
-                      type="number"
-                      inputMode="decimal"
-                      placeholder="0"
-                      value={paymentAmount}
-                      onChange={e => setPaymentAmount(e.target.value)}
-                      min="0.01"
-                      max={remainingAmount}
-                      className="h-12 text-base"
-                      autoFocus
+                  <div className="space-y-4">
+                    <PaymentMethodPicker
+                      selectedMethod={paymentMethod}
+                      onSelect={setPaymentMethod}
                     />
+                    <div className="space-y-2">
+                      <label className="text-xs text-muted-foreground font-medium">
+                        Amount <span className="text-foreground">(max {format(remainingAmount)})</span>
+                      </label>
+                      <Input
+                        type="number"
+                        inputMode="decimal"
+                        placeholder="0"
+                        value={paymentAmount}
+                        onChange={e => setPaymentAmount(e.target.value)}
+                        min="0.01"
+                        max={remainingAmount}
+                        className="h-12 text-base"
+                        autoFocus
+                      />
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-xs text-muted-foreground font-medium">Note (optional)</label>
-                    <Input
-                      placeholder="e.g. Cash, bank transfer…"
-                      value={paymentNote}
-                      onChange={e => setPaymentNote(e.target.value)}
-                    />
-                  </div>
-
-                  {/* Quick amount buttons */}
                   <div className="flex flex-wrap gap-2">
                     {[25, 50, 75, 100].map(pct => {
                       const val = Math.round(remainingAmount * pct / 100);
@@ -243,7 +248,7 @@ export default function CreditDetail() {
                     <Button
                       variant="outline"
                       className="flex-1"
-                      onClick={() => { setShowPaymentForm(false); setPaymentAmount(''); setPaymentNote(''); }}
+                      onClick={() => { setShowPaymentForm(false); setPaymentAmount(''); }}
                     >
                       Cancel
                     </Button>

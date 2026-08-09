@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { PaymentMethodPicker, SettlePaymentMethod } from '@/components/PaymentMethodPicker';
 import {
   ArrowLeft, Truck, Calendar, Banknote, CheckCircle2,
   Clock, TrendingDown, History, ChevronRight, Phone,
@@ -29,7 +30,7 @@ export default function PayableDetail() {
   const { format } = useCurrency();
 
   const [paymentAmount, setPaymentAmount] = useState('');
-  const [paymentNote, setPaymentNote] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<SettlePaymentMethod>('cash');
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -78,6 +79,14 @@ export default function PayableDetail() {
   };
   const statusCfg = statusConfig[ps] ?? statusConfig.unpaid;
 
+  const PAYMENT_METHOD_LABELS: Record<SettlePaymentMethod, string> = {
+    cash: 'Cash',
+    qr: 'QR / Mobile Pay',
+    card: 'Card',
+    bank: 'Bank Transfer',
+    other: 'Other',
+  };
+
   const handleRecordPayment = async () => {
     const amt = Number(paymentAmount);
     if (!paymentAmount || isNaN(amt) || amt <= 0) {
@@ -97,7 +106,7 @@ export default function PayableDetail() {
       const newPayment: CreditPayment = {
         date: new Date().toISOString(),
         amount: amt,
-        note: paymentNote.trim() || 'Payment made to supplier',
+        note: PAYMENT_METHOD_LABELS[paymentMethod],
       };
 
       await patchPurchase(storage, invoice.id, {
@@ -108,7 +117,7 @@ export default function PayableDetail() {
 
       toast.success(isFullyPaid ? 'Invoice fully settled!' : `${format(amt)} payment recorded`);
       setPaymentAmount('');
-      setPaymentNote('');
+      setPaymentMethod('cash');
       setShowPaymentForm(false);
     } finally {
       setSaving(false);
@@ -195,30 +204,27 @@ export default function PayableDetail() {
                     <Banknote className="h-4 w-4 text-muted-foreground" />
                     Record Settlement Amount
                   </h3>
-                  <div className="space-y-2">
-                    <label className="text-xs text-muted-foreground font-semibold">
-                      Paying Amount <span className="text-foreground font-bold">(max {format(remainingAmount)})</span>
-                    </label>
-                    <Input
-                      type="number"
-                      inputMode="decimal"
-                      placeholder="0.00"
-                      value={paymentAmount}
-                      onChange={e => setPaymentAmount(e.target.value)}
-                      min="0.01"
-                      max={remainingAmount}
-                      className="h-12 text-base rounded-xl font-bold bg-background"
-                      autoFocus
+                  <div className="space-y-4">
+                    <PaymentMethodPicker
+                      selectedMethod={paymentMethod}
+                      onSelect={setPaymentMethod}
                     />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs text-muted-foreground font-semibold">Note / Transaction Details</label>
-                    <Input
-                      placeholder="e.g. Bank transfer, Cash, Cheque number…"
-                      value={paymentNote}
-                      onChange={e => setPaymentNote(e.target.value)}
-                      className="h-11 rounded-xl bg-background text-sm"
-                    />
+                    <div className="space-y-2">
+                      <label className="text-xs text-muted-foreground font-semibold">
+                        Paying Amount <span className="text-foreground font-bold">(max {format(remainingAmount)})</span>
+                      </label>
+                      <Input
+                        type="number"
+                        inputMode="decimal"
+                        placeholder="0.00"
+                        value={paymentAmount}
+                        onChange={e => setPaymentAmount(e.target.value)}
+                        min="0.01"
+                        max={remainingAmount}
+                        className="h-12 text-base rounded-xl font-bold bg-background"
+                        autoFocus
+                      />
+                    </div>
                   </div>
 
                   {/* Quick percentage buttons */}

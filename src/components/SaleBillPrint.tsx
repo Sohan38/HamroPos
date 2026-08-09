@@ -176,7 +176,7 @@ export function SaleBillPrint({
               <tbody>
                 {sale.items.map((item, i) => (
                   <tr key={i}>
-                    <td className="text-left py-0.5 pr-1 break-words align-top">
+                    <td className="text-left py-0.5 pr-1 wrap-break-word align-top">
                       {item.productName}
                     </td>
                     <td className="text-center w-6 align-top py-0.5">
@@ -296,8 +296,8 @@ function Divider({ dashed = false }: { dashed?: boolean }) {
 function MetaRow({ label, value }: { label: string; value: string }) {
   return (
     <tr>
-      <td className="text-gray-500 py-[1px]">{label}</td>
-      <td className="text-right font-bold py-[1px]">{value}</td>
+      <td className="text-gray-500 py-px">{label}</td>
+      <td className="text-right font-bold py-px">{value}</td>
     </tr>
   );
 }
@@ -305,8 +305,8 @@ function MetaRow({ label, value }: { label: string; value: string }) {
 function TotalRow({ label, value }: { label: string; value: string }) {
   return (
     <tr>
-      <td className="py-[1px]">{label}</td>
-      <td className="text-right font-semibold py-[1px]">{value}</td>
+      <td className="py-px">{label}</td>
+      <td className="text-right font-semibold py-px">{value}</td>
     </tr>
   );
 }
