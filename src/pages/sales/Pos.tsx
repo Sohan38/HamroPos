@@ -19,6 +19,12 @@ import { CartPanel } from '@/components/pos/CartPanel';
 import { VariantPicker } from '@/components/pos/VariantPicker';
 import { CartItem, Product } from '@/types';
 
+interface VariantDraft {
+  productId: string;
+  product: Product;
+  expanded: boolean;
+}
+
 function fefoDeduct(batches: ProductBatch[], needed: number): { id: string; quantity: number }[] {
   let remaining = needed;
   const updates: { id: string; quantity: number }[] = [];
@@ -58,7 +64,7 @@ export default function SalesPos() {
   // Mobile-specific state
   const [searchOpen, setSearchOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
-  const [variantProduct, setVariantProduct] = useState<Product | null>(null);
+  const [variantDrafts, setVariantDrafts] = useState<VariantDraft[]>([]);
 
   const searchRef = useRef<HTMLInputElement>(null);
   const overlaySearchRef = useRef<HTMLInputElement>(null);
@@ -192,7 +198,12 @@ export default function SalesPos() {
 
   const addToCart = (product: typeof inventory[0]) => {
     if (product.hasVariants) {
-      setVariantProduct(product);
+      setVariantDrafts(cur => {
+        if (cur.some(item => item.productId === product.id)) {
+          return cur.map(item => item.productId === product.id ? { ...item, expanded: true } : item);
+        }
+        return [...cur, { productId: product.id, product, expanded: false }];
+      });
       setSearchQuery('');
       closeSearch();
       return;
@@ -225,31 +236,34 @@ export default function SalesPos() {
     toast.success(`Added ${product.name}`, { duration: 1200 });
   };
 
-  const setVariantQuantity = (name: string, requestedQuantity: number) => {
-    if (!variantProduct) return;
-    const variant = variantProduct.variants?.find(item => item.name === name);
+  const setVariantQuantity = (productId: string, name: string, requestedQuantity: number) => {
+    const draft = variantDrafts.find(item => item.productId === productId);
+    const product = inventoryById.get(productId) ?? draft?.product;
+    if (!product) return;
+    const variant = product.variants?.find(item => item.name === name);
     if (!variant) return;
 
     setCart(current => {
-      const thisLineKey = cartLineKey({ productId: variantProduct.id, variantName: name });
+      const thisLineKey = cartLineKey({ productId: product.id, variantName: name });
       const existing = current.find(item => cartLineKey(item) === thisLineKey);
       const otherSelected = current
-        .filter(item => cartLineKey(item) !== thisLineKey && item.productId === variantProduct.id)
+        .filter(item => cartLineKey(item) !== thisLineKey && item.productId === product.id)
         .reduce((sum, item) => sum + item.quantity, 0);
-      const maxAllowed = Math.max(0, Math.min(variant.quantity, variantProduct.quantity - otherSelected));
+      const maxAllowed = Math.max(0, Math.min(variant.quantity, product.quantity - otherSelected));
       const quantity = Math.max(0, Math.min(maxAllowed, Math.floor(Number.isFinite(requestedQuantity) ? requestedQuantity : 0)));
       const withoutVariant = current.filter(item => cartLineKey(item) !== thisLineKey);
 
       if (quantity === 0) return withoutVariant;
       const nextItem: CartItem = {
-        productId: variantProduct.id,
-        productName: variantProduct.name,
+        productId: product.id,
+        productName: product.name,
         variantName: name,
         quantity,
-        sellingRate: variantProduct.sellingRate,
+        sellingRate: product.sellingRate,
         maxQuantity: variant.quantity,
-        subtotal: quantity * variantProduct.sellingRate,
+        subtotal: quantity * product.sellingRate,
       };
+      if (!existing) return [...withoutVariant, nextItem];
       return [...withoutVariant, nextItem];
     });
   };
@@ -315,7 +329,7 @@ export default function SalesPos() {
   const change = paidAmount !== '' && Number(paidAmount) > grandTotal ? Number(paidAmount) - grandTotal : 0;
   const selectedCustomer = customerId ? customerMap.get(customerId) : undefined;
   const cartCount = cart.reduce((s, i) => s + i.quantity, 0);
-  const cartDisplayCount = cartCount + (variantProduct && !cart.some(item => item.productId === variantProduct.id) ? 1 : 0);
+  const cartDisplayCount = cartCount + (variantDrafts.length > 0 ? variantDrafts.length : 0);
 
   const batchesByProduct = useMemo(() => {
     const map = new Map<string, ProductBatch[]>();
@@ -481,13 +495,18 @@ export default function SalesPos() {
     onCloseCustomer: () => setShowCustomer(false),
     onClearCart: () => {
       setCart([]);
-      setVariantProduct(null);
+      setVariantDrafts([]);
     },
     onRemoveFromCart: removeFromCart,
     onUpdateCartQuantity: updateCartQuantity,
     onSetCartQuantity: setCartQuantity,
-    variantProduct,
-    onCloseVariantPicker: () => setVariantProduct(null),
+    variantDrafts,
+    onToggleVariantDraft: (productId: string) => {
+      setVariantDrafts(cur => cur.map(item => item.productId === productId ? { ...item, expanded: !item.expanded } : item));
+    },
+    onRemoveVariantDraft: (productId: string) => {
+      setVariantDrafts(cur => cur.filter(item => item.productId !== productId));
+    },
     onSetVariantQuantity: setVariantQuantity,
     onCheckout: handleCheckout,
   };

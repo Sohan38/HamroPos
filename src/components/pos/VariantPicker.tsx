@@ -10,6 +10,8 @@ interface VariantPickerProps {
     product: Product;
     cart: CartItem[];
     format: (value: number) => string;
+    expanded?: boolean;
+    onToggle?: () => void;
     onClose: () => void;
     onSetQuantity: (name: string, quantity: number) => void;
 }
@@ -18,11 +20,12 @@ export function VariantPicker({
     product,
     cart,
     format,
+    expanded = true,
+    onToggle,
     onClose,
     onSetQuantity,
 }: VariantPickerProps) {
     const [query, setQuery] = useState('');
-    const [expanded, setExpanded] = useState(true);
     const variants = useMemo(
         () => (product.variants ?? []).filter(variant => variant.name.trim()),
         [product.variants],
@@ -51,7 +54,7 @@ export function VariantPicker({
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                     <Layers className="h-4 w-4" />
                 </div>
-                <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setExpanded(value => !value)}>
+                <button type="button" className="min-w-0 flex-1 text-left" onClick={onToggle}>
                     <p className="truncate text-sm font-semibold">{product.name}</p>
                     <p className="text-[11px] text-muted-foreground">
                         {totalSelected} / {productStock} {product.unit} selected · {variants.length} options
@@ -63,7 +66,7 @@ export function VariantPicker({
                 <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={onClose} aria-label="Close variant editor">
                     <X className="h-4 w-4" />
                 </Button>
-                <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => setExpanded(value => !value)} aria-label={expanded ? 'Collapse variants' : 'Expand variants'}>
+                <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={onToggle} aria-label={expanded ? 'Collapse variants' : 'Expand variants'}>
                     {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                 </Button>
             </div>

@@ -19,6 +19,12 @@ import { VariantPicker } from '@/components/pos/VariantPicker';
 
 import { PaymentMethod, CartItem, Product } from '@/types';
 
+interface VariantDraft {
+  productId: string;
+  product: Product;
+  expanded: boolean;
+}
+
 interface CartPanelProps {
   inDrawer?: boolean;
   cart: CartItem[];
@@ -51,9 +57,10 @@ interface CartPanelProps {
   onRemoveFromCart: (lineKey: string) => void;
   onUpdateCartQuantity: (lineKey: string, delta: number) => void;
   onSetCartQuantity: (lineKey: string, qty: number) => void;
-  variantProduct: Product | null;
-  onCloseVariantPicker: () => void;
-  onSetVariantQuantity: (name: string, quantity: number) => void;
+  variantDrafts: VariantDraft[];
+  onToggleVariantDraft: (productId: string) => void;
+  onRemoveVariantDraft: (productId: string) => void;
+  onSetVariantQuantity: (productId: string, name: string, quantity: number) => void;
   onCheckout: () => void;
 }
 
@@ -89,8 +96,9 @@ export const CartPanel = React.memo(({
   onRemoveFromCart,
   onUpdateCartQuantity,
   onSetCartQuantity,
-  variantProduct,
-  onCloseVariantPicker,
+  variantDrafts,
+  onToggleVariantDraft,
+  onRemoveVariantDraft,
   onSetVariantQuantity,
   onCheckout,
 }: CartPanelProps) => {
@@ -115,7 +123,7 @@ export const CartPanel = React.memo(({
             <User className="h-3.5 w-3.5" />
             {selectedCustomerName ? selectedCustomerName.split(' ')[0] : 'Customer'}
           </Button>
-          {(cart.length > 0 || variantProduct) && (
+          {(cart.length > 0 || variantDrafts.length > 0) && (
             <Button variant="ghost" size="sm" className="h-8 text-xs text-destructive"
               onClick={onClearCart}>
               Clear
@@ -136,7 +144,7 @@ export const CartPanel = React.memo(({
       {/* Cart items */}
       <div className="flex-1 overflow-y-auto">
         <div className="p-3">
-          {visibleCart.length === 0 && !variantProduct ? (
+          {visibleCart.length === 0 && variantDrafts.length === 0 ? (
             <div className="flex flex-col items-center justify-center text-muted-foreground py-12">
               <ShoppingCart className="h-10 w-10 mb-3 opacity-20" />
               <p className="text-sm">Cart is empty</p>
@@ -144,15 +152,18 @@ export const CartPanel = React.memo(({
             </div>
           ) : (
             <div className="space-y-2">
-              {variantProduct && (
+              {variantDrafts.map(draft => (
                 <VariantPicker
-                  product={variantProduct}
+                  key={draft.productId}
+                  product={draft.product}
                   cart={cart}
                   format={format}
-                  onClose={onCloseVariantPicker}
-                  onSetQuantity={onSetVariantQuantity}
+                  expanded={draft.expanded}
+                  onToggle={() => onToggleVariantDraft(draft.productId)}
+                  onClose={() => onRemoveVariantDraft(draft.productId)}
+                  onSetQuantity={(name, quantity) => onSetVariantQuantity(draft.productId, name, quantity)}
                 />
-              )}
+              ))}
               {visibleCart.map(item => {
                 const lineKey = `${item.productId}::${item.variantName ?? ''}`;
                 return (

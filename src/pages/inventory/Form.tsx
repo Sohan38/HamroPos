@@ -149,9 +149,17 @@ export default function InventoryForm() {
       const currentSupplierIds = form.getValues('supplierIds') ?? [];
       if (!currentSupplierIds.includes(supplierIdFromQuery)) {
         const currentStocks = form.getValues('supplierStocks') ?? [];
+        const currentPurchaseRate = Number(form.getValues('purchaseRate') ?? 0);
         const newStocks = [
           ...currentStocks,
-          { supplierId: supplierIdFromQuery, cost: 0, stock: 0, supplierSku: '', reorderLevel: undefined, notes: '' }
+          {
+            supplierId: supplierIdFromQuery,
+            cost: currentPurchaseRate > 0 ? currentPurchaseRate : 0,
+            stock: 0,
+            supplierSku: '',
+            reorderLevel: undefined,
+            notes: ''
+          }
         ];
         form.setValue('supplierIds', [...currentSupplierIds, supplierIdFromQuery], { shouldDirty: true });
         form.setValue('supplierStocks', newStocks, { shouldDirty: true });

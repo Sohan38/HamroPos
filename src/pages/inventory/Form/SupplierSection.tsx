@@ -41,14 +41,21 @@ export const SupplierSection = React.memo(({ form, suppliers, existingPurchases 
     form.setValue('supplierIds', next, { shouldDirty: true });
 
     const currentStocks: any[] = form.getValues('supplierStocks') ?? [];
-    const currentPurchaseRate = form.getValues('purchaseRate') ?? 0;
+    const currentPurchaseRate = Number(form.getValues('purchaseRate') ?? 0);
     const isFirst = next.length === 1;
     const globalStock = isFirst ? (form.getValues('quantity') ?? 0) : 0;
 
     if (!currentStocks.find((ss: any) => ss.supplierId === sid)) {
       form.setValue('supplierStocks', [
         ...currentStocks,
-        { supplierId: sid, cost: currentPurchaseRate, stock: globalStock, supplierSku: '', reorderLevel: undefined, notes: '' },
+        {
+          supplierId: sid,
+          cost: currentPurchaseRate > 0 ? currentPurchaseRate : 0,
+          stock: globalStock,
+          supplierSku: '',
+          reorderLevel: undefined,
+          notes: ''
+        },
       ], { shouldDirty: true });
     }
 
