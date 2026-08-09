@@ -160,7 +160,7 @@ export default function Reports() {
         </div>
         <div className="flex flex-wrap gap-2">
           <Select value={timeframe} onValueChange={setTimeframe}>
-            <SelectTrigger className="w-[160px] bg-card">
+            <SelectTrigger className="w-40 bg-card">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -224,13 +224,13 @@ export default function Reports() {
 
       {/* Secondary metrics */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card>
+        <Card className="cursor-pointer hover:bg-muted/40 transition-colors" onClick={() => setLocation('/expenses')}>
           <CardContent className="p-4">
             <p className="text-xs text-muted-foreground">Total Expenses</p>
             <p className="text-lg font-bold text-destructive mt-1">{format(stats.totalExpenses)}</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="cursor-pointer hover:bg-muted/40 transition-colors" onClick={() => setLocation('/purchases')}>
           <CardContent className="p-4">
             <p className="text-xs text-muted-foreground">Purchases</p>
             <p className="text-lg font-bold mt-1">{format(stats.totalPurchases)}</p>
@@ -268,7 +268,7 @@ export default function Reports() {
           <CardTitle className="text-base">Sales vs Expenses</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="h-[220px]">
+          <div className="h-55">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={dailyChart} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" className="opacity-20" />
@@ -292,9 +292,9 @@ export default function Reports() {
           </CardHeader>
           <CardContent>
             {stats.expensePieData.length === 0 ? (
-              <div className="h-[220px] flex items-center justify-center text-muted-foreground text-sm">No expense data</div>
+              <div className="h-55 flex items-center justify-center text-muted-foreground text-sm">No expense data</div>
             ) : (
-              <div className="h-[220px]">
+              <div className="h-55">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie data={stats.expensePieData} cx="50%" cy="50%" innerRadius={50} outerRadius={85} paddingAngle={3} dataKey="value" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false}>
@@ -317,9 +317,9 @@ export default function Reports() {
           </CardHeader>
           <CardContent>
             {stats.paymentPieData.length === 0 ? (
-              <div className="h-[220px] flex items-center justify-center text-muted-foreground text-sm">No sales data</div>
+              <div className="h-55 flex items-center justify-center text-muted-foreground text-sm">No sales data</div>
             ) : (
-              <div className="h-[220px]">
+              <div className="h-55">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie data={stats.paymentPieData} cx="50%" cy="50%" innerRadius={50} outerRadius={85} paddingAngle={3} dataKey="value">

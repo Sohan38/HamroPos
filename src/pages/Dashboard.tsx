@@ -309,7 +309,7 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border border-emerald-500/10 bg-emerald-500/2 dark:bg-emerald-500/1 rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer hover:bg-emerald-500/4" onClick={() => setLocation('/credit')}>
+        <Card className="border border-emerald-500/10 bg-emerald-500/2 dark:bg-emerald-500/1 rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer hover:bg-emerald-500/4" onClick={() => setLocation('/sales')}>
           <CardContent className="p-5 flex items-center justify-between">
             <div className="space-y-1">
               <p className="text-[11px] font-bold text-emerald-700/80 uppercase tracking-wider">Collected Today</p>
@@ -348,7 +348,7 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border border-border rounded-2xl shadow-sm hover:shadow-md transition-all duration-300">
+        <Card className="border border-border rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer hover:bg-muted/40" onClick={() => setLocation('/purchases')}>
           <CardContent className="p-4 flex items-center gap-3">
             <div className="h-9 w-9 rounded-xl bg-muted flex items-center justify-center text-foreground shrink-0">
               <Truck className="h-4.5 w-4.5" />
@@ -405,7 +405,7 @@ export default function Dashboard() {
 
       {/* Inventory summary */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card>
+        <Card className="cursor-pointer hover:bg-muted/40 transition-colors" onClick={() => setLocation('/inventory')}>
           <CardContent className="p-4">
             <p className="text-xs text-muted-foreground">Products</p>
             <p className="font-bold text-lg mt-1">{metrics.inventoryCount}</p>
