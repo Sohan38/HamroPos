@@ -18,6 +18,7 @@ import { PurchaseItem, PurchasePaymentStatus, PurchaseStatus } from '@/types';
 import { createPurchase, updatePurchase } from '@/services/purchaseService';
 import { ProductSearchPicker } from '@/components/ProductSearchPicker';
 import { SupplierSearchPicker } from '@/components/SupplierSearchPicker';
+import { SupplierFormDialog } from '@/components/SupplierFormDialog';
 import { generateBatchNumber, generateSupplierInvoiceNumber } from '@/utils/numbering';
 
 type DraftItem = PurchaseItem & {
@@ -59,6 +60,8 @@ export default function PurchaseForm() {
   const [items, setItems] = useState<DraftItem[]>(() => (existing?.items ?? []).map(item => ({ ...item, initialPurchaseRate: item.purchaseRate })));
   const [discount, setDiscount] = useState(String(existing?.discount ?? 0));
   const [tax, setTax] = useState(String(existing?.tax ?? 0));
+  const [supplierDialogOpen, setSupplierDialogOpen] = useState(false);
+  const [supplierPresetName, setSupplierPresetName] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -360,12 +363,34 @@ export default function PurchaseForm() {
           {/* ── Section 1: Supplier & Invoice Details ─── */}
           <Card>
             <CardContent className="p-4 md:p-6 space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold">Supplier</p>
+                  <p className="text-xs text-muted-foreground">Select a supplier or add a new one.</p>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 text-xs gap-1.5 text-primary rounded-xl hover:bg-primary/10"
+                  onClick={() => {
+                    setSupplierPresetName('');
+                    setSupplierDialogOpen(true);
+                  }}
+                >
+                  <Truck className="h-3.5 w-3.5" /> New Supplier
+                </Button>
+              </div>
+
               <SupplierSearchPicker
                 suppliers={suppliers}
                 selectedSupplierId={supplierId}
                 onSelect={handleSupplierSelect}
                 onRemove={handleSupplierRemove}
-                onAddNewSupplier={query => setLocation(`/suppliers/new?defaultName=${encodeURIComponent(query)}`)}
+                onAddNewSupplier={query => {
+                  setSupplierPresetName(query);
+                  setSupplierDialogOpen(true);
+                }}
               />
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
@@ -592,6 +617,25 @@ export default function PurchaseForm() {
           </Card>
         </div>
       </form>
+
+      <SupplierFormDialog
+        open={supplierDialogOpen}
+        onClose={() => {
+          setSupplierDialogOpen(false);
+          setSupplierPresetName('');
+        }}
+        defaultName={supplierPresetName}
+        onSuccess={(newSupplierId) => {
+          if (newSupplierId && newSupplierId !== supplierId) {
+            setSupplierId(newSupplierId);
+            if (items.length > 0) {
+              setItems([]);
+            }
+          }
+          setSupplierDialogOpen(false);
+          setSupplierPresetName('');
+        }}
+      />
     </div>
   );
 }
