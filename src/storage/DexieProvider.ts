@@ -113,7 +113,6 @@ export class DexieProvider implements IStorageProvider {
           await this.table(key).bulkPut(data as StorageRecord[]);
         }
       });
-      console.info('[DexieProvider] set persisted collection', { key, count: data.length });
       this.notifyStorageChanged(key);
     } catch (error) {
       console.error(`[DexieProvider] set("${key}") failed:`, error);
@@ -164,7 +163,6 @@ export class DexieProvider implements IStorageProvider {
         }
       }
 
-      console.info('[DexieProvider] save updated cache', { key, id: saved.id, version: saved.version });
       this.notifyStorageChanged(key);
       return saved;
     } catch (error) {
