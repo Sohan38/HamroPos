@@ -270,7 +270,7 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border border-rose-500/10 bg-rose-500/2 dark:bg-rose-500/1 rounded-2xl shadow-sm hover:shadow-md transition-all duration-300">
+        <Card className="border border-rose-500/10 bg-rose-500/2 dark:bg-rose-500/1 rounded-2xl shadow-sm hover:shadow-md transition-all duration-300" onClick={() => setLocation('/expenses')}>
           <CardContent className="p-5 flex items-center justify-between">
             <div className="space-y-1">
               <p className="text-[11px] font-bold text-rose-700/80 uppercase tracking-wider">Today's Expenses</p>

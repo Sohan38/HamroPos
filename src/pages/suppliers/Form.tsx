@@ -304,7 +304,7 @@ export default function SupplierForm({ id: propId, onSuccess, onCancel, isModal 
                 {(() => {
                     const errorCount = isSubmitted ? Object.keys(errors).filter(k => !!errors[k as keyof FormData]).length : 0;
                     return (
-                        <div className={isModal ? "mt-4 pt-4 border-t bg-background px-1 py-3" : "sticky bottom-0 left-0 right-0 z-40 -mx-4 -mb-4 md:-mx-6 md:-mb-6 border-t bg-background/95 px-4 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-[0_-8px_16px_-8px_rgba(0,0,0,0.1)] backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:px-6"}>
+                        <div className={isModal ? "mt-4 pt-4 border-t bg-background px-1 py-3" : "sticky bottom-0 left-0 right-0 z-40 -mx-4 -mb-4 md:-mx-6 md:-mb-6 border-t bg-background/95 px-4 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-[0_-8px_16px_-8px_rgba(0,0,0,0.1)] backdrop-blur supports-backdrop-filter:bg-background/80 sm:px-6"}>
                             <div className={isModal ? "mx-auto flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-end" : "mx-auto flex w-full max-w-2xl flex-col gap-3 md:flex-row md:items-center md:justify-end"}>
                                 {errorCount > 0 && (
                                     <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive animate-in slide-in-from-bottom-2 duration-200 md:mr-auto md:max-w-sm">
