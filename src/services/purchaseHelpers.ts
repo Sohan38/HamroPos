@@ -142,3 +142,20 @@ export async function createPurchaseForNewItem(storage: IStorageProvider, opts: 
 
     return createPurchase(storage, payload as any);
 }
+
+export async function createPurchasesForNewItem(storage: IStorageProvider, optsList: CreatePurchaseForNewItemOpts[]) {
+    const results: Array<any> = [];
+
+    for (const opts of optsList) {
+        try {
+            const created = await createPurchaseForNewItem(storage, opts);
+            if (created) {
+                results.push(created);
+            }
+        } catch (error) {
+            console.error('Failed to create purchase for new item option:', error);
+        }
+    }
+
+    return results;
+}

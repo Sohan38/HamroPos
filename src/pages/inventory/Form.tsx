@@ -20,7 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { useStorageProvider } from '@/storage/StorageContext';
 import { createPurchase } from '@/services/purchaseService';
-import { createPurchaseForNewItem } from '@/services/purchaseHelpers';
+import { createPurchasesForNewItem } from '@/services/purchaseHelpers';
 
 // Subcomponents
 import { productSchema, ProductFormValues } from './Form/types';
@@ -556,9 +556,11 @@ export default function InventoryForm() {
 
         try {
           if (newId) {
-            const purchasePromises: Array<Promise<any>> = [];
+            const purchaseRequests: Array<any> = [];
+            const shouldCreateBatchPurchases = localBatches.length > 0;
+            const shouldCreateSupplierPurchases = isMultiSup && (resolvedSupplierStocks ?? []).some((ss: any) => Number(ss.stock) > 0);
 
-            if (localBatches.length > 0) {
+            if (shouldCreateBatchPurchases) {
               for (const batch of localBatches) {
                 const quantity = Number(batch.quantity || 0);
                 if (quantity <= 0) continue;
@@ -567,7 +569,7 @@ export default function InventoryForm() {
                 const supplier = suppliers.find(candidate => candidate.id === supplierId);
                 const purchaseRate = Number(batch.purchaseRate ?? productData.purchaseRate ?? 0) || 0;
                 const purchaseDate = new Date().toLocaleDateString('en-CA');
-                purchasePromises.push(createPurchaseForNewItem(storage, {
+                purchaseRequests.push({
                   productId: newId,
                   quantity,
                   purchaseRate,
@@ -581,20 +583,36 @@ export default function InventoryForm() {
                   manufacturingDate: batch.manufacturingDate ?? undefined,
                   expiryMonths: batch.expiryMonths ?? undefined,
                   expiryDate: batch.expiryDate ?? undefined,
-                } as any));
+                });
               }
-            }
+            } else if (shouldCreateSupplierPurchases) {
+              for (const entry of resolvedSupplierStocks ?? []) {
+                const supplierId = entry?.supplierId;
+                const quantity = Number(entry?.stock || 0);
+                if (!supplierId || quantity <= 0) continue;
 
-            if (purchasePromises.length === 0) {
-              const supplierStockTotal = resolvedSupplierStocks.reduce((sum: number, ss: any) => sum + (Number(ss.stock) || 0), 0);
-              const totalQty = Number(calculatedStock || data.quantity || supplierStockTotal) || 0;
+                const supplier = suppliers.find(candidate => candidate.id === supplierId);
+                const purchaseDate = new Date().toLocaleDateString('en-CA');
+                const purchaseRate = Number(entry?.cost ?? productData.purchaseRate ?? 0) || 0;
 
-
+                purchaseRequests.push({
+                  productId: newId,
+                  quantity,
+                  purchaseRate,
+                  supplierId,
+                  supplierName: supplier?.name ?? undefined,
+                  invoiceNumber: undefined,
+                  date: `${purchaseDate}T${new Date().toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}`,
+                  notes: 'Opening stock from product creation',
+                });
+              }
+            } else {
+              const totalQty = Number(calculatedStock || data.quantity || 0) || 0;
               if (totalQty > 0) {
                 const fallbackSupplier = resolvedSupplierIds[0] ?? undefined;
                 const supplier = suppliers.find(candidate => candidate.id === fallbackSupplier);
                 const purchaseDate = new Date().toLocaleDateString('en-CA');
-                purchasePromises.push(createPurchaseForNewItem(storage, {
+                purchaseRequests.push({
                   productId: newId,
                   quantity: totalQty,
                   purchaseRate: productData.purchaseRate || undefined,
@@ -603,11 +621,11 @@ export default function InventoryForm() {
                   invoiceNumber: undefined,
                   date: `${purchaseDate}T${new Date().toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}`,
                   notes: 'Opening stock from product creation',
-                } as any));
+                });
               }
             }
 
-            const createdPurchases = await Promise.all(purchasePromises);
+            const createdPurchases = await createPurchasesForNewItem(storage, purchaseRequests as any);
             for (const createdPurchase of createdPurchases) {
               if (createdPurchase?.id) createdPurchaseIds.push(createdPurchase.id);
             }
@@ -637,14 +655,16 @@ export default function InventoryForm() {
             if (totalQty > 0) {
               try {
                 const fallbackSupplier = resolvedSupplierIds[0] ?? undefined;
-                const created = await createPurchaseForNewItem(storage, {
+                const createdPurchases = await createPurchasesForNewItem(storage, [{
                   productId: newId!,
                   quantity: totalQty,
                   purchaseRate: productData.purchaseRate || undefined,
                   supplierId: fallbackSupplier,
                   notes: 'Opening stock from product creation',
-                } as any);
-                if (created?.id) createdPurchaseIds.push(created.id);
+                }] as any);
+                for (const created of createdPurchases) {
+                  if (created?.id) createdPurchaseIds.push(created.id);
+                }
               } catch (err) {
                 console.error('InventoryForm: fallback createPurchase failed', err);
               }
