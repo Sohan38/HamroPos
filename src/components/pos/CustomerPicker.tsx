@@ -66,7 +66,7 @@ export function CustomerPicker({ customerId, onChange, onClose }: CustomerPicker
 
   return (
     /* Full-screen on mobile, constrained panel on desktop (parent positions it) */
-    <div className="fixed inset-0 z-[9999] flex flex-col bg-background lg:absolute lg:inset-auto lg:top-full lg:left-0 lg:right-0 lg:mt-1 lg:rounded-xl lg:border lg:shadow-2xl lg:max-h-96 lg:z-50">
+    <div className="fixed inset-0 z-9999 flex flex-col bg-background lg:absolute lg:inset-auto lg:top-full lg:left-0 lg:right-0 lg:mt-1 lg:rounded-xl lg:border lg:shadow-2xl lg:max-h-96 lg:z-50">
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div className="flex items-center gap-2 px-3 py-3 border-b bg-background shrink-0">
         <div className="relative flex-1">

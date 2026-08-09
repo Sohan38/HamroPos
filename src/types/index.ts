@@ -130,6 +130,8 @@ export interface SaleItem {
   quantity: number;
   sellingRate: number;
   subtotal: number;
+  /** Optional variant selected at the POS (for example, Red or XL). */
+  variantName?: string;
 }
 
 export interface SaleInvoice extends StorageRecord {
@@ -311,4 +313,6 @@ export interface CartItem {
   sellingRate: number;
   maxQuantity: number;
   subtotal: number;
+  /** Optional variant selected for this cart line. */
+  variantName?: string;
 }

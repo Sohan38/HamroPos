@@ -79,7 +79,7 @@ export function generateReceiptHTML(
     .map(
       (item) => `
     <tr>
-      <td class="col-name">${esc(item.productName)}</td>
+      <td class="col-name">${esc(item.productName)}${item.variantName ? `<span class="sub">${esc(item.variantName)}</span>` : ''}</td>
       <td class="col-qty">${item.quantity}</td>
       <td class="col-price">${item.sellingRate.toFixed(2)}</td>
       <td class="col-total">${item.subtotal.toFixed(2)}</td>

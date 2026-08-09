@@ -16,7 +16,8 @@ const SaleBillPrint = lazy(() => import('@/components/SaleBillPrint').then(m => 
 import { useFeature } from '@/hooks/useFeature';
 import { ProductCard } from '@/components/pos/ProductCard';
 import { CartPanel } from '@/components/pos/CartPanel';
-import { CartItem } from '@/types';
+import { VariantPicker } from '@/components/pos/VariantPicker';
+import { CartItem, Product } from '@/types';
 
 function fefoDeduct(batches: ProductBatch[], needed: number): { id: string; quantity: number }[] {
   let remaining = needed;
@@ -57,6 +58,7 @@ export default function SalesPos() {
   // Mobile-specific state
   const [searchOpen, setSearchOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
+  const [variantProduct, setVariantProduct] = useState<Product | null>(null);
 
   const searchRef = useRef<HTMLInputElement>(null);
   const overlaySearchRef = useRef<HTMLInputElement>(null);
@@ -185,9 +187,19 @@ export default function SalesPos() {
     return rankSearch(availableProducts, q, 20);
   }, [availableProducts, debouncedSearch]);
 
+  const cartLineKey = (item: Pick<CartItem, 'productId' | 'variantName'>) =>
+    `${item.productId}::${item.variantName ?? ''}`;
+
   const addToCart = (product: typeof inventory[0]) => {
+    if (product.hasVariants) {
+      setVariantProduct(product);
+      setSearchQuery('');
+      closeSearch();
+      return;
+    }
+
     setCart(cur => {
-      const existing = cur.find(i => i.productId === product.id);
+      const existing = cur.find(i => cartLineKey(i) === cartLineKey({ productId: product.id }));
       if (existing) {
         if (existing.quantity >= product.quantity) {
           toast.error(`Only ${product.quantity} ${product.unit} in stock`);
@@ -211,6 +223,35 @@ export default function SalesPos() {
     setSearchQuery('');
     closeSearch();
     toast.success(`Added ${product.name}`, { duration: 1200 });
+  };
+
+  const setVariantQuantity = (name: string, requestedQuantity: number) => {
+    if (!variantProduct) return;
+    const variant = variantProduct.variants?.find(item => item.name === name);
+    if (!variant) return;
+
+    setCart(current => {
+      const existing = current.find(item => item.productId === variantProduct.id && item.variantName === name);
+      const otherSelected = current
+        .filter(item => item.productId === variantProduct.id && item.variantName !== name)
+        .reduce((sum, item) => sum + item.quantity, 0);
+      const maxAllowed = Math.max(0, Math.min(variant.quantity, variantProduct.quantity - otherSelected));
+      const quantity = Math.max(0, Math.min(maxAllowed, Math.floor(Number.isFinite(requestedQuantity) ? requestedQuantity : 0)));
+      const withoutVariant = current.filter(item => !(item.productId === variantProduct.id && item.variantName === name));
+
+      if (quantity === 0) return withoutVariant;
+      const nextItem: CartItem = {
+        productId: variantProduct.id,
+        productName: variantProduct.name,
+        variantName: name,
+        quantity,
+        sellingRate: variantProduct.sellingRate,
+        maxQuantity: variant.quantity,
+        subtotal: quantity * variantProduct.sellingRate,
+      };
+      if (!existing) return [...withoutVariant, nextItem];
+      return [...withoutVariant, nextItem];
+    });
   };
 
   const handleBarcodeScanned = (barcode: string) => {
@@ -238,9 +279,9 @@ export default function SalesPos() {
     toast.error("Product not found");
   };
 
-  const updateCartQuantity = (productId: string, delta: number) => {
+  const updateCartQuantity = (lineKey: string, delta: number) => {
     setCart(cur => cur.map(item => {
-      if (item.productId !== productId) return item;
+      if (cartLineKey(item) !== lineKey) return item;
       const newQ = item.quantity + delta;
       if (newQ <= 0) return item;
       if (newQ > item.maxQuantity) { toast.error(`Only ${item.maxQuantity} in stock`); return item; }
@@ -248,10 +289,10 @@ export default function SalesPos() {
     }));
   };
 
-  const setCartQuantity = (productId: string, qty: number) => {
+  const setCartQuantity = (lineKey: string, qty: number) => {
     if (isNaN(qty) || qty < 1) return;
     setCart(cur => cur.map(item => {
-      if (item.productId !== productId) return item;
+      if (cartLineKey(item) !== lineKey) return item;
       if (qty > item.maxQuantity) {
         toast.error(`Only ${item.maxQuantity} in stock`);
         return { ...item, quantity: item.maxQuantity, subtotal: item.maxQuantity * item.sellingRate };
@@ -260,7 +301,7 @@ export default function SalesPos() {
     }));
   };
 
-  const removeFromCart = (productId: string) => setCart(cur => cur.filter(i => i.productId !== productId));
+  const removeFromCart = (lineKey: string) => setCart(cur => cur.filter(i => cartLineKey(i) !== lineKey));
 
   const subtotal = cart.reduce((s, i) => s + i.subtotal, 0);
   const discount = useMemo(() => {
@@ -296,10 +337,27 @@ export default function SalesPos() {
 
   const handleCheckout = async () => {
     if (cart.length === 0) return;
-    const stockErrors = cart.map(item => {
-      const p = inventoryById.get(item.productId);
-      if (!p) return `${item.productName} no longer exists`;
-      if (p.quantity < item.quantity) return `${item.productName} (available: ${p.quantity}, needed: ${item.quantity})`;
+    const requestedByProduct = new Map<string, number>();
+    const requestedByVariant = new Map<string, number>();
+    for (const item of cart) {
+      requestedByProduct.set(item.productId, (requestedByProduct.get(item.productId) ?? 0) + item.quantity);
+      if (item.variantName) {
+        const key = `${item.productId}::${item.variantName}`;
+        requestedByVariant.set(key, (requestedByVariant.get(key) ?? 0) + item.quantity);
+      }
+    }
+    const stockErrors = [...requestedByProduct.entries()].map(([productId, requestedQuantity]) => {
+      const p = inventoryById.get(productId);
+      if (!p) return `${productId} no longer exists`;
+      if (p.quantity < requestedQuantity) {
+        return `${p.name} (available: ${p.quantity}, needed: ${requestedQuantity})`;
+      }
+      for (const variant of p.variants ?? []) {
+        const requestedVariant = requestedByVariant.get(`${p.id}::${variant.name}`) ?? 0;
+        if (requestedVariant > variant.quantity) {
+          return `${p.name} · ${variant.name} (available: ${variant.quantity}, needed: ${requestedVariant})`;
+        }
+      }
       return null;
     }).filter(Boolean);
     if (stockErrors.length > 0) { toast.error(`Insufficient stock: ${stockErrors.join('; ')}`); return; }
@@ -332,6 +390,7 @@ export default function SalesPos() {
         items: cart.map(i => ({
           productId: i.productId,
           productName: i.productName,
+          variantName: i.variantName,
           quantity: i.quantity,
           sellingRate: i.sellingRate,
           subtotal: i.subtotal,
@@ -358,14 +417,21 @@ export default function SalesPos() {
           payments: [],
         });
       }
-      for (const item of cart) {
-        const p = inventoryById.get(item.productId);
+      for (const [productId, requestedQuantity] of requestedByProduct) {
+        const p = inventoryById.get(productId);
         if (!p) continue;
-        const pb = batchesByProduct.get(item.productId) ?? [];
+        const pb = batchesByProduct.get(productId) ?? [];
         if (pb.length > 0) {
-          for (const b of fefoDeduct(pb, item.quantity)) updateBatch(b.id, { quantity: b.quantity });
+          for (const b of fefoDeduct(pb, requestedQuantity)) updateBatch(b.id, { quantity: b.quantity });
         }
-        updateInventory(p.id, { quantity: p.quantity - item.quantity });
+        const updatedVariants = p.variants?.map(variant => ({
+          ...variant,
+          quantity: Math.max(0, variant.quantity - (requestedByVariant.get(`${p.id}::${variant.name}`) ?? 0)),
+        }));
+        updateInventory(p.id, {
+          quantity: p.quantity - requestedQuantity,
+          ...(p.hasVariants && updatedVariants ? { variants: updatedVariants } : {}),
+        });
       }
       toast.success(paymentMethod === 'credit'
         ? `Sale saved • ${format(dueAmount)} added to credit`
@@ -412,10 +478,16 @@ export default function SalesPos() {
     onSetCustomerId: setCustomerId,
     onToggleCustomer: () => setShowCustomer(v => !v),
     onCloseCustomer: () => setShowCustomer(false),
-    onClearCart: () => setCart([]),
+    onClearCart: () => {
+      setCart([]);
+      setVariantProduct(null);
+    },
     onRemoveFromCart: removeFromCart,
     onUpdateCartQuantity: updateCartQuantity,
     onSetCartQuantity: setCartQuantity,
+    variantProduct,
+    onCloseVariantPicker: () => setVariantProduct(null),
+    onSetVariantQuantity: setVariantQuantity,
     onCheckout: handleCheckout,
   };
 
@@ -712,6 +784,7 @@ export default function SalesPos() {
           />
         </Suspense>
       )}
+
     </div>
   );
 }

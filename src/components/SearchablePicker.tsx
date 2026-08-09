@@ -1,216 +1,315 @@
 /**
- * SearchablePicker — Reusable search + chip-style picker component.
+ * SaleBillPrint
+ * ─────────────
+ * Receipt preview dialog + print trigger.
  *
- * Shows a ranked/filtered list of items as tappable chips.
- * When an item is selected it renders as a dismissable badge.
- * Uses rankSearch from @/utils/search/rank for scored filtering.
- *
- * Items must have at least: id, name.  Additional fields (phone, category,
- * barcode, sublabel) are optional display / search hints.
- *
- * Props:
- *  - singleRow: when true chips render in a single horizontally-scrollable
- *               row instead of wrapping. Ideal for product pickers.
- *  - defaultLimit: max chips shown without search query (default 6).
+ * • Shows a professional thermal-receipt-style preview inside the dialog.
+ * • On Print: generates clean receipt HTML via receiptTemplate and dispatches
+ *   to printService, which picks the correct strategy (popup on web,
+ *   iframe on Capacitor mobile) automatically.
+ * • Existing web printing is fully preserved — web callers work identically.
+ * • Props are unchanged from the original component.
  */
-import React, { useMemo, useState } from 'react';
-import { Search, X } from 'lucide-react';
-import { Input } from '@/components/ui/input';
-import { cn } from '@/lib/utils';
-import { rankSearch } from '@/utils/search/rank';
 
-export interface PickerItem {
-  id: string;
-  name: string;
-  /** Shown below name in the chip list */
-  sublabel?: string;
-  /** Passed into rankSearch for phone-based scoring */
-  phone?: string | null;
-  /** Passed into rankSearch for category-based scoring */
-  category?: string | null;
-  /** Passed into rankSearch for barcode-based scoring */
-  barcode?: string | null;
-  /** If true, the chip is visually faded */
-  inactive?: boolean;
+import { useState, useCallback } from 'react';
+import { format as formatDate, parseISO } from 'date-fns';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Printer, X, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
+
+import type { SaleInvoice, AppSettings } from '@/types';
+import { useBackModal } from '@/contexts/NavigationContext';
+import { generateReceiptHTML } from '@/services/receiptTemplate';
+import { printHTMLDocument } from '@/services/printService';
+
+// ─── Props ────────────────────────────────────────────────────────────────────
+
+interface SaleBillPrintProps {
+  sale: SaleInvoice;
+  settings: AppSettings;
+  customerName?: string;
+  open: boolean;
+  onClose: () => void;
 }
 
-interface SearchablePickerProps {
-  /** Pool of all available items */
-  items: PickerItem[];
-  /** Currently selected item id(s) — can be one or many depending on `multi` */
-  selectedIds: string[];
-  /** Called when an item chip is tapped */
-  onSelect: (id: string) => void;
-  /** Called when the × on a selected chip is tapped */
-  onRemove: (id: string) => void;
-  /** Search input placeholder */
-  placeholder?: string;
-  /** Placeholder shown when no items exist at all */
-  emptyMessage?: string;
-  /** Max chips shown before search query is entered. Default 6 */
-  defaultLimit?: number;
-  /** Disable the whole picker */
-  disabled?: boolean;
-  /** Optional label shown above */
-  label?: string;
-  /** Optional class override for outer wrapper */
-  className?: string;
-  /** Whether multiple items can be selected simultaneously */
-  multi?: boolean;
-  /**
-   * When true, chips render in a single horizontally-scrollable row instead
-   * of wrapping. Best for product pickers where you want a compact scannable strip.
-   */
-  singleRow?: boolean;
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+const PAYMENT_LABELS: Record<string, string> = {
+  cash: 'Cash',
+  qr: 'QR / Mobile Pay',
+  card: 'Card',
+  bank: 'Bank Transfer',
+  split: 'Split Payment',
+  credit: 'Credit / Udharo',
+};
+
+function parseSaleDate(dateStr: string): Date {
+  try {
+    return parseISO(dateStr);
+  } catch {
+    return new Date(dateStr);
+  }
 }
 
-export function SearchablePicker({
-  items,
-  selectedIds,
-  onSelect,
-  onRemove,
-  placeholder = 'Search...',
-  emptyMessage = 'No items found.',
-  defaultLimit = 6,
-  disabled = false,
-  label,
-  className,
-  multi = false,
-  singleRow = false,
-}: SearchablePickerProps) {
-  const [query, setQuery] = useState('');
+// ─── Component ────────────────────────────────────────────────────────────────
 
-  const selectedItems = useMemo(
-    () => selectedIds.map(id => items.find(i => i.id === id)).filter(Boolean) as PickerItem[],
-    [items, selectedIds],
-  );
+export function SaleBillPrint({
+  sale,
+  settings,
+  customerName,
+  open,
+  onClose,
+}: SaleBillPrintProps) {
+  const [isPrinting, setIsPrinting] = useState(false);
 
-  const unselectedItems = useMemo(
-    () => items.filter(i => !selectedIds.includes(i.id)),
-    [items, selectedIds],
-  );
+  useBackModal(open, onClose, 'sale-bill-print');
 
-  const filteredItems = useMemo(() => {
-    if (!query.trim()) return unselectedItems.slice(0, defaultLimit);
-    return rankSearch(unselectedItems, query, 20);
-  }, [unselectedItems, query, defaultLimit]);
+  // ── Print handler ──────────────────────────────────────────────────────────
+  const handlePrint = useCallback(async () => {
+    setIsPrinting(true);
+    try {
+      const html = generateReceiptHTML({ sale, settings, customerName });
+      await printHTMLDocument(html, { title: `Receipt #${sale.id.slice(-8).toUpperCase()}` });
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : 'Print failed. Please try again.';
+      toast.error(msg);
+    } finally {
+      setIsPrinting(false);
+    }
+  }, [sale, settings, customerName]);
 
-  // In single-select mode hide the picker once something is chosen
-  const showPicker = multi || selectedIds.length === 0;
+  // ── Derived display values ─────────────────────────────────────────────────
+  const subtotal = sale.items.reduce((s, i) => s + i.subtotal, 0);
+  const change =
+    sale.paidAmount > sale.grandTotal ? sale.paidAmount - sale.grandTotal : 0;
+  const billId = sale.id.slice(-8).toUpperCase();
+  const sym = settings.currencySymbol || 'Rs';
+  const fmt = (n: number) => `${sym}\u00a0${n.toFixed(2)}`;
+  const pmtLabel = PAYMENT_LABELS[sale.paymentMethod] ?? sale.paymentMethod;
 
+  const saleDate = parseSaleDate(sale.date);
+  const billDate = formatDate(saleDate, 'dd/MM/yyyy');
+  const billTime = formatDate(saleDate, 'hh:mm a');
+
+  // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div className={cn('space-y-2 min-w-0', className)}>
-      {label && (
-        <p className="text-sm font-medium">{label}</p>
-      )}
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-sm w-[95vw] p-0 gap-0 overflow-hidden">
+        {/* Header */}
+        <DialogHeader className="px-4 py-3 border-b shrink-0">
+          <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
+            <Printer className="h-4 w-4" />
+            Receipt Preview
+          </DialogTitle>
+        </DialogHeader>
 
-      {/* Selected item(s) badges */}
-      {selectedItems.length > 0 && (
-        <div className="flex gap-1.5 flex-wrap">
-          {selectedItems.map(item => (
-            <span
-              key={item.id}
-              className="inline-flex items-center gap-2 bg-primary/10 text-primary border border-primary/20 px-3 py-1.5 rounded-full text-sm font-semibold"
-            >
-              <span className="h-5 w-5 rounded-full bg-primary/20 flex items-center justify-center text-[10px] font-bold shrink-0">
-                {item.name.charAt(0).toUpperCase()}
-              </span>
-              <span className="truncate max-w-40">{item.name}</span>
-              {item.sublabel && (
-                <span className="text-primary/60 text-xs font-normal">{item.sublabel}</span>
+        {/* ── Scrollable receipt preview ─────────────────────────────────── */}
+        <div className="flex-1 overflow-y-auto bg-gray-100 dark:bg-neutral-800 p-3 min-h-0">
+          {/*
+           * The preview uses the same visual structure as the printed HTML
+           * but rendered with Tailwind / React for screen fidelity.
+           */}
+          <div
+            className="
+              bg-white text-black mx-auto rounded
+              shadow font-mono text-[10px] leading-[1.45]
+              border border-gray-200
+            "
+            style={{ maxWidth: '302px', padding: '12px 14px' }}
+          >
+            {/* ── Store header ─────────────────────────────────────────── */}
+            <div className="text-center mb-2">
+              <div className="font-black text-[13px] uppercase tracking-widest leading-tight">
+                {settings.businessName || 'Business Name'}
+              </div>
+              {settings.address && (
+                <div className="text-[9px] text-gray-500 mt-0.5">
+                  {settings.address}
+                </div>
               )}
-              <button
-                type="button"
-                onClick={() => onRemove(item.id)}
-                className="text-primary/60 hover:text-primary transition-colors shrink-0"
-                aria-label={`Remove ${item.name}`}
-                disabled={disabled}
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* Search + chips */}
-      {showPicker && !disabled && (
-        <div className="space-y-2">
-          {/* Search Input */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-            <Input
-              type="text"
-              placeholder={placeholder}
-              value={query}
-              onChange={e => setQuery(e.target.value)}
-              className="pl-9 h-10 rounded-xl"
-              autoComplete="off"
-            />
-            {query && (
-              <button
-                type="button"
-                onClick={() => setQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
-          </div>
-
-          {/* Chips */}
-          {items.length === 0 ? (
-            <p className="text-xs text-muted-foreground text-center py-4 border border-dashed rounded-xl">
-              {emptyMessage}
-            </p>
-          ) : filteredItems.length > 0 ? (
-            <div
-              className={cn(
-                singleRow
-                  // Single row: scroll left-right, never wrap, add padding to show scroll affordance
-                  ? 'min-w-0 w-full flex gap-2 flex-nowrap overflow-x-auto pb-1 scrollbar-none [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden'
-                  : 'flex gap-1.5 flex-wrap',
+              {settings.phone && (
+                <div className="text-[9px] text-gray-500">
+                  Tel: {settings.phone}
+                </div>
               )}
-            >
-              {filteredItems.map(item => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => { onSelect(item.id); setQuery(''); }}
-                  className={cn(
-                    'flex items-center gap-1.5 text-xs font-medium border transition-all active:scale-95 shrink-0',
-                    singleRow
-                      ? 'px-3.5 py-2 rounded-xl' // slightly taller + rounder for single-row strip
-                      : 'px-3 py-1.5 rounded-full',
-                    'bg-muted/50 border-border text-foreground hover:border-primary/50 hover:bg-primary/5',
-                    item.inactive && 'opacity-40',
-                  )}
-                >
-                  {!singleRow && (
-                    <span className="h-4 w-4 rounded-full bg-muted flex items-center justify-center text-[9px] font-bold shrink-0">
-                      {item.name.charAt(0).toUpperCase()}
-                    </span>
-                  )}
-                  <span className={cn('whitespace-nowrap', !singleRow && 'truncate max-w-35')}>{item.name}</span>
-                  {item.sublabel && (
-                    <span className="text-muted-foreground/70 whitespace-nowrap">{item.sublabel}</span>
-                  )}
-                  {item.inactive && <span className="opacity-60">(inactive)</span>}
-                </button>
-              ))}
+              {settings.vatNumber && (
+                <div className="text-[9px] text-gray-500">
+                  VAT/PAN: {settings.vatNumber}
+                </div>
+              )}
             </div>
-          ) : query ? (
-            <p className="text-xs text-muted-foreground text-center py-3 border border-dashed rounded-xl">
-              No results for "{query}"
-            </p>
-          ) : null}
-        </div>
-      )}
 
-      {/* Disabled placeholder */}
-      {disabled && selectedIds.length === 0 && (
-        <p className="text-xs text-muted-foreground italic px-1">{placeholder}</p>
-      )}
-    </div>
+            <Divider dashed />
+
+            {/* ── Transaction meta ──────────────────────────────────────── */}
+            <table className="w-full text-[9.5px]">
+              <tbody>
+                <MetaRow label="Receipt #" value={billId} />
+                <MetaRow label="Date" value={billDate} />
+                <MetaRow label="Time" value={billTime} />
+                {customerName && (
+                  <MetaRow label="Customer" value={customerName} />
+                )}
+                <MetaRow label="Payment" value={pmtLabel} />
+              </tbody>
+            </table>
+
+            <Divider dashed />
+
+            {/* ── Items table ───────────────────────────────────────────── */}
+            <table className="w-full border-collapse text-[9px]">
+              <thead>
+                <tr className="border-y border-dashed border-gray-400">
+                  <th className="text-left py-1 font-bold uppercase">Item</th>
+                  <th className="text-center py-1 font-bold uppercase w-6">Qty</th>
+                  <th className="text-right py-1 font-bold uppercase w-12">Price</th>
+                  <th className="text-right py-1 font-bold uppercase w-14">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sale.items.map((item, i) => (
+                  <tr key={i}>
+                    <td className="text-left py-0.5 pr-1 wrap-break-word align-top">
+                      {item.productName}
+                      {item.variantName && (
+                        <span className="block text-[8px] text-gray-500">{item.variantName}</span>
+                      )}
+                    </td>
+                    <td className="text-center w-6 align-top py-0.5">
+                      {item.quantity}
+                    </td>
+                    <td className="text-right w-12 align-top py-0.5">
+                      {item.sellingRate.toFixed(2)}
+                    </td>
+                    <td className="text-right w-14 font-bold align-top py-0.5">
+                      {item.subtotal.toFixed(2)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            <Divider dashed />
+
+            {/* ── Sub-totals ────────────────────────────────────────────── */}
+            <table className="w-full text-[9.5px]">
+              <tbody>
+                <TotalRow label="Subtotal" value={fmt(subtotal)} />
+                {sale.discount > 0 && (
+                  <TotalRow
+                    label="Discount"
+                    value={`- ${fmt(sale.discount)}`}
+                  />
+                )}
+                {sale.tax > 0 && (
+                  <TotalRow label="Tax" value={fmt(sale.tax)} />
+                )}
+              </tbody>
+            </table>
+
+            {/* Grand total */}
+            <div className="border-y-2 border-black my-1.5 py-1 flex justify-between font-black text-[13px]">
+              <span>TOTAL</span>
+              <span>{fmt(sale.grandTotal)}</span>
+            </div>
+
+            <Divider dashed />
+
+            {/* ── Payment / Change ──────────────────────────────────────── */}
+            <table className="w-full text-[9.5px]">
+              <tbody>
+                <TotalRow
+                  label={`Paid (${pmtLabel})`}
+                  value={fmt(sale.paidAmount)}
+                />
+                {change > 0 && (
+                  <tr>
+                    <td className="font-bold">Change</td>
+                    <td className="text-right font-bold">{fmt(change)}</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+
+            <Divider dashed />
+
+            {/* ── Footer ───────────────────────────────────────────────── */}
+            <div className="text-center text-[9px] text-gray-500 leading-[1.7]">
+              <div className="font-bold text-[10px] text-black">
+                Thank you for your purchase!
+              </div>
+              <div>Please visit us again</div>
+              {settings.phone && <div>Inquiries: {settings.phone}</div>}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Action buttons ─────────────────────────────────────────────── */}
+        <div className="flex gap-2 p-3 border-t bg-muted/10 shrink-0">
+          <Button
+            variant="outline"
+            className="flex-1"
+            onClick={onClose}
+            disabled={isPrinting}
+          >
+            <X className="h-4 w-4 mr-2" />
+            Close
+          </Button>
+
+          <Button
+            className="flex-1"
+            onClick={handlePrint}
+            disabled={isPrinting}
+          >
+            {isPrinting ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Printing…
+              </>
+            ) : (
+              <>
+                <Printer className="h-4 w-4 mr-2" />
+                Print
+              </>
+            )}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Small sub-components ─────────────────────────────────────────────────────
+
+function Divider({ dashed = false }: { dashed?: boolean }) {
+  return (
+    <div
+      className={`my-1.5 border-t ${dashed ? 'border-dashed border-gray-400' : 'border-gray-300'}`}
+    />
+  );
+}
+
+function MetaRow({ label, value }: { label: string; value: string }) {
+  return (
+    <tr>
+      <td className="text-gray-500 py-px">{label}</td>
+      <td className="text-right font-bold py-px">{value}</td>
+    </tr>
+  );
+}
+
+function TotalRow({ label, value }: { label: string; value: string }) {
+  return (
+    <tr>
+      <td className="py-px">{label}</td>
+      <td className="text-right font-semibold py-px">{value}</td>
+    </tr>
   );
 }
