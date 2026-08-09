@@ -94,9 +94,7 @@ export const CartPanel = React.memo(({
   onSetVariantQuantity,
   onCheckout,
 }: CartPanelProps) => {
-  const visibleCart = variantProduct
-    ? cart.filter(item => item.productId !== variantProduct.id)
-    : cart;
+  const visibleCart = cart;
 
   return (
     <div className={`flex flex-col ${inDrawer ? 'h-full' : 'flex-1'}`}>

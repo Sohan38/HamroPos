@@ -231,13 +231,14 @@ export default function SalesPos() {
     if (!variant) return;
 
     setCart(current => {
-      const existing = current.find(item => item.productId === variantProduct.id && item.variantName === name);
+      const thisLineKey = cartLineKey({ productId: variantProduct.id, variantName: name });
+      const existing = current.find(item => cartLineKey(item) === thisLineKey);
       const otherSelected = current
-        .filter(item => item.productId === variantProduct.id && item.variantName !== name)
+        .filter(item => cartLineKey(item) !== thisLineKey && item.productId === variantProduct.id)
         .reduce((sum, item) => sum + item.quantity, 0);
       const maxAllowed = Math.max(0, Math.min(variant.quantity, variantProduct.quantity - otherSelected));
       const quantity = Math.max(0, Math.min(maxAllowed, Math.floor(Number.isFinite(requestedQuantity) ? requestedQuantity : 0)));
-      const withoutVariant = current.filter(item => !(item.productId === variantProduct.id && item.variantName === name));
+      const withoutVariant = current.filter(item => cartLineKey(item) !== thisLineKey);
 
       if (quantity === 0) return withoutVariant;
       const nextItem: CartItem = {
@@ -249,7 +250,6 @@ export default function SalesPos() {
         maxQuantity: variant.quantity,
         subtotal: quantity * variantProduct.sellingRate,
       };
-      if (!existing) return [...withoutVariant, nextItem];
       return [...withoutVariant, nextItem];
     });
   };
