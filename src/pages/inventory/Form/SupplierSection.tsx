@@ -1,14 +1,14 @@
 import React, { useCallback, useEffect, useMemo } from 'react';
 import { useWatch } from 'react-hook-form';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Button } from '@/components/ui/button';
 import { SectionProps } from './types';
 import { Supplier } from '@/types';
 import { Plus, X, Truck, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { rankSearch } from '@/utils/search/rank';
+import { SupplierSearchList } from '@/components/SupplierSearchList';
 import { generateSupplierInvoiceNumber } from '@/utils/numbering';
 
 interface SupplierSectionProps extends SectionProps {
@@ -21,18 +21,6 @@ export const SupplierSection = React.memo(({ form, suppliers, existingPurchases 
   const selectedSupplierIds: string[] = useWatch({ control: form.control, name: 'supplierIds' }) ?? [];
   const supplierStocks: any[] = useWatch({ control: form.control, name: 'supplierStocks' }) ?? [];
   const isMultiSupplier = selectedSupplierIds.length >= 2;
-
-  // Watch the filter input value (we'll read it locally, no need to register in schema)
-  const [filterQuery, setFilterQuery] = React.useState('');
-
-  // Unselected suppliers filtered and ranked
-  const selectableSuppliers = useMemo(() => {
-    const unselected = suppliers.filter(s => !selectedSupplierIds.includes(s.id));
-    if (!filterQuery.trim()) {
-      return unselected.slice(0, 8); // Limit to 8 when not typing to prevent clogging
-    }
-    return rankSearch(unselected, filterQuery, 20); // Ranked search matches when typing
-  }, [suppliers, selectedSupplierIds, filterQuery]);
 
   // ─── Mutations ──────────────────────────────────────────────────────────────
 
@@ -58,8 +46,6 @@ export const SupplierSection = React.memo(({ form, suppliers, existingPurchases 
         },
       ], { shouldDirty: true });
     }
-
-    setFilterQuery(''); // Clear query on selection
   }, [selectedSupplierIds, form]);
 
   const removeSupplier = useCallback((sid: string) => {
@@ -128,65 +114,16 @@ export const SupplierSection = React.memo(({ form, suppliers, existingPurchases 
         </div>
       ) : (
         <>
-          {/* Supplier Search Filter Input */}
-          <div className="relative">
-            <Input
-              type="text"
-              placeholder="Type to filter suppliers..."
-              value={filterQuery}
-              onChange={e => setFilterQuery(e.target.value)}
-              className="h-9 text-sm rounded-xl"
-            />
-            {filterQuery && (
-              <button
-                type="button"
-                onClick={() => setFilterQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
-          </div>
-
-          {/* Supplier selection chips (scroll-to-side on mobile, max 8 when not typing) */}
-          {selectableSuppliers.length > 0 && (
-            <div className="flex gap-1.5 overflow-x-auto py-2 no-scrollbar">
-              {selectableSuppliers.map(s => {
-                const isInactive = (s.status ?? 'active') === 'inactive';
-                return (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => addSupplier(s.id)}
-                    className={cn(
-                      'flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border transition-all select-none active:scale-95 bg-muted/50 border-border text-foreground hover:border-primary/50 hover:bg-primary/5 shrink-0',
-                      isInactive && 'opacity-40'
-                    )}
-                  >
-                    <span className="h-4 w-4 rounded-full bg-muted flex items-center justify-center text-[9px] font-bold shrink-0">
-                      {s.name.charAt(0).toUpperCase()}
-                    </span>
-                    {s.name}
-                    {isInactive && <span className="opacity-60">(off)</span>}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Fallback info/empty indicator */}
-          {selectableSuppliers.length === 0 && filterQuery && (
-            <div className="text-center py-4 border border-dashed rounded-2xl bg-muted/10 space-y-1">
-              <p className="text-xs text-muted-foreground">No matching suppliers found.</p>
-              <button
-                type="button"
-                onClick={() => onSupplierNew(filterQuery)}
-                className="text-xs text-primary font-semibold hover:underline"
-              >
-                + Add "{filterQuery}" as new supplier
-              </button>
-            </div>
-          )}
+          <SupplierSearchList
+            suppliers={suppliers}
+            selectedSupplierIds={selectedSupplierIds}
+            onSelect={addSupplier}
+            onAddNew={onSupplierNew}
+            placeholder="Type to filter suppliers..."
+            emptyMessage="No more suppliers to add."
+            label="Suppliers"
+            maxVisible={8}
+          />
 
           {/* ── Multi-supplier info ───────────────────────────────────────── */}
           {isMultiSupplier && (

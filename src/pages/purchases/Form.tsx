@@ -12,11 +12,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Save, PackagePlus, Trash2, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Save, PackagePlus, Trash2, AlertCircle, Truck, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { PurchaseItem, PurchasePaymentStatus, PurchaseStatus } from '@/types';
 import { createPurchase, updatePurchase } from '@/services/purchaseService';
-import { SearchablePicker } from '@/components/SearchablePicker';
+import { ProductSearchPicker } from '@/components/ProductSearchPicker';
+import { SupplierSearchPicker } from '@/components/SupplierSearchPicker';
 import { generateBatchNumber, generateSupplierInvoiceNumber } from '@/utils/numbering';
 
 type DraftItem = PurchaseItem & {
@@ -101,19 +102,7 @@ export default function PurchaseForm() {
   const taxValue = Math.max(0, Number(tax) || 0);
   const grandTotal = Math.max(0, subtotal - discountValue + taxValue);
 
-  // Supplier picker items for SearchablePicker
-  const supplierPickerItems = useMemo(() =>
-    suppliers.map(s => ({
-      id: s.id,
-      name: s.name,
-      phone: s.phone,
-      sublabel: s.phone ?? undefined,
-      inactive: (s.status ?? 'active') === 'inactive',
-    })),
-    [suppliers],
-  );
-
-  // Product picker items for SearchablePicker — filter out already-added products
+  // Product picker items for ProductSearchPicker — filter out already-added products
   const addedProductIds = useMemo(() => new Set(items.map(i => i.productId)), [items]);
   const productPickerItems = useMemo(() =>
     inventory
@@ -371,17 +360,12 @@ export default function PurchaseForm() {
           {/* ── Section 1: Supplier & Invoice Details ─── */}
           <Card>
             <CardContent className="p-4 md:p-6 space-y-4">
-              {/* Supplier — SearchablePicker (single-select) */}
-              <SearchablePicker
-                label="Supplier *"
-                items={supplierPickerItems}
-                selectedIds={supplierId ? [supplierId] : []}
+              <SupplierSearchPicker
+                suppliers={suppliers}
+                selectedSupplierId={supplierId}
                 onSelect={handleSupplierSelect}
                 onRemove={handleSupplierRemove}
-                placeholder="Search suppliers by name or phone..."
-                emptyMessage="No suppliers yet. Add one from the Suppliers page."
-                multi={false}
-                singleRow
+                onAddNewSupplier={query => setLocation(`/suppliers/new?defaultName=${encodeURIComponent(query)}`)}
               />
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
@@ -424,18 +408,13 @@ export default function PurchaseForm() {
                 </Button>
               </div>
 
-              {/* Product Picker — SearchablePicker (multi-add, chips don't persist selected) */}
-              <SearchablePicker
+              <ProductSearchPicker
                 items={availableProductItems}
-                selectedIds={[]}   // Products are immediately added to cart, no chip stays
                 onSelect={addItemById}
-                onRemove={() => { }}
+                disabled={!supplierId}
                 placeholder={supplierId ? 'Search by product name or barcode...' : 'Select a supplier first'}
                 emptyMessage="No products in inventory yet."
-                disabled={!supplierId}
                 defaultLimit={8}
-                multi
-                singleRow
               />
 
               {/* Cart items */}
