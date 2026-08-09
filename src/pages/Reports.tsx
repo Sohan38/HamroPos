@@ -9,13 +9,14 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend, AreaChart, Area,
+  PieChart, Pie, Cell, Legend,
 } from 'recharts';
 import {
   format as formatDate, subDays, startOfWeek, startOfMonth, startOfYear,
-  startOfDay, parseISO, isAfter, isBefore, isToday, endOfDay,
+  startOfDay, isAfter, isBefore, endOfDay,
 } from 'date-fns';
-import { TrendingUp, TrendingDown, Package, ArrowLeft, Users } from 'lucide-react';
+import { TrendingUp, TrendingDown, Package, Users } from 'lucide-react';
+import { buildFinancialMetrics } from '@/lib/financialMetrics';
 
 const COLORS = [
   'hsl(var(--chart-1))', 'hsl(var(--chart-2))', 'hsl(var(--chart-3))',
@@ -62,93 +63,29 @@ export default function Reports() {
   const inRange = (dateStr: string) => {
     try {
       const d = new Date(dateStr);
-      return isAfter(d, start) && isBefore(d, end);
+      return !isBefore(d, start) && !isAfter(d, end);
     } catch { return false; }
   };
 
-  const filteredSales = sales.filter(s => inRange(s.date));
-  const filteredExpenses = expenses.filter(e => inRange(e.date));
-  const filteredPurchases = purchases.filter(p => inRange(p.date));
-  const filteredCredits = credits.filter(c => inRange(c.date));
+  const filteredSales = useMemo(() => sales.filter(s => inRange(s.date)), [sales, start, end]);
+  const filteredExpenses = useMemo(() => expenses.filter(e => inRange(e.date)), [expenses, start, end]);
+  const filteredPurchases = useMemo(() => purchases.filter(p => inRange(p.date)), [purchases, start, end]);
+  const filteredCredits = useMemo(() => credits.filter(c => inRange(c.date)), [credits, start, end]);
 
   const stats = useMemo(() => {
-    const totalRevenue = filteredSales.reduce((s, x) => s + x.grandTotal, 0);
-    const totalExpenses = filteredExpenses.reduce((s, x) => s + x.amount, 0);
-    const totalPurchases = filteredPurchases.reduce((s, x) => s + x.grandTotal, 0);
-    const totalDiscount = filteredSales.reduce((s, x) => s + x.discount, 0);
-    const totalTax = filteredSales.reduce((s, x) => s + x.tax, 0);
+    const metrics = buildFinancialMetrics({
+      sales,
+      expenses,
+      purchases,
+      credits,
+      inventory,
+      start,
+      end,
+    });
 
-    // COGS: sum of (purchaseRate * qty) for each sold item
-    let cogs = 0;
-    const productSalesMap: Record<string, { name: string; qty: number; revenue: number; profit: number }> = {};
+    const totalDiscount = filteredSales.reduce((sum, sale) => sum + sale.discount, 0);
+    const totalTax = filteredSales.reduce((sum, sale) => sum + sale.tax, 0);
 
-    for (const sale of filteredSales) {
-      for (const item of sale.items) {
-        const product = inventory.find(p => p.id === item.productId);
-        const buyRate = product?.purchaseRate ?? 0;
-        const itemCOGS = buyRate * item.quantity;
-        const itemProfit = item.subtotal - itemCOGS;
-        cogs += itemCOGS;
-
-        if (!productSalesMap[item.productId]) {
-          productSalesMap[item.productId] = { name: item.productName, qty: 0, revenue: 0, profit: 0 };
-        }
-        productSalesMap[item.productId].qty += item.quantity;
-        productSalesMap[item.productId].revenue += item.subtotal;
-        productSalesMap[item.productId].profit += itemProfit;
-      }
-    }
-
-    const grossProfit = totalRevenue - cogs;
-    const netProfit = grossProfit - totalExpenses;
-    const grossMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
-
-    const topProducts = Object.values(productSalesMap)
-      .sort((a, b) => b.revenue - a.revenue)
-      .slice(0, 10);
-
-    // Expenses by category
-    const expByCategory: Record<string, number> = {};
-    for (const e of filteredExpenses) {
-      expByCategory[e.category] = (expByCategory[e.category] || 0) + e.amount;
-    }
-    const expensePieData = Object.entries(expByCategory)
-      .map(([name, value]) => ({ name: name.charAt(0).toUpperCase() + name.slice(1), value }))
-      .sort((a, b) => b.value - a.value);
-
-    // Sales by payment method
-    const payByMethod: Record<string, number> = {};
-    for (const s of filteredSales) {
-      payByMethod[s.paymentMethod] = (payByMethod[s.paymentMethod] || 0) + s.grandTotal;
-    }
-    const paymentPieData = Object.entries(payByMethod)
-      .map(([name, value]) => ({ name: name.toUpperCase(), value }));
-
-    // Outstanding receivable: sum of remaining balances for credits created in period that are unpaid/partial
-    const pendingCredit = filteredCredits
-      .filter(c => c.status !== 'paid')
-      .reduce((s, c) => s + Math.max(0, c.amount - (c.paidAmount ?? 0)), 0);
-
-    // Collected in period: sum of all payment entries whose date falls in the selected range
-    // (across ALL credits, not just those created in the period — a credit from last month
-    //  paid this month should count toward this month's collections)
-    const collectedCredit = credits.reduce((s, c) => {
-      const inRangePayments = (c.payments ?? []).filter(p => inRange(p.date));
-      return s + inRangePayments.reduce((ps, p) => ps + p.amount, 0);
-    }, 0);
-
-    // Payables outstanding in selected period
-    const pendingPayables = filteredPurchases
-      .filter(p => (p.paymentStatus ?? (p.paidAmount && p.paidAmount > 0 ? 'partial' : 'unpaid')) !== 'paid' && (p.status ?? 'received') !== 'cancelled')
-      .reduce((s, p) => s + Math.max(0, p.grandTotal - (p.paidAmount ?? 0)), 0);
-
-    // Payables paid in selected period: sum of all payment entries recorded in the timeframe across all purchases
-    const collectedPayables = purchases.reduce((s, p) => {
-      const inRangePayments = (p.payments ?? []).filter(pay => inRange(pay.date));
-      return s + inRangePayments.reduce((ps, pay) => ps + pay.amount, 0);
-    }, 0);
-
-    // Sales by customer (for filtered period)
     const customerSalesMap: Record<string, { name: string; revenue: number; visits: number; avgOrder: number }> = {};
     for (const sale of filteredSales) {
       if (!sale.customerId) continue;
@@ -166,22 +103,38 @@ export default function Reports() {
       }
     }
     const topCustomers = Object.values(customerSalesMap)
-      .map(c => ({ ...c, avgOrder: c.visits > 0 ? c.revenue / c.visits : 0 }))
+      .map(customer => ({ ...customer, avgOrder: customer.visits > 0 ? customer.revenue / customer.visits : 0 }))
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 10);
     const customerSalesCount = Object.keys(customerSalesMap).length;
     const walkinSales = filteredSales.filter(s => !s.customerId);
-    const walkinRevenue = walkinSales.reduce((s, x) => s + x.grandTotal, 0);
+    const walkinRevenue = walkinSales.reduce((sum, sale) => sum + sale.grandTotal, 0);
 
     return {
-      totalRevenue, totalExpenses, totalPurchases, totalDiscount, totalTax,
-      cogs, grossProfit, netProfit, grossMargin,
-      topProducts, expensePieData, paymentPieData, pendingCredit, collectedCredit,
-      pendingPayables, collectedPayables,
+      salesRevenue: metrics.salesRevenue,
+      totalExpenses: metrics.expensesTotal,
+      totalPurchases: metrics.purchasesTotal,
+      totalDiscount,
+      totalTax,
+      cogs: metrics.cogs,
+      grossProfit: metrics.grossProfit,
+      netProfit: metrics.netProfit,
+      grossMargin: metrics.grossMargin,
+      expensePieData: metrics.expensePieData,
+      paymentPieData: metrics.paymentPieData,
+      topProducts: metrics.topProducts,
+      collected: metrics.collected,
+      creditCreated: metrics.creditCreated,
+      collectedCredit: metrics.collectedCredit,
+      customerReceivables: metrics.customerReceivables,
+      supplierPayables: metrics.supplierPayables,
+      supplierPayments: metrics.supplierPayments,
       salesCount: filteredSales.length,
-      topCustomers, customerSalesCount, walkinRevenue,
+      topCustomers,
+      customerSalesCount,
+      walkinRevenue,
     };
-  }, [filteredSales, filteredExpenses, filteredPurchases, filteredCredits, credits, inventory, customers]);
+  }, [filteredSales, filteredExpenses, filteredPurchases, filteredCredits, sales, expenses, purchases, credits, inventory, start, end, customers]);
 
   // Daily chart (last 30 days or filtered range)
   const dailyChart = useMemo(() => {
@@ -233,14 +186,14 @@ export default function Reports() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card className="bg-primary/10 border-primary/20">
           <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">Total Revenue</p>
-            <p className="text-xl font-bold text-primary mt-1">{format(stats.totalRevenue)}</p>
+            <p className="text-xs text-muted-foreground">Sales</p>
+            <p className="text-xl font-bold text-primary mt-1">{format(stats.salesRevenue)}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">COGS</p>
-            <p className="text-xl font-bold mt-1">{format(stats.cogs)}</p>
+            <p className="text-xs text-muted-foreground">Collected</p>
+            <p className="text-xl font-bold mt-1">{format(stats.collected)}</p>
           </CardContent>
         </Card>
         <Card className={stats.grossProfit >= 0 ? 'bg-green-500/10 border-green-200' : 'bg-destructive/10'}>
@@ -279,32 +232,32 @@ export default function Reports() {
         </Card>
         <Card>
           <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">Total Purchases</p>
+            <p className="text-xs text-muted-foreground">Purchases</p>
             <p className="text-lg font-bold mt-1">{format(stats.totalPurchases)}</p>
           </CardContent>
         </Card>
         <Card className="cursor-pointer hover:bg-muted/40 transition-colors" onClick={() => setLocation('/credit')}>
           <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground font-medium">Pending Credit (Udharo)</p>
-            <p className="text-lg font-bold text-orange-500 mt-1">{format(stats.pendingCredit)}</p>
+            <p className="text-xs text-muted-foreground font-medium">Credit Created</p>
+            <p className="text-lg font-bold text-orange-500 mt-1">{format(stats.creditCreated)}</p>
           </CardContent>
         </Card>
         <Card className="cursor-pointer hover:bg-muted/40 transition-colors" onClick={() => setLocation('/payables')}>
           <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground font-medium">Pending Payables</p>
-            <p className="text-lg font-bold text-red-500 mt-1">{format(stats.pendingPayables)}</p>
+            <p className="text-xs text-muted-foreground font-medium">Supplier Payables</p>
+            <p className="text-lg font-bold text-red-500 mt-1">{format(stats.supplierPayables)}</p>
           </CardContent>
         </Card>
         <Card className="cursor-pointer hover:bg-muted/40 transition-colors" onClick={() => setLocation('/credit')}>
           <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground font-medium">Collected Credit</p>
+            <p className="text-xs text-muted-foreground font-medium">Credit Collected</p>
             <p className="text-lg font-bold text-green-600 mt-1">{format(stats.collectedCredit)}</p>
           </CardContent>
         </Card>
         <Card className="cursor-pointer hover:bg-muted/40 transition-colors" onClick={() => setLocation('/payables')}>
           <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground font-medium">Paid Payables</p>
-            <p className="text-lg font-bold text-emerald-600 mt-1">{format(stats.collectedPayables)}</p>
+            <p className="text-xs text-muted-foreground font-medium">Supplier Payments</p>
+            <p className="text-lg font-bold text-emerald-600 mt-1">{format(stats.supplierPayments)}</p>
           </CardContent>
         </Card>
       </div>
@@ -312,7 +265,7 @@ export default function Reports() {
       {/* Revenue chart */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Revenue vs Expenses</CardTitle>
+          <CardTitle className="text-base">Sales vs Expenses</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="h-[220px]">
@@ -360,7 +313,7 @@ export default function Reports() {
         {/* Payment method breakdown */}
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Sales by Payment Method</CardTitle>
+            <CardTitle className="text-base">Payments by Method</CardTitle>
           </CardHeader>
           <CardContent>
             {stats.paymentPieData.length === 0 ? (

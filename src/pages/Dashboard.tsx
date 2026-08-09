@@ -3,7 +3,7 @@ import { useLocation } from 'wouter';
 import { useInventory, useSales, useExpenses, useCredit, usePurchases, useProductBatches, useCustomers } from '@/contexts/GlobalProviders';
 import { useAllCustomerStats } from '@/hooks/useCustomerStats';
 import { useCurrency } from '@/hooks/useCurrency';
-import { format, isToday, parseISO, subDays, startOfDay } from 'date-fns';
+import { format, isToday, parseISO, subDays, startOfDay, endOfDay } from 'date-fns';
 import { getBatchStatus } from '@/components/BatchFormDialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -16,30 +16,9 @@ import {
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend } from 'recharts';
 import { useApp } from '@/contexts/AppContext';
 import { useFeature } from '@/hooks/useFeature';
+import { buildFinancialMetrics } from '@/lib/financialMetrics';
 import { cn } from '@/lib/utils';
 
-// Compute cost-of-goods-sold for a set of sales using current inventory data for purchase rates
-function computeCOGS(
-  sales: ReturnType<typeof useSales>['items'],
-  inventory: ReturnType<typeof useInventory>['items']
-) {
-  const purchaseMap = new Map(
-    inventory.map(product => [
-      product.id,
-      product.purchaseRate
-    ])
-  );
-
-  let cogs = 0;
-
-  for (const sale of sales) {
-    for (const item of sale.items) {
-      cogs += (purchaseMap.get(item.productId) ?? 0) * item.quantity;
-    }
-  }
-
-  return cogs;
-}
 export default function Dashboard() {
   const [, setLocation] = useLocation();
   const { items: inventory } = useInventory();
@@ -62,56 +41,42 @@ export default function Dashboard() {
     [inventory]
   );
 
+  const todayRange = useMemo(() => {
+    const today = new Date();
+    return { start: startOfDay(today), end: endOfDay(today) };
+  }, []);
+
+  const todaySales = useMemo(() => sales.filter(s => {
+    try { return isToday(parseISO(s.date)); } catch { return isToday(new Date(s.date)); }
+  }), [sales]);
+
+  const todayPurchases = useMemo(() => purchases.filter(p => {
+    try { return isToday(parseISO(p.date)); } catch { return isToday(new Date(p.date)); }
+  }), [purchases]);
+
   const metrics = useMemo(() => {
-    const todaySales = sales.filter(s => {
-      try { return isToday(parseISO(s.date)); } catch { return isToday(new Date(s.date)); }
+    const todayMetrics = buildFinancialMetrics({
+      sales,
+      expenses,
+      purchases,
+      credits,
+      inventory,
+      start: todayRange.start,
+      end: todayRange.end,
     });
-    const todayExpenses = expenses.filter(e => {
-      try { return isToday(parseISO(e.date)); } catch { return isToday(new Date(e.date)); }
-    });
 
-    const todayRevenue = todaySales.reduce((s, x) => s + x.grandTotal, 0);
-    const todayExpensesTotal = todayExpenses.reduce((s, x) => s + x.amount, 0);
-    const todayCOGS = computeCOGS(todaySales, inventory);
-    const todayGrossProfit = todayRevenue - todayCOGS;
-    const todayNetProfit = todayGrossProfit - todayExpensesTotal;
-
-    const qrSalesToday = todaySales.filter(s => s.paymentMethod === 'qr').reduce((s, x) => s + x.grandTotal, 0);
-
-    // Purchases today
-    const todayPurchases = purchases.filter(p => {
-      try { return isToday(parseISO(p.date)); } catch { return isToday(new Date(p.date)); }
-    });
-    const todayPurchaseTotal = todayPurchases.reduce((s, x) => s + x.grandTotal, 0);
-
-    // Outstanding = sum of remaining balances for all unpaid/partial credits
-    const pendingCreditTotal = credits
-      .filter(c => c.status !== 'paid')
-      .reduce((s, c) => s + Math.max(0, c.amount - (c.paidAmount ?? 0)), 0);
-
-    // Collected today = sum of individual payment entries recorded today across all credits
-    const todayStr = new Date().toLocaleDateString('en-CA');
-    const creditReceivedToday = credits.reduce((s, c) => {
-      const todayPayments = (c.payments ?? []).filter(p => p.date.startsWith(todayStr));
-      return s + todayPayments.reduce((ps, p) => ps + p.amount, 0);
-    }, 0);
-
-    // Payables outstanding = sum of remaining balances for all unpaid/partial purchases
-    const pendingPayablesTotal = purchases
-      .filter(p => (p.paymentStatus ?? (p.paidAmount && p.paidAmount > 0 ? 'partial' : 'unpaid')) !== 'paid' && (p.status ?? 'received') !== 'cancelled')
-      .reduce((s, p) => s + Math.max(0, p.grandTotal - (p.paidAmount ?? 0)), 0);
-
-    // Payables paid today = sum of individual payment entries recorded today across all purchases
-    const payablesPaidToday = purchases.reduce((s, p) => {
-      const todayPayments = (p.payments ?? []).filter(pay => pay.date.startsWith(todayStr));
-      return s + todayPayments.reduce((ps, pay) => ps + pay.amount, 0);
-    }, 0);
+    const todayRevenue = todayMetrics.salesRevenue;
+    const todayExpensesTotal = todayMetrics.expensesTotal;
+    const todayGrossProfit = todayMetrics.grossProfit;
+    const todayNetProfit = todayMetrics.netProfit;
+    const collectedToday = todayMetrics.collected;
+    const creditCreatedToday = todayMetrics.creditCreated;
+    const qrSalesToday = todaySales.filter(s => s.paymentMethod === 'qr').reduce((sum, sale) => sum + sale.grandTotal, 0);
+    const todayPurchaseTotal = todayPurchases.reduce((sum, purchase) => sum + purchase.grandTotal, 0);
 
     const lowStockItems = inventory.filter(i => i.quantity <= i.minimumStock && i.quantity > 0);
     const outOfStockItems = inventory.filter(i => i.quantity === 0);
 
-
-    // Expiry alerts — one entry per batch, joined with product name
     type ExpiryAlert = { batchId: string; productId: string; productName: string; batchNo: string; expiryDate: string; qty: number };
     const expiredBatches: ExpiryAlert[] = [];
     const expiringSoonBatches: ExpiryAlert[] = [];
@@ -131,15 +96,13 @@ export default function Dashboard() {
       if (status === 'expired') expiredBatches.push(entry);
       else if (status === 'expiring') expiringSoonBatches.push(entry);
     }
-    // Sort: expired by expiryDate asc, expiring by expiryDate asc
     expiredBatches.sort((a, b) => a.expiryDate.localeCompare(b.expiryDate));
     expiringSoonBatches.sort((a, b) => a.expiryDate.localeCompare(b.expiryDate));
 
-    const inventoryPurchaseValue = inventory.reduce((s, i) => s + i.purchaseRate * i.quantity, 0);
-    const inventorySellingValue = inventory.reduce((s, i) => s + i.sellingRate * i.quantity, 0);
+    const inventoryPurchaseValue = inventory.reduce((sum, item) => sum + item.purchaseRate * item.quantity, 0);
+    const inventorySellingValue = inventory.reduce((sum, item) => sum + item.sellingRate * item.quantity, 0);
     const estimatedInventoryProfit = inventorySellingValue - inventoryPurchaseValue;
 
-    // Best selling products (by quantity sold all time)
     const productSales: Record<string, { name: string; qty: number; revenue: number }> = {};
     for (const sale of sales) {
       for (const item of sale.items) {
@@ -155,40 +118,66 @@ export default function Dashboard() {
       .slice(0, 5);
 
     return {
-      todayRevenue, todayExpensesTotal, todayGrossProfit, todayNetProfit,
-      qrSalesToday, todayPurchaseTotal,
-      pendingCreditTotal, creditReceivedToday,
-      pendingPayablesTotal, payablesPaidToday,
-      lowStockItems, outOfStockItems,
-      expiredBatches, expiringSoonBatches,
-      inventoryPurchaseValue, inventorySellingValue, estimatedInventoryProfit,
+      todaySales: todayRevenue,
+      todayExpensesTotal,
+      todayGrossProfit,
+      todayNetProfit,
+      collectedToday,
+      creditCreatedToday,
+      qrSalesToday,
+      todayPurchaseTotal,
+      customerReceivables: todayMetrics.customerReceivables,
+      supplierPayables: todayMetrics.supplierPayables,
+      lowStockItems,
+      outOfStockItems,
+      expiredBatches,
+      expiringSoonBatches,
+      inventoryPurchaseValue,
+      inventorySellingValue,
+      estimatedInventoryProfit,
       inventoryCount: inventory.length,
       bestSellers,
     };
-  }, [sales, expenses, credits, purchases, inventory, batches, inventoryMap]);
+  }, [sales, expenses, credits, purchases, inventory, batches, inventoryMap, todayRange, todaySales, todayPurchases]);
 
   // 7-day chart data
   const chartData = useMemo(() => {
+    const salesByDate = new Map<string, { revenue: number; cogs: number }>();
+    const expensesByDate = new Map<string, number>();
+
+    for (const sale of sales) {
+      const dateKey = sale.date.split('T')[0] ?? sale.date;
+      const existing = salesByDate.get(dateKey) ?? { revenue: 0, cogs: 0 };
+      existing.revenue += sale.grandTotal;
+      for (const item of sale.items) {
+        const product = inventoryMap.get(item.productId);
+        existing.cogs += (product?.purchaseRate ?? 0) * item.quantity;
+      }
+      salesByDate.set(dateKey, existing);
+    }
+
+    for (const expense of expenses) {
+      const dateKey = expense.date.split('T')[0] ?? expense.date;
+      expensesByDate.set(dateKey, (expensesByDate.get(dateKey) ?? 0) + expense.amount);
+    }
+
     const data = [];
     for (let i = 6; i >= 0; i--) {
       const date = subDays(new Date(), i);
       const dateStr = format(startOfDay(date), 'yyyy-MM-dd');
-
-      const daySales = sales.filter(s => s.date.startsWith(dateStr));
-      const dayRevenue = daySales.reduce((s, x) => s + x.grandTotal, 0);
-      const dayCOGS = computeCOGS(daySales, inventory);
-      const dayExpenses = expenses.filter(e => e.date.startsWith(dateStr)).reduce((s, e) => s + e.amount, 0);
+      const daySales = salesByDate.get(dateStr) ?? { revenue: 0, cogs: 0 };
+      const dayExpenses = expensesByDate.get(dateStr) ?? 0;
 
       data.push({
         name: format(date, 'EEE'),
-        Revenue: dayRevenue,
-        COGS: dayCOGS,
+        Revenue: daySales.revenue,
+        COGS: daySales.cogs,
         Expenses: dayExpenses,
-        Profit: dayRevenue - dayCOGS - dayExpenses,
+        Profit: daySales.revenue - daySales.cogs - dayExpenses,
       });
     }
     return data;
-  }, [sales, expenses, inventory]);
+  }, [sales, expenses, inventoryMap]);
 
   const recentSales = useMemo(
     () =>
@@ -273,7 +262,7 @@ export default function Dashboard() {
           <CardContent className="p-5 flex items-center justify-between">
             <div className="space-y-1">
               <p className="text-[11px] font-bold text-primary/80 uppercase tracking-wider">Today's Sales</p>
-              <h2 className="text-2xl font-black text-primary tracking-tight">{formatCurrency(metrics.todayRevenue)}</h2>
+              <h2 className="text-2xl font-black text-primary tracking-tight">{formatCurrency(metrics.todaySales)}</h2>
             </div>
             <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
               <ShoppingCart className="h-5 w-5" />
@@ -320,26 +309,26 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border border-orange-500/10 bg-orange-500/2 dark:bg-orange-500/1 rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer hover:bg-orange-500/4" onClick={() => setLocation('/credit')}>
+        <Card className="border border-emerald-500/10 bg-emerald-500/2 dark:bg-emerald-500/1 rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer hover:bg-emerald-500/4" onClick={() => setLocation('/credit')}>
           <CardContent className="p-5 flex items-center justify-between">
             <div className="space-y-1">
-              <p className="text-[11px] font-bold text-orange-700/80 uppercase tracking-wider">Pending Credit</p>
-              <h2 className="text-2xl font-black text-orange-600 tracking-tight">{formatCurrency(metrics.pendingCreditTotal)}</h2>
+              <p className="text-[11px] font-bold text-emerald-700/80 uppercase tracking-wider">Collected Today</p>
+              <h2 className="text-2xl font-black text-emerald-600 tracking-tight">{formatCurrency(metrics.collectedToday)}</h2>
             </div>
-            <div className="h-10 w-10 rounded-xl bg-orange-500/10 flex items-center justify-center text-orange-600">
-              <Banknote className="h-5 w-5" />
+            <div className="h-10 w-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-600">
+              <Wallet className="h-5 w-5" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border border-red-500/10 bg-red-500/2 dark:bg-red-500/1 rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer hover:bg-red-500/4" onClick={() => setLocation('/payables')}>
+        <Card className="border border-orange-500/10 bg-orange-500/2 dark:bg-orange-500/1 rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer hover:bg-orange-500/4" onClick={() => setLocation('/credit')}>
           <CardContent className="p-5 flex items-center justify-between">
             <div className="space-y-1">
-              <p className="text-[11px] font-bold text-red-700/80 uppercase tracking-wider">Pending Payables</p>
-              <h2 className="text-2xl font-black text-red-600 tracking-tight">{formatCurrency(metrics.pendingPayablesTotal)}</h2>
+              <p className="text-[11px] font-bold text-orange-700/80 uppercase tracking-wider">Credit Created Today</p>
+              <h2 className="text-2xl font-black text-orange-600 tracking-tight">{formatCurrency(metrics.creditCreatedToday)}</h2>
             </div>
-            <div className="h-10 w-10 rounded-xl bg-red-500/10 flex items-center justify-center text-red-600">
-              <ArrowUpFromLine className="h-5 w-5" />
+            <div className="h-10 w-10 rounded-xl bg-orange-500/10 flex items-center justify-center text-orange-600">
+              <Banknote className="h-5 w-5" />
             </div>
           </CardContent>
         </Card>
@@ -373,12 +362,12 @@ export default function Dashboard() {
 
         <Card className="border border-border rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer hover:bg-muted/40" onClick={() => setLocation('/credit')}>
           <CardContent className="p-4 flex items-center gap-3">
-            <div className="h-9 w-9 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-600 shrink-0">
+            <div className="h-9 w-9 rounded-xl bg-orange-500/10 flex items-center justify-center text-orange-600 shrink-0">
               <Banknote className="h-4.5 w-4.5" />
             </div>
             <div>
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Credit Received Today</p>
-              <p className="font-extrabold text-base tracking-tight text-emerald-600">{formatCurrency(metrics.creditReceivedToday)}</p>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Customer Receivables</p>
+              <p className="font-extrabold text-base tracking-tight text-orange-600">{formatCurrency(metrics.customerReceivables)}</p>
             </div>
           </CardContent>
         </Card>
@@ -389,8 +378,8 @@ export default function Dashboard() {
               <ArrowUpFromLine className="h-4.5 w-4.5" />
             </div>
             <div>
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Payables Paid Today</p>
-              <p className="font-extrabold text-base tracking-tight text-rose-600">{formatCurrency(metrics.payablesPaidToday)}</p>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Supplier Payables</p>
+              <p className="font-extrabold text-base tracking-tight text-rose-600">{formatCurrency(metrics.supplierPayables)}</p>
             </div>
           </CardContent>
         </Card>

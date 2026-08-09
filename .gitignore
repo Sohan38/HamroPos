@@ -1,5 +1,5 @@
 # See https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files for more about ignoring files.
-
+docs
 # compiled output
 dist
 tmp
@@ -44,6 +44,8 @@ Thumbs.db
 .cursor/rules/nx-rules.mdc
 .github/instructions/nx.instructions.md
 
-# Replit
+
 .cache/
 .local/
+
+
