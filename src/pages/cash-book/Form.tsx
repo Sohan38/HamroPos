@@ -7,13 +7,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ArrowLeft, Save, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { toast } from 'sonner';
+import { normalizeDecimalInput, parseDecimal } from '@/utils/numberUtils';
 
 export default function CashBookForm() {
   const goBack = useSmartBack('/cash-book');
   const [, setLocation] = useLocation();
   const { type } = useParams<{ type: string }>(); // 'in' or 'out'
   const { items, add, update } = useCashBook();
-  
+
   const isOut = type === 'out';
   const today = new Date().toISOString().split('T')[0];
   const todayEntry = items.find(i => i.date === today);
@@ -23,9 +24,9 @@ export default function CashBookForm() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const numAmount = Number(amount);
-    
-    if (!numAmount || numAmount <= 0) {
+    const numAmount = parseDecimal(amount);
+
+    if (Number.isNaN(numAmount) || numAmount <= 0) {
       toast.error('Enter a valid amount');
       return;
     }
@@ -34,7 +35,7 @@ export default function CashBookForm() {
       // Update existing today entry
       const newCashIn = todayEntry.cashIn + (!isOut ? numAmount : 0);
       const newCashOut = todayEntry.cashOut + (isOut ? numAmount : 0);
-      
+
       update(todayEntry.id, {
         cashIn: newCashIn,
         cashOut: newCashOut,
@@ -45,7 +46,7 @@ export default function CashBookForm() {
       // Find last entry's closing to use as opening
       const sorted = [...items].sort((a, b) => b.date.localeCompare(a.date));
       const lastClosing = sorted.length > 0 ? sorted[0].closingCash : 0;
-      
+
       add({
         date: today,
         openingCash: lastClosing,
@@ -81,19 +82,20 @@ export default function CashBookForm() {
 
             <div className="space-y-2">
               <label className="text-sm font-medium">Amount *</label>
-              <Input 
-                type="number"
+              <Input
+                type="text"
                 className="text-2xl h-14"
                 value={amount}
-                onChange={e => setAmount(e.target.value)}
+                onChange={e => setAmount(normalizeDecimalInput(e.target.value))}
+                inputMode="decimal"
                 required
                 autoFocus
               />
             </div>
-            
+
             <div className="space-y-2">
               <label className="text-sm font-medium">Reason / Details</label>
-              <Input 
+              <Input
                 value={reason}
                 onChange={e => setReason(e.target.value)}
                 placeholder="e.g. Change, Withdrawal, Owner"

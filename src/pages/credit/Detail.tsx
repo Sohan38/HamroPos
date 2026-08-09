@@ -367,7 +367,7 @@ function DetailRow({ icon, label, value }: { icon: React.ReactNode; label: strin
       <span className="text-muted-foreground mt-0.5 shrink-0">{icon}</span>
       <div className="min-w-0">
         <p className="text-xs text-muted-foreground">{label}</p>
-        <p className="text-sm font-medium break-words">{value}</p>
+        <p className="text-sm font-medium wrap-break-word">{value}</p>
       </div>
     </div>
   );

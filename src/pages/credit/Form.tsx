@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { ArrowLeft, Check, Search, Save, UserRound, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { rankSearch } from '@/utils/search/rank';
+import { normalizeDecimalInput, parseDecimal } from '@/utils/numberUtils';
 import { Customer } from '@/types';
 
 export default function CreditForm() {
@@ -48,7 +49,9 @@ export default function CreditForm() {
       toast.error('A customer is required for credit');
       return;
     }
-    if (!formData.amount || Number(formData.amount) <= 0) {
+
+    const amount = parseDecimal(formData.amount);
+    if (Number.isNaN(amount) || amount <= 0) {
       toast.error('Enter a credit amount greater than zero');
       return;
     }
@@ -57,7 +60,7 @@ export default function CreditForm() {
       customerId: formData.customerId,
       customerName: selectedCustomer!.name,
       phone: selectedCustomer!.phone,
-      amount: Number(formData.amount),
+      amount,
       paidAmount: 0,
       description: formData.description || 'Credit sale',
       date: new Date().toISOString(),
@@ -161,11 +164,11 @@ export default function CreditForm() {
             <div className="space-y-2">
               <label className="text-sm font-medium">Amount *</label>
               <Input
-                type="number"
+                type="text"
                 value={formData.amount}
-                onChange={e => setFormData({ ...formData, amount: e.target.value })}
-                min="0.01"
+                onChange={e => setFormData({ ...formData, amount: normalizeDecimalInput(e.target.value) })}
                 inputMode="decimal"
+                placeholder="0.00"
                 required
               />
             </div>
