@@ -77,7 +77,7 @@ export const VariantSection = React.memo(({
 }: VariantSectionProps) => {
   const { fields, append, remove } = useFieldArray({ control: form.control, name: 'variants' });
 
-  const handleAdd    = useCallback(() => append({ name: '', quantity: 0 }), [append]);
+  const handleAdd = useCallback(() => append({ name: '', quantity: 0 }), [append]);
   const handleRemove = useCallback((index: number) => remove(index), [remove]);
 
   if (!isVariantsEnabled) return null;
@@ -87,11 +87,10 @@ export const VariantSection = React.memo(({
       {/* Toggle card */}
       <FormField control={form.control} name="hasVariants" render={({ field }) => (
         <div
-          className={`flex items-center justify-between gap-4 rounded-2xl border px-4 py-3 transition-colors cursor-pointer ${
-            hasVariants
+          className={`flex items-center justify-between gap-4 rounded-2xl border px-4 py-3 transition-colors cursor-pointer ${hasVariants
               ? 'border-primary/30 bg-primary/5'
               : 'border-border bg-muted/20'
-          }`}
+            }`}
           onClick={() => {
             const next = !field.value;
             field.onChange(next);
@@ -151,7 +150,7 @@ export const VariantSection = React.memo(({
               <p className="text-xs text-muted-foreground/60 mt-0.5">Tap to add a variant</p>
             </div>
           ) : (
-            <div className="space-y-2 max-h-[220px] overflow-y-auto pr-0.5">
+            <div className="space-y-2 max-h-55 overflow-y-auto pr-0.5">
               {fields.map((field, index) => (
                 <VariantRow
                   key={field.id}

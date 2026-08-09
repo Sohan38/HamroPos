@@ -41,11 +41,10 @@ export const BatchSection = React.memo(({
       {/* Toggle card */}
       <FormField control={form.control} name="hasExpiry" render={({ field }) => (
         <div
-          className={`flex items-center justify-between gap-4 rounded-2xl border px-4 py-3 transition-colors cursor-pointer ${
-            hasExpiry
+          className={`flex items-center justify-between gap-4 rounded-2xl border px-4 py-3 transition-colors cursor-pointer ${hasExpiry
               ? 'border-primary/30 bg-primary/5'
               : 'border-border bg-muted/20'
-          }`}
+            }`}
           onClick={() => {
             const next = !field.value;
             field.onChange(next);
@@ -106,7 +105,7 @@ export const BatchSection = React.memo(({
                 <p className="text-xs text-muted-foreground/60 mt-0.5">Tap to add your first batch</p>
               </div>
             ) : (
-              <div className="space-y-2 max-h-[280px] overflow-y-auto pr-0.5">
+              <div className="space-y-2 max-h-70 overflow-y-auto pr-0.5">
                 {sortedBatches.map(batch => (
                   <div key={batch.id} className="flex items-center gap-2 p-3 bg-muted/30 rounded-2xl border border-muted/60">
                     <div className="flex-1 min-w-0">

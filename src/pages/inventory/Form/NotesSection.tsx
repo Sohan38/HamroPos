@@ -6,10 +6,10 @@ import { useWatch } from 'react-hook-form';
 import { cn } from '@/lib/utils';
 
 export const NotesSection = React.memo(({ form }: SectionProps) => {
-  const notes     = useWatch({ control: form.control, name: 'notes' }) ?? '';
+  const notes = useWatch({ control: form.control, name: 'notes' }) ?? '';
   const notesError = form.formState.errors.notes?.message;
   const nearLimit = notes.length > 450;
-  const atLimit   = notes.length > 490;
+  const atLimit = notes.length > 490;
 
   return (
     <section className="px-4 py-4 space-y-3">
@@ -31,7 +31,7 @@ export const NotesSection = React.memo(({ form }: SectionProps) => {
             <Textarea
               placeholder="Storage instructions, specifications, or internal notes..."
               className={cn(
-                'resize-none min-h-[88px] text-sm transition-colors rounded-2xl',
+                'resize-none min-h-22 text-sm transition-colors rounded-2xl',
                 notesError && 'border-destructive focus-visible:ring-destructive/30'
               )}
               {...field}

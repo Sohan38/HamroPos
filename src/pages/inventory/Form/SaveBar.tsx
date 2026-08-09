@@ -18,7 +18,7 @@ export const SaveBar = React.memo(({ onBack, isSaving = false, form }: SaveBarPr
   return (
     <div className={cn(
       'sticky bottom-0 left-0 right-0 z-40 -mx-4 -mb-4 md:-mx-6 md:-mb-6',
-      'border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80',
+      'border-t bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80',
       'px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]',
       'shadow-[0_-8px_24px_-4px_rgba(0,0,0,0.08)]'
     )}>
@@ -49,7 +49,7 @@ export const SaveBar = React.memo(({ onBack, isSaving = false, form }: SaveBarPr
           <Button
             type="submit"
             className={cn(
-              'flex-[2] h-11 rounded-2xl font-semibold text-sm md:flex-initial md:min-w-[140px]',
+              'flex-2 h-11 rounded-2xl font-semibold text-sm md:flex-initial md:min-w-35',
               'bg-primary hover:bg-primary/90 transition-all',
               errorCount > 0 && 'opacity-80'
             )}
