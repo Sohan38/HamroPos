@@ -3,6 +3,8 @@ import { Check, ChevronDown, ChevronUp, Layers, Minus, Plus, Search, X } from 'l
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { CartItem, Product } from '@/types';
+import { rankSearch } from '@/utils/search/rank';
+import { normalize } from '@/utils/search/normalize';
 
 interface VariantPickerProps {
     product: Product;
@@ -26,9 +28,17 @@ export function VariantPicker({
         [product.variants],
     );
     const filteredVariants = useMemo(() => {
-        const normalizedQuery = query.trim().toLowerCase();
-        if (!normalizedQuery) return variants;
-        return variants.filter(variant => variant.name.toLowerCase().includes(normalizedQuery));
+        const normalizedQuery = normalize(query);
+        if (!normalizedQuery) return variants.slice(0, 2);
+
+        return rankSearch(
+            variants.map(variant => ({
+                ...variant,
+                name: variant.name,
+            })),
+            query,
+            2,
+        );
     }, [query, variants]);
     const getQuantity = (name: string) =>
         cart.find(item => item.productId === product.id && item.variantName === name)?.quantity ?? 0;

@@ -315,6 +315,7 @@ export default function SalesPos() {
   const change = paidAmount !== '' && Number(paidAmount) > grandTotal ? Number(paidAmount) - grandTotal : 0;
   const selectedCustomer = customerId ? customerMap.get(customerId) : undefined;
   const cartCount = cart.reduce((s, i) => s + i.quantity, 0);
+  const cartDisplayCount = cartCount + (variantProduct && !cart.some(item => item.productId === variantProduct.id) ? 1 : 0);
 
   const batchesByProduct = useMemo(() => {
     const map = new Map<string, ProductBatch[]>();
@@ -449,7 +450,7 @@ export default function SalesPos() {
   /** Common props forwarded to CartPanel */
   const cartPanelProps = {
     cart,
-    cartCount,
+    cartCount: cartDisplayCount,
     discount,
     discountType,
     discountValue,
@@ -749,17 +750,17 @@ export default function SalesPos() {
           <div className="flex items-center gap-3">
             <div className="relative">
               <ShoppingCart className="h-6 w-6" />
-              {cartCount > 0 && (
+              {cartDisplayCount > 0 && (
                 <span className="absolute -top-2 -right-2 bg-primary text-primary-foreground text-[10px] font-bold rounded-full h-4 w-4 flex items-center justify-center leading-none">
-                  {cartCount > 9 ? '9+' : cartCount}
+                  {cartDisplayCount > 9 ? '9+' : cartDisplayCount}
                 </span>
               )}
             </div>
             <div className="text-left">
               <div className="text-sm font-semibold">
-                {cart.length === 0 ? 'Cart is empty' : `${cart.length} item${cart.length !== 1 ? 's' : ''}`}
+                {cartDisplayCount === 0 ? 'Cart is empty' : `${cartDisplayCount} item${cartDisplayCount !== 1 ? 's' : ''}`}
               </div>
-              {cart.length > 0 && (
+              {cartDisplayCount > 0 && (
                 <div className="text-xs text-muted-foreground">Tap to review & checkout</div>
               )}
             </div>
