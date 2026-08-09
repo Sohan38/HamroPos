@@ -558,7 +558,8 @@ export default function InventoryForm() {
           if (newId) {
             const purchaseRequests: Array<any> = [];
             const shouldCreateBatchPurchases = localBatches.length > 0;
-            const shouldCreateSupplierPurchases = isMultiSup && (resolvedSupplierStocks ?? []).some((ss: any) => Number(ss.stock) > 0);
+            const supplierPurchaseEntries = (resolvedSupplierStocks ?? []).filter((entry: any) => entry?.supplierId && Number(entry.stock) > 0);
+            const shouldCreateSupplierPurchases = supplierPurchaseEntries.length > 0;
 
             if (shouldCreateBatchPurchases) {
               for (const batch of localBatches) {
@@ -586,7 +587,7 @@ export default function InventoryForm() {
                 });
               }
             } else if (shouldCreateSupplierPurchases) {
-              for (const entry of resolvedSupplierStocks ?? []) {
+              for (const entry of supplierPurchaseEntries) {
                 const supplierId = entry?.supplierId;
                 const quantity = Number(entry?.stock || 0);
                 if (!supplierId || quantity <= 0) continue;
