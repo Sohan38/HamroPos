@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { CalendarDays, FlaskConical, Save, Wand2, X } from 'lucide-react';
-import { ProductBatch, Supplier, BatchFormData } from '@/types';
+import { PurchaseInvoice, ProductBatch, Supplier, BatchFormData } from '@/types';
 import { addMonths, format as fmtDate, isAfter, isBefore, parseISO, startOfDay } from 'date-fns';
 import { useBackModal } from '@/contexts/NavigationContext';
 import { rankSearch } from '@/utils/search/rank';
@@ -101,6 +101,11 @@ export function BatchFormDialog({
   const [filterQuery, setFilterQuery] = useState('');
   const [supplierInvoiceNumber, setSupplierInvoiceNumber] = useState('');
 
+  const editBatchInvoiceNumber = useMemo(() => {
+    if (!editBatch?.purchaseInvoiceId) return '';
+    return existingPurchases.find(purchase => purchase.id === editBatch.purchaseInvoiceId)?.invoiceNumber ?? '';
+  }, [editBatch?.purchaseInvoiceId, existingPurchases]);
+
   const selectableSuppliers = useMemo(() => {
     const query = filterQuery.trim();
     if (!query) {
@@ -147,23 +152,29 @@ export function BatchFormDialog({
 
   // Reset form when dialog opens with new data
   useEffect(() => {
-    if (open) {
-      form.reset({
-        supplierId: editBatch?.supplierId ?? '',
-        batchNumber: editBatch?.batchNumber ?? nextBatchNumber,
-        manufacturingDate: editBatch?.manufacturingDate?.split('T')[0] ?? '',
-        expiryMode: editBatch?.expiryMonths ? 'months' : 'manual',
-        expiryMonths: editBatch?.expiryMonths ?? undefined,
-        expiryDate: editBatch?.expiryDate?.split('T')[0] ?? '',
-        initialQuantity: editBatch?.initialQuantity ?? 1,
-        purchaseRate: editBatch?.purchaseRate ?? 0,
-        notes: editBatch?.notes ?? '',
-      });
-      if (editBatch) {
-        setSupplierInvoiceNumber('');
-      }
+    if (!open) return;
+
+    form.reset({
+      supplierId: editBatch?.supplierId ?? '',
+      batchNumber: editBatch?.batchNumber ?? nextBatchNumber,
+      manufacturingDate: editBatch?.manufacturingDate?.split('T')[0] ?? '',
+      expiryMode: editBatch?.expiryMonths ? 'months' : 'manual',
+      expiryMonths: editBatch?.expiryMonths ?? undefined,
+      expiryDate: editBatch?.expiryDate?.split('T')[0] ?? '',
+      initialQuantity: editBatch?.initialQuantity ?? 1,
+      purchaseRate: editBatch?.purchaseRate ?? 0,
+      notes: editBatch?.notes ?? '',
+    });
+
+    if (editBatch && editBatchInvoiceNumber) {
+      setSupplierInvoiceNumber(editBatchInvoiceNumber);
+    } else if (selectedSupplierId) {
+      const generatedInvoiceNumber = generateSupplierInvoiceNumber(existingPurchases, selectedSupplier?.name ?? '', new Date());
+      setSupplierInvoiceNumber(generatedInvoiceNumber);
+    } else {
+      setSupplierInvoiceNumber('');
     }
-  }, [open, editBatch, nextBatchNumber]); // eslint-disable-line
+  }, [open, editBatch, editBatchInvoiceNumber, nextBatchNumber, selectedSupplierId, existingPurchases, selectedSupplier, form]);
 
   useEffect(() => {
     if (!open) return;
