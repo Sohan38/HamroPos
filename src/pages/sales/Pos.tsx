@@ -657,6 +657,7 @@ export default function SalesPos() {
             </button>
 
             {/* Desktop: real input with inline dropdown */}
+            {/* Desktop: real input with inline dropdown */}
             <div className="hidden lg:flex flex-1 relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -667,11 +668,15 @@ export default function SalesPos() {
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 onFocus={() => setSearchQuery(searchQuery)}
-                onKeyDown={handleSearchKeyDown}
               />
               {searchQuery.trim() && (
                 <div className="absolute top-11.5 left-0 right-0 bg-card border rounded-xl shadow-2xl z-50 overflow-hidden max-h-80 flex flex-col">
-                  {searchResults.length > 0 ? (
+                  {searchQuery.trim().length < 2 ? (
+                    <div className="p-4 text-center text-sm text-muted-foreground space-y-1">
+                      <p className="text-sm font-medium">Keep typing…</p>
+                      <p className="text-xs">Enter at least 2 characters</p>
+                    </div>
+                  ) : searchResults.length > 0 ? (
                     <div className="overflow-y-auto divide-y flex-1">
                       {searchResults.map(product => (
                         <button
