@@ -830,8 +830,7 @@ export default function InventoryForm() {
             {/* Stock details */}
             <StockSection
               form={form}
-              hasExpiry={hasExpiry}
-              hasVariants={hasVariants}
+              isNew={isNew}
               totalBatchQuantity={totalBatchQuantity}
               totalVariantQuantity={totalVariantQuantity}
               isMultiSupplier={isMultiSupplier}
@@ -845,6 +844,7 @@ export default function InventoryForm() {
               <>
                 <SupplierSection
                   form={form}
+                  isNew={isNew}
                   suppliers={suppliers}
                   existingPurchases={purchases}
                   onSupplierNew={(nameValue) => {
@@ -955,6 +955,7 @@ export default function InventoryForm() {
         onClose={() => setBatchDialogOpen(false)}
         onSave={handleSaveBatch}
         editBatch={editingBatch}
+        isNew={isNew}
         nextBatchNumber={nextBatchNumber}
         suppliers={suppliers}
         productId={existingProduct?.id || ''}

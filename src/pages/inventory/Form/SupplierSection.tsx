@@ -12,12 +12,13 @@ import { SupplierSearchList } from '@/components/SupplierSearchList';
 import { generateSupplierInvoiceNumber } from '@/utils/numbering';
 
 interface SupplierSectionProps extends SectionProps {
+  isNew: boolean;
   suppliers: Supplier[];
   existingPurchases?: Array<{ invoiceNumber?: string | null; date?: string | null }>;
   onSupplierNew: (name?: string) => void;
 }
 
-export const SupplierSection = React.memo(({ form, suppliers, existingPurchases = [], onSupplierNew }: SupplierSectionProps) => {
+export const SupplierSection = React.memo(({ form, isNew, suppliers, existingPurchases = [], onSupplierNew }: SupplierSectionProps) => {
   const selectedSupplierIds: string[] = useWatch({ control: form.control, name: 'supplierIds' }) ?? [];
   const supplierStocks: any[] = useWatch({ control: form.control, name: 'supplierStocks' }) ?? [];
   const isMultiSupplier = selectedSupplierIds.length >= 2;
@@ -175,11 +176,13 @@ export const SupplierSection = React.memo(({ form, suppliers, existingPurchases 
                             value={stockEntry.stock === 0 ? '' : stockEntry.stock}
                             onChange={e => updateSupplierStock(sid, 'stock', e.target.value === '' ? 0 : Number(e.target.value))}
                             className="h-10 text-sm font-medium"
-                            readOnly={!isMultiSupplier}
-                            disabled={!isMultiSupplier}
+                            readOnly={!isNew || !isMultiSupplier}
+                            disabled={!isNew || !isMultiSupplier}
                           />
-                          {!isMultiSupplier && (
-                            <p className="text-[10px] text-muted-foreground">Edit in Stock section above</p>
+                          {(!isNew || !isMultiSupplier) && (
+                            <p className="text-[10px] text-muted-foreground">
+                              {isNew ? 'Edit stock in the Stock section above' : 'Use stock adjustments for existing products.'}
+                            </p>
                           )}
                         </div>
                         <div className="space-y-1.5">

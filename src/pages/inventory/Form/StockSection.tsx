@@ -11,6 +11,7 @@ import { Package, AlertTriangle } from 'lucide-react';
 const UNITS: ProductUnit[] = ['pcs', 'packet', 'box', 'bottle', 'kg', 'gram', 'litre', 'ml', 'plate', 'cup', 'glass', 'meter', 'roll', 'dozen', 'custom'];
 
 interface StockSectionProps extends SectionProps {
+  isNew: boolean;
   hasExpiry: boolean;
   hasVariants: boolean;
   totalBatchQuantity: number;
@@ -26,12 +27,14 @@ const NumericField = ({
   label,
   hint,
   required = false,
+  readOnly = false,
 }: {
   form: StockSectionProps['form'];
   name: 'quantity' | 'minimumStock';
   label: string;
   hint?: string;
   required?: boolean;
+  readOnly?: boolean;
 }) => {
   const value = useWatch({ control: form.control, name }) ?? 0;
   const error = form.formState.errors[name]?.message;
@@ -58,6 +61,8 @@ const NumericField = ({
               error && 'border-destructive focus-visible:ring-destructive/30',
               isValid && 'border-green-400 focus-visible:ring-green-400/30'
             )}
+            readOnly={readOnly}
+            disabled={readOnly}
           />
         </FormControl>
         {hint && !error && <p className="text-[10px] text-muted-foreground mt-1 leading-snug">{hint}</p>}
@@ -68,7 +73,7 @@ const NumericField = ({
 };
 
 export const StockSection = React.memo(({
-  form, hasExpiry, hasVariants,
+  form, isNew, hasExpiry, hasVariants,
   totalBatchQuantity, totalVariantQuantity,
   isMultiSupplier, totalSupplierStockQuantity,
 }: StockSectionProps) => {
@@ -145,7 +150,9 @@ export const StockSection = React.memo(({
         // Normal single-supplier / no supplier mode
         <div className="grid grid-cols-2 gap-3">
           <NumericField form={form} name="quantity" label="Current Stock"
-            hint={`How many ${watchedUnit} in stock?`} />
+            hint={isNew ? `How many ${watchedUnit} in stock?` : `Stock is managed through stock adjustments for existing products.`}
+            readOnly={!isNew}
+          />
           <NumericField form={form} name="minimumStock" label="Low Stock Alert"
             hint={`Alert below this qty of ${watchedUnit}.`} />
         </div>

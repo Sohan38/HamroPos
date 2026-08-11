@@ -87,6 +87,7 @@ interface BatchFormDialogProps {
   suppliers: Supplier[];
   productId: string;
   editBatch?: ProductBatch | null;
+  isNew: boolean;
   nextBatchNumber: string;
   productName?: string;
   existingBatches?: ProductBatch[];
@@ -95,7 +96,7 @@ interface BatchFormDialogProps {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export function BatchFormDialog({
-  open, onClose, onSave, suppliers, productId, editBatch, nextBatchNumber, productName, existingBatches = [], existingPurchases = [],
+  open, onClose, onSave, suppliers, productId, editBatch, isNew, nextBatchNumber, productName, existingBatches = [], existingPurchases = [],
 }: BatchFormDialogProps) {
   const [previewExpiry, setPreviewExpiry] = useState<string | null>(null);
   const [filterQuery, setFilterQuery] = useState('');
@@ -420,8 +421,13 @@ export function BatchFormDialog({
                       value={field.value === 0 ? '' : field.value}
                       onChange={e => field.onChange(e.target.value === '' ? 0 : Number(e.target.value))}
                       className="h-9"
+                      readOnly={!isNew}
+                      disabled={!isNew}
                     />
                   </FormControl>
+                  {!isNew && (
+                    <p className="text-[10px] text-muted-foreground mt-1">Stock adjustments are managed separately for existing products.</p>
+                  )}
                   <FormMessage />
                 </FormItem>
               )} />
