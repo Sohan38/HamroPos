@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
-import { ArrowLeft, ChevronRight } from 'lucide-react'; // if not already imported
+import { ArrowLeft, CheckCircle2, ChevronRight } from 'lucide-react'; // if not already imported
 import { useWatch, useForm } from 'react-hook-form';
 import { useLocation, useParams } from 'wouter';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -775,7 +775,7 @@ export default function InventoryForm() {
       id: string;
       label: string;
       content: React.ReactNode;
-
+      fields?: string[];
     }> = [];
 
     // 1. Product
@@ -791,6 +791,7 @@ export default function InventoryForm() {
           existingNameLookup={existingProductNameLookup}
         />
       ),
+      fields: ['name', 'category', 'barcode', 'brand', 'imageBase64'],
     });
 
     // 2. Inventory (generic — batches + variants together)
@@ -819,6 +820,7 @@ export default function InventoryForm() {
           />
         </>
       ),
+      fields: ['hasExpiry', 'hasVariants', 'variants'],
     });
 
     // 3. Suppliers (if not expiry mode)
@@ -838,6 +840,7 @@ export default function InventoryForm() {
             }}
           />
         ),
+        fields: ['supplierIds', 'supplierStocks'],
       });
     }
 
@@ -924,6 +927,7 @@ export default function InventoryForm() {
             </div>
           </div>
         ),
+        // no fields array – purchase draft isn't part of the schema
       });
     }
 
@@ -948,11 +952,12 @@ export default function InventoryForm() {
             totalVariantQuantity={totalVariantQuantity}
             isMultiSupplier={isMultiSupplier}
             totalSupplierStockQuantity={totalSupplierStockQuantity}
-            hasExpiry={hasExpiry}    // actual value
-            hasVariants={hasVariants} // actual value
+            hasExpiry={hasExpiry}
+            hasVariants={hasVariants}
           />
         </>
       ),
+      fields: ['purchaseRate', 'sellingRate', 'quantity', 'minimumStock'],
     });
 
     // 6. Review & Save (Notes + SaveBar)
@@ -971,6 +976,7 @@ export default function InventoryForm() {
           </div>
         </div>
       ),
+      fields: ['notes'],
     });
 
     return result;
@@ -985,11 +991,103 @@ export default function InventoryForm() {
     supplierPurchaseDrafts, updatePurchaseDraft, goBack
   ]);
 
+  const stepErrors = useMemo(() => {
+    const errorFields = Object.keys(form.formState.errors);
+    return steps.map(step =>
+      step.fields ? step.fields.some(f => errorFields.includes(f)) : false
+    );
+  }, [steps, form.formState.errors]);
+
+  // after stepErrors definition
+  const stepErrorsWithUI = useMemo(() => {
+    return stepErrors.map((err, idx) => {
+      if (steps[idx]?.id === 'suppliers' && !hasExpiry && watchedSupplierIds.length === 0) {
+        return true;
+      }
+      return err;
+    });
+  }, [stepErrors, steps, hasExpiry, watchedSupplierIds]);
+
+  const stepsWithReview = useMemo(() => {
+    return steps.map((step, idx) => {
+      if (step.id !== 'review') return step;
+
+      const anyErrors = stepErrorsWithUI.some(Boolean); // use withUI
+      const errorStepIndices = stepErrorsWithUI.reduce<number[]>((acc, err, i) => {
+        if (err) acc.push(i);
+        return acc;
+      }, []);
+
+      return {
+        ...step,
+        content: (
+          <div className="p-6 md:p-8 space-y-6">
+            <NotesSection form={form} />
+            <Separator className="my-0" />
+
+            {anyErrors ? (
+              <div className="space-y-4">
+                <div className="flex items-start gap-3 p-4 rounded-2xl border border-destructive/30 bg-destructive/5">
+                  <AlertTriangle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+                  <div className="min-w-0">
+                    <h3 className="font-semibold text-destructive">Review incomplete</h3>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Some steps still require attention before you can save this product.
+                    </p>
+                  </div>
+                </div>
+
+                <ul className="space-y-2">
+                  {steps.map((s, i) => {
+                    if (!stepErrorsWithUI[i]) return null; // use withUI
+                    return (
+                      <li key={s.id}>
+                        <button
+                          type="button"
+                          onClick={() => setActiveStep(i)}
+                          className="w-full flex items-center gap-3 p-3 rounded-xl border border-muted-foreground/20 bg-card hover:bg-muted/30 transition-colors text-left"
+                        >
+                          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-destructive text-destructive-foreground text-xs font-bold">
+                            {i + 1}
+                          </span>
+                          <span className="text-sm font-medium">{s.label}</span>
+                          <span className="ml-auto text-xs text-destructive underline underline-offset-2">
+                            Fix
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex items-center gap-3 p-4 rounded-2xl border border-green-200 bg-green-50/50 dark:bg-green-950/20">
+                  <CheckCircle2 className="h-5 w-5 text-green-600 shrink-0" />
+                  <div>
+                    <h3 className="font-semibold text-green-800 dark:text-green-300">Ready to save</h3>
+                    <p className="text-sm text-muted-foreground">
+                      All steps are complete and valid. Use the button below to finalise.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        ),
+      };
+    });
+  }, [steps, stepErrorsWithUI, form, setActiveStep]);
+
   // Unified bottom navigation
   const totalSteps = steps.length;
-  const footer = activeStep === totalSteps - 1 ? (
+  const anyStepHasErrors = stepErrorsWithUI.some(Boolean);
+
+  const footer = activeStep === totalSteps - 1 && !anyStepHasErrors ? (
+    // Final step with no errors – show the full SaveBar
     <SaveBar onBack={goBack} form={form} />
   ) : (
+    // All other steps, or last step with errors – show only Back + step counter
     <div className={cn(
       'sticky bottom-0 left-0 right-0 z-40 -mx-4 -mb-4 md:-mx-6 md:-mb-6',
       'border-t bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80',
@@ -997,6 +1095,7 @@ export default function InventoryForm() {
       'shadow-[0_-8px_24px_-4px_rgba(0,0,0,0.08)]'
     )}>
       <div className="mx-auto flex w-full max-w-4xl items-center justify-between">
+        {/* Back button – on first step calls goBack, otherwise goes to previous step */}
         <Button
           type="button"
           variant="outline"
@@ -1006,20 +1105,27 @@ export default function InventoryForm() {
           <ArrowLeft className="mr-1.5 h-4 w-4" /> Back
         </Button>
 
+        {/* Step counter (centered) */}
         <span className="text-sm font-medium text-muted-foreground">
           Step {activeStep + 1} of {totalSteps}
         </span>
 
-        <Button
-          type="button"
-          onClick={() => setActiveStep(prev => prev + 1)}
-          className="h-11 rounded-2xl font-semibold"
-        >
-          Next <ChevronRight className="ml-1.5 h-4 w-4" />
-        </Button>
+        {/* Next button – hidden on last step when errors exist, otherwise normal */}
+        {activeStep < totalSteps - 1 ? (
+          <Button
+            type="button"
+            onClick={() => setActiveStep(prev => prev + 1)}
+            className="h-11 rounded-2xl font-semibold"
+          >
+            Next <ChevronRight className="ml-1.5 h-4 w-4" />
+          </Button>
+        ) : (
+          <div className="w-10.5" /> // placeholder to keep layout balanced
+        )}
       </div>
     </div>
   );
+
 
   return (
     <div className="p-4 md:p-6 max-w-4xl mx-auto space-y-6">
@@ -1048,10 +1154,11 @@ export default function InventoryForm() {
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)}>
           <StepFormContainer
-            steps={steps}
+            steps={stepsWithReview}
             activeStep={activeStep}
             onStepChange={setActiveStep}
             footer={footer}
+            stepErrors={stepErrorsWithUI}
           />
         </form>
       </Form>

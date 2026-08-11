@@ -107,7 +107,7 @@ export function StepFormContainer({
                         type="button"
                         onClick={() => onStepChange(idx)}
                         className={cn(
-                            'snap-center flex-shrink-0 flex flex-col items-center gap-1 px-3 py-2 rounded-xl transition-all min-w-[72px]',
+                            'snap-center shrink-0 flex flex-col items-center gap-1 px-3 py-2 rounded-xl transition-all min-w-18',
                             idx === activeStep
                                 ? 'bg-primary/10 text-primary scale-105 shadow-sm'
                                 : 'text-muted-foreground hover:bg-muted/50'
