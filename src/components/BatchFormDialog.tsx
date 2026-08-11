@@ -1,7 +1,5 @@
 // BatchFormDialog.tsx
-// Full corrected version based on the user's working implementation.
-// Preserves existing batch/invoice numbers in edit mode and makes quantity
-// non-editable only when editing an existing batch.
+// Merged version: preserves supplier invoice on edit & auto‑generates on add.
 
 import { useEffect, useState, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
@@ -194,8 +192,8 @@ export function BatchFormDialog({
   const [filterQuery, setFilterQuery] = useState('');
   const [supplierInvoiceNumber, setSupplierInvoiceNumber] = useState('');
 
-  // Resolve the invoice belonging to the batch being edited.
-  // This is intentionally used only for edit mode.
+  // Resolve the invoice number for the batch being edited.
+  // Fall back to purchaseInvoiceId if the actual invoice number hasn't loaded yet.
   const editBatchInvoiceNumber = useMemo(() => {
     if (!editBatch?.purchaseInvoiceId) return '';
 
@@ -203,7 +201,7 @@ export function BatchFormDialog({
       (item) => item.id === editBatch.purchaseInvoiceId,
     );
 
-    return purchase?.invoiceNumber ?? '';
+    return purchase?.invoiceNumber ?? editBatch.purchaseInvoiceId;
   }, [editBatch?.purchaseInvoiceId, existingPurchases]);
 
   const selectableSuppliers = useMemo(() => {
@@ -263,7 +261,7 @@ export function BatchFormDialog({
     }
   }, [expiryMode, mfgDate, expiryMonths]);
 
-  // Reset when opening or switching the batch being edited.
+  // Reset form when dialog opens / edit batch changes
   useEffect(() => {
     if (!open) return;
 
@@ -280,8 +278,8 @@ export function BatchFormDialog({
       notes: editBatch?.notes ?? '',
     });
 
-    // EDIT: preserve the old invoice.
-    // ADD: invoice will be generated after supplier selection.
+    // For edit mode, restore the supplier invoice.
+    // For add mode, clear it until a supplier is picked.
     if (editBatch) {
       setSupplierInvoiceNumber(editBatchInvoiceNumber);
     } else {
@@ -297,23 +295,24 @@ export function BatchFormDialog({
     form,
   ]);
 
-  // Generate numbers for NEW batches only.
-  // Existing batches must keep their historical batch/invoice identity.
+  // When adding, auto‑generate batch number & invoice on supplier selection
   useEffect(() => {
     if (!open) return;
 
+    // Editing an existing batch → never regenerate identifiers
     if (editBatch) return;
 
+    // No supplier selected → clear the generated values
     if (!selectedSupplierId) {
       form.setValue('batchNumber', '', {
         shouldDirty: true,
         shouldValidate: false,
       });
-
       setSupplierInvoiceNumber('');
       return;
     }
 
+    // Generate new identifiers
     const generatedBatchNumber = generateBatchNumber(existingBatches, {
       productName,
       supplierName: selectedSupplier?.name ?? '',
