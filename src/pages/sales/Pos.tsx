@@ -156,20 +156,7 @@ export default function SalesPos() {
     return map;
   }, [inventory]);
 
-  useEffect(() => {
-    const code = searchQuery.trim();
 
-    if (!code) return;
-
-    const product = barcodeMap.get(code);
-
-    if (!product) return;
-
-    addToCart(product);
-
-    setSearchQuery('');
-    setDebouncedSearch('');
-  }, [searchQuery, barcodeMap]);
 
   const customerMap = useMemo(() => {
     const map = new Map<string, typeof customers[number]>();
@@ -511,6 +498,19 @@ export default function SalesPos() {
     onCheckout: handleCheckout,
   };
 
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter') return;
+    const code = searchQuery.trim();
+    if (!code) return;
+    const product = barcodeMap.get(code);
+    if (product) {
+      e.preventDefault();
+      addToCart(product);
+      // The addToCart function already clears searchQuery and closes the overlay
+    }
+  };
+
   return (
     <div className="flex flex-col h-[calc(100dvh-56px)] md:h-screen bg-muted/20">
 
@@ -540,6 +540,7 @@ export default function SalesPos() {
                 className="w-full h-11 pl-9 pr-9 rounded-lg border bg-muted/50 text-base outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
+                onKeyDown={handleSearchKeyDown}
               />
               {searchQuery && (
                 <button
@@ -666,6 +667,7 @@ export default function SalesPos() {
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 onFocus={() => setSearchQuery(searchQuery)}
+                onKeyDown={handleSearchKeyDown}
               />
               {searchQuery.trim() && (
                 <div className="absolute top-11.5 left-0 right-0 bg-card border rounded-xl shadow-2xl z-50 overflow-hidden max-h-80 flex flex-col">
