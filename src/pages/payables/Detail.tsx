@@ -18,7 +18,7 @@ import { format as formatDate, parseISO } from 'date-fns';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { CreditPayment } from '@/types';
-import { patchPurchase } from '@/services/purchaseService';
+import { patchPurchase, patchPurchaseFinancial } from '@/services/purchaseService';
 
 export default function PayableDetail() {
   const goBack = useSmartBack('/payables');
@@ -109,7 +109,7 @@ export default function PayableDetail() {
         note: PAYMENT_METHOD_LABELS[paymentMethod],
       };
 
-      await patchPurchase(storage, invoice.id, {
+      await patchPurchaseFinancial(storage, invoice.id, {
         paidAmount: nextPaidAmount,
         payments: [...payments, newPayment],
         paymentStatus: isFullyPaid ? 'paid' : 'partial',
