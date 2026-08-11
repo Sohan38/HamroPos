@@ -94,7 +94,14 @@ async function buildPurchasePayloadsForNewItems(storage: IStorageProvider, optsL
     const purchases = await storage.get<any>('purchases');
     const suppliers = await storage.get<any>('suppliers');
 
-    const payloads: Array<any> = [];
+    const grouped: Map<string, {
+        supplierId?: string | null;
+        supplierName?: string | null;
+        invoiceNumber?: string | null;
+        dateIso: string;
+        notes?: string | null;
+        items: any[];
+    }> = new Map();
 
     for (const opts of optsList) {
         const qty = Number(opts.quantity || 0);
@@ -103,7 +110,7 @@ async function buildPurchasePayloadsForNewItems(storage: IStorageProvider, optsL
         const product = inventory.find((item: Product) => item.id === opts.productId);
         const supplierId = opts.supplierId ?? product?.supplierId ?? product?.supplierIds?.[0] ?? '';
         const resolvedSupplierName = opts.supplierName ?? suppliers.find((supplier: any) => supplier.id === supplierId)?.name ?? null;
-        const invoice = (opts.invoiceNumber || '').trim() || generateSupplierInvoiceNumber(purchases, resolvedSupplierName ?? '', opts.date ?? new Date());
+        const invoiceNumber = (opts.invoiceNumber || '').trim() || undefined;
         const dateIso = opts.date ? (opts.date instanceof Date ? opts.date.toISOString() : new Date(opts.date).toISOString()) : new Date().toISOString();
         const rate = Number(opts.purchaseRate ?? product?.purchaseRate ?? 0) || 0;
         const subtotal = qty * rate;
@@ -122,20 +129,50 @@ async function buildPurchasePayloadsForNewItems(storage: IStorageProvider, optsL
             expiryDate: opts.expiryDate ?? undefined,
         } as any;
 
+        const supplierKey = supplierId || resolvedSupplierName || 'unknown-supplier';
+        const groupingKey = `${supplierKey}::${invoiceNumber ?? ''}`;
+        const existing = grouped.get(groupingKey);
+
+        if (existing) {
+            existing.items.push(item);
+            if (new Date(dateIso) < new Date(existing.dateIso)) {
+                existing.dateIso = dateIso;
+            }
+            if (!existing.notes && opts.notes) {
+                existing.notes = opts.notes;
+            }
+        } else {
+            grouped.set(groupingKey, {
+                supplierId: supplierId || undefined,
+                supplierName: resolvedSupplierName ?? undefined,
+                invoiceNumber: invoiceNumber ?? undefined,
+                dateIso,
+                notes: opts.notes || undefined,
+                items: [item],
+            });
+        }
+    }
+
+    const payloads: Array<any> = [];
+    for (const group of grouped.values()) {
+        const items = group.items;
+        const grandTotal = items.reduce((sum, item) => sum + item.subtotal, 0);
+        const invoice = group.invoiceNumber || generateSupplierInvoiceNumber(purchases, group.supplierName ?? '', group.dateIso ? new Date(group.dateIso) : new Date());
+
         payloads.push({
             invoiceNumber: invoice,
-            supplierId,
-            supplierName: resolvedSupplierName ?? null,
-            date: dateIso,
-            items: [item],
+            supplierId: group.supplierId ?? '',
+            supplierName: group.supplierName ?? null,
+            date: group.dateIso,
+            items,
             discount: 0,
             tax: 0,
-            grandTotal: subtotal,
+            grandTotal,
             paymentMethod: 'cash',
             paymentStatus: 'unpaid',
             paidAmount: 0,
             referenceNumber: undefined,
-            notes: opts.notes || '',
+            notes: group.notes || '',
             status: 'received' as const,
         });
     }
