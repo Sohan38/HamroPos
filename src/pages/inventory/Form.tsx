@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
+import { ArrowLeft, ChevronRight } from 'lucide-react'; // if not already imported
 import { useWatch, useForm } from 'react-hook-form';
 import { useLocation, useParams } from 'wouter';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -22,6 +23,7 @@ import { useStorageProvider } from '@/storage/StorageContext';
 import { createPurchase } from '@/services/purchaseService';
 import { createPurchasesForNewItem } from '@/services/purchaseHelpers';
 
+import { StepFormContainer } from '@/components/ui/StepFormContainer';
 // Subcomponents
 import { productSchema, ProductFormValues } from './Form/types';
 import { ProductIdentitySection } from './Form/ProductIdentitySection';
@@ -34,6 +36,7 @@ import { NotesSection } from './Form/NotesSection';
 import { SaveBar } from './Form/SaveBar';
 import { SupplierFormDialog } from '@/components/SupplierFormDialog';
 import { generateBatchNumber, generateSupplierInvoiceNumber } from '@/utils/numbering';
+import { cn } from '@/lib/utils';
 
 type SupplierPurchaseDraft = {
   invoiceNumber: string;
@@ -765,10 +768,263 @@ export default function InventoryForm() {
     setEditingBatch(null);
   };
 
+  const [activeStep, setActiveStep] = useState(0);
+
+  const steps = useMemo(() => {
+    const result: Array<{
+      id: string;
+      label: string;
+      content: React.ReactNode;
+
+    }> = [];
+
+    // 1. Product
+    result.push({
+      id: 'identity',
+      label: 'Product',
+      content: (
+        <ProductIdentitySection
+          form={form}
+          isNew={isNew}
+          existingCategories={existingCategories}
+          existingBrands={existingBrands}
+          existingNameLookup={existingProductNameLookup}
+        />
+      ),
+    });
+
+    // 2. Inventory (generic — batches + variants together)
+    result.push({
+      id: 'inventory',
+      label: 'Inventory',
+      content: (
+        <>
+          <BatchSection
+            form={form}
+            isExpiryEnabled={isExpiryEnabled}
+            isBatchesEnabled={isBatchesEnabled}
+            hasExpiry={hasExpiry}
+            onToggleExpiry={handleToggleExpiry}
+            localBatches={localBatches}
+            onAddBatch={handleAddBatch}
+            onEditBatch={handleEditBatch}
+            onDeleteBatch={handleDeleteBatch}
+          />
+          <Separator className="my-0" />
+          <VariantSection
+            form={form}
+            isVariantsEnabled={isVariantsEnabled}
+            hasVariants={hasVariants}
+            onToggleVariants={handleToggleVariants}
+          />
+        </>
+      ),
+    });
+
+    // 3. Suppliers (if not expiry mode)
+    if (!hasExpiry) {
+      result.push({
+        id: 'suppliers',
+        label: 'Suppliers',
+        content: (
+          <SupplierSection
+            form={form}
+            isNew={isNew}
+            suppliers={suppliers}
+            existingPurchases={purchases}
+            onSupplierNew={(nameValue) => {
+              setSupplierPresetName(nameValue ?? '');
+              setSupplierDialogOpen(true);
+            }}
+          />
+        ),
+      });
+    }
+
+    // 4. Purchase (conditional)
+    if (showPurchaseCreationSection) {
+      result.push({
+        id: 'purchase',
+        label: 'Purchase',
+        content: (
+          <div className="p-6 md:p-8 bg-muted/20">
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <div>
+                <h3 className="font-semibold">Purchase capture</h3>
+                <p className="text-xs text-muted-foreground">Create one purchase document per supplier for this item.</p>
+              </div>
+            </div>
+            <div className="space-y-4">
+              {purchaseSupplierIds.map((supplierId) => {
+                const draft = supplierPurchaseDrafts[supplierId];
+                const supplier = suppliers.find(c => c.id === supplierId);
+                if (!draft) return null;
+                return (
+                  <Card key={supplierId} className="border-dashed">
+                    <CardContent className="p-4 md:p-5 space-y-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="font-medium">{supplier?.name ?? 'Supplier'}</p>
+                          <p className="text-xs text-muted-foreground">Invoice, payment, and reference details</p>
+                        </div>
+                        <div className="rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          {draft.paymentStatus}
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <label className="space-y-1 text-sm font-medium">
+                          Supplier invoice #
+                          <Input value={draft.invoiceNumber} onChange={e => updatePurchaseDraft(supplierId, 'invoiceNumber', e.target.value)} placeholder="e.g. SUP-2026-001" />
+                        </label>
+                        <label className="space-y-1 text-sm font-medium">
+                          Purchase date
+                          <Input type="date" value={draft.purchaseDate} onChange={e => updatePurchaseDraft(supplierId, 'purchaseDate', e.target.value)} />
+                        </label>
+                        <label className="space-y-1 text-sm font-medium">
+                          Reference number
+                          <Input value={draft.referenceNumber} onChange={e => updatePurchaseDraft(supplierId, 'referenceNumber', e.target.value)} placeholder="Optional PO or delivery ref" />
+                        </label>
+                        <label className="space-y-1 text-sm font-medium">
+                          Payment method
+                          <Select value={draft.paymentMethod} onValueChange={val => updatePurchaseDraft(supplierId, 'paymentMethod', val)}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {(['cash', 'qr', 'card', 'bank', 'split'] as PaymentMethod[]).map(m => (
+                                <SelectItem className="capitalize" key={m} value={m}>{m}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </label>
+                        <label className="space-y-1 text-sm font-medium">
+                          Payment status
+                          <Select value={draft.paymentStatus} onValueChange={val => updatePurchaseDraft(supplierId, 'paymentStatus', val)}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="unpaid">Unpaid</SelectItem>
+                              <SelectItem value="partial">Partially paid</SelectItem>
+                              <SelectItem value="paid">Paid</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </label>
+                        {draft.paymentStatus === 'partial' && (
+                          <label className="space-y-1 text-sm font-medium">
+                            Paid amount
+                            <Input type="number" min="0" step="0.01" value={draft.paidAmount} onChange={e => updatePurchaseDraft(supplierId, 'paidAmount', e.target.value)} />
+                          </label>
+                        )}
+                      </div>
+                      <label className="space-y-1 text-sm font-medium block">
+                        Notes
+                        <Textarea value={draft.notes} onChange={e => updatePurchaseDraft(supplierId, 'notes', e.target.value)} placeholder="Delivery notes or payment terms" rows={2} />
+                      </label>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          </div>
+        ),
+      });
+    }
+
+    // 5. Pricing & Stock (combined)
+    result.push({
+      id: 'pricing-stock',
+      label: 'Pricing & Stock',
+      content: (
+        <>
+          <PricingSection
+            form={form}
+            hasExpiry={hasExpiry}
+            averagePurchaseRate={averagePurchaseRate}
+            hasSupplier={!hasExpiry && watchedSupplierIds.length > 0}
+            isMultiSupplier={isMultiSupplier}
+          />
+          <Separator className="my-0" />
+          <StockSection
+            form={form}
+            isNew={isNew}
+            totalBatchQuantity={totalBatchQuantity}
+            totalVariantQuantity={totalVariantQuantity}
+            isMultiSupplier={isMultiSupplier}
+            totalSupplierStockQuantity={totalSupplierStockQuantity}
+            hasExpiry={hasExpiry}    // actual value
+            hasVariants={hasVariants} // actual value
+          />
+        </>
+      ),
+    });
+
+    // 6. Review & Save (Notes + SaveBar)
+    result.push({
+      id: 'review',
+      label: 'Review & Save',
+      content: (
+        <div className="p-6 md:p-8 space-y-6">
+          <NotesSection form={form} />
+          <Separator className="my-0" />
+          <div>
+            <h3 className="font-semibold mb-2">Review and save product</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              All information has been captured. Click the button below to finalise.
+            </p>
+          </div>
+        </div>
+      ),
+    });
+
+    return result;
+  }, [
+    form, isNew, existingCategories, existingBrands, existingProductNameLookup,
+    isExpiryEnabled, isBatchesEnabled, hasExpiry, handleToggleExpiry, localBatches,
+    handleAddBatch, handleEditBatch, handleDeleteBatch,
+    isVariantsEnabled, hasVariants, handleToggleVariants,
+    averagePurchaseRate, watchedSupplierIds, isMultiSupplier,
+    totalBatchQuantity, totalVariantQuantity, totalSupplierStockQuantity,
+    suppliers, purchases, showPurchaseCreationSection, purchaseSupplierIds,
+    supplierPurchaseDrafts, updatePurchaseDraft, goBack
+  ]);
+
+  // Unified bottom navigation
+  const totalSteps = steps.length;
+  const footer = activeStep === totalSteps - 1 ? (
+    <SaveBar onBack={goBack} form={form} />
+  ) : (
+    <div className={cn(
+      'sticky bottom-0 left-0 right-0 z-40 -mx-4 -mb-4 md:-mx-6 md:-mb-6',
+      'border-t bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80',
+      'px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]',
+      'shadow-[0_-8px_24px_-4px_rgba(0,0,0,0.08)]'
+    )}>
+      <div className="mx-auto flex w-full max-w-4xl items-center justify-between">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={activeStep === 0 ? goBack : () => setActiveStep(prev => prev - 1)}
+          className="h-11 rounded-2xl border-border"
+        >
+          <ArrowLeft className="mr-1.5 h-4 w-4" /> Back
+        </Button>
+
+        <span className="text-sm font-medium text-muted-foreground">
+          Step {activeStep + 1} of {totalSteps}
+        </span>
+
+        <Button
+          type="button"
+          onClick={() => setActiveStep(prev => prev + 1)}
+          className="h-11 rounded-2xl font-semibold"
+        >
+          Next <ChevronRight className="ml-1.5 h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+
   return (
-    <div className="p-4 md:p-6 space-y-6 max-w-4xl mx-auto">
+    <div className="p-4 md:p-6 max-w-4xl mx-auto space-y-6">
       {/* Header */}
-      <div className="mb-4">
+      <div className="mb-2">
         <h1 className="text-2xl md:text-3xl font-bold text-foreground">
           {isNew ? 'Add Product' : 'Edit Product'}
         </h1>
@@ -777,7 +1033,7 @@ export default function InventoryForm() {
         </p>
       </div>
 
-      {/* Warning Banners */}
+      {/* Warning Banners (always visible) */}
       {warnings.length > 0 && (
         <Alert variant="default" className="border-orange-200 bg-orange-50/50">
           <AlertTriangle className="h-4 w-4 text-orange-600" />
@@ -791,176 +1047,16 @@ export default function InventoryForm() {
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)}>
-          <div className="md:rounded-2xl md:border md:bg-card md:overflow-hidden md:shadow-sm">
-            {/* Identity */}
-            <ProductIdentitySection
-              form={form}
-              isNew={isNew}
-              existingCategories={existingCategories}
-              existingBrands={existingBrands}
-              existingNameLookup={existingProductNameLookup}
-            />
-
-            <Separator />
-
-            {/* Expiry Tracking */}
-            <BatchSection
-              form={form}
-              isExpiryEnabled={isExpiryEnabled}
-              isBatchesEnabled={isBatchesEnabled}
-              hasExpiry={hasExpiry}
-              onToggleExpiry={handleToggleExpiry}
-              localBatches={localBatches}
-              onAddBatch={handleAddBatch}
-              onEditBatch={handleEditBatch}
-              onDeleteBatch={handleDeleteBatch}
-            />
-
-            <Separator />
-
-            {/* Variants */}
-            <VariantSection
-              form={form}
-              isVariantsEnabled={isVariantsEnabled}
-              hasVariants={hasVariants}
-              onToggleVariants={handleToggleVariants}
-            />
-
-            <Separator />
-
-            {/* Pricing */}
-            <PricingSection
-              form={form}
-              hasExpiry={hasExpiry}
-              averagePurchaseRate={averagePurchaseRate}
-              hasSupplier={!hasExpiry && watchedSupplierIds.length > 0}
-              isMultiSupplier={isMultiSupplier}
-            />
-
-            <Separator />
-
-            {/* Stock details */}
-            <StockSection
-              form={form}
-              isNew={isNew}
-              totalBatchQuantity={totalBatchQuantity}
-              totalVariantQuantity={totalVariantQuantity}
-              isMultiSupplier={isMultiSupplier}
-              totalSupplierStockQuantity={totalSupplierStockQuantity} hasExpiry={false} hasVariants={false} />
-
-            <Separator />
-
-            {/* Suppliers */}
-            {!hasExpiry && (
-              <>
-                <SupplierSection
-                  form={form}
-                  isNew={isNew}
-                  suppliers={suppliers}
-                  existingPurchases={purchases}
-                  onSupplierNew={(nameValue) => {
-                    setSupplierPresetName(nameValue ?? '');
-                    setSupplierDialogOpen(true);
-                  }}
-                />
-                <Separator />
-              </>
-            )}
-
-            {showPurchaseCreationSection && (
-              <>
-                <div className="p-6 md:p-8 bg-muted/20">
-                  <div className="flex items-start justify-between gap-3 mb-4">
-                    <div>
-                      <h3 className="font-semibold">Purchase capture</h3>
-                      <p className="text-xs text-muted-foreground">Create one purchase document per supplier for this item. Batch tracking uses the batch entries below.</p>
-                    </div>
-                  </div>
-                  <div className="space-y-4">
-                    {purchaseSupplierIds.map((supplierId) => {
-                      const draft = supplierPurchaseDrafts[supplierId];
-                      const supplier = suppliers.find(candidate => candidate.id === supplierId);
-                      if (!draft) return null;
-                      return (
-                        <Card key={supplierId} className="border-dashed">
-                          <CardContent className="p-4 md:p-5 space-y-4">
-                            <div className="flex items-center justify-between gap-3">
-                              <div>
-                                <p className="font-medium">{supplier?.name ?? 'Supplier'}</p>
-                                <p className="text-xs text-muted-foreground">Invoice, payment, and reference details</p>
-                              </div>
-                              <div className="rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                                {draft.paymentStatus}
-                              </div>
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                              <label className="space-y-1 text-sm font-medium">
-                                Supplier invoice #
-                                <Input value={draft.invoiceNumber} onChange={event => updatePurchaseDraft(supplierId, 'invoiceNumber', event.target.value)} placeholder="e.g. SUP-2026-001" />
-                              </label>
-                              <label className="space-y-1 text-sm font-medium">
-                                Purchase date
-                                <Input type="date" value={draft.purchaseDate} onChange={event => updatePurchaseDraft(supplierId, 'purchaseDate', event.target.value)} />
-                              </label>
-                              <label className="space-y-1 text-sm font-medium">
-                                Reference number
-                                <Input value={draft.referenceNumber} onChange={event => updatePurchaseDraft(supplierId, 'referenceNumber', event.target.value)} placeholder="Optional PO or delivery ref" />
-                              </label>
-                              <label className="space-y-1 text-sm font-medium">
-                                Payment method
-                                <Select value={draft.paymentMethod} onValueChange={value => updatePurchaseDraft(supplierId, 'paymentMethod', value)}>
-                                  <SelectTrigger><SelectValue /></SelectTrigger>
-                                  <SelectContent>
-                                    {(['cash', 'qr', 'card', 'bank', 'split'] as PaymentMethod[]).map(method => (
-                                      <SelectItem className="capitalize" key={method} value={method}>{method}</SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </label>
-                              <label className="space-y-1 text-sm font-medium">
-                                Payment status
-                                <Select value={draft.paymentStatus} onValueChange={value => updatePurchaseDraft(supplierId, 'paymentStatus', value)}>
-                                  <SelectTrigger><SelectValue /></SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="unpaid">Unpaid</SelectItem>
-                                    <SelectItem value="partial">Partially paid</SelectItem>
-                                    <SelectItem value="paid">Paid</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </label>
-                              {draft.paymentStatus === 'partial' && (
-                                <label className="space-y-1 text-sm font-medium">
-                                  Paid amount
-                                  <Input type="number" min="0" step="0.01" value={draft.paidAmount} onChange={event => updatePurchaseDraft(supplierId, 'paidAmount', event.target.value)} />
-                                </label>
-                              )}
-                            </div>
-
-                            <label className="space-y-1 text-sm font-medium block">
-                              Notes
-                              <Textarea value={draft.notes} onChange={event => updatePurchaseDraft(supplierId, 'notes', event.target.value)} placeholder="Delivery notes or payment terms" rows={2} />
-                            </label>
-                          </CardContent>
-                        </Card>
-                      );
-                    })}
-                  </div>
-                </div>
-                <Separator />
-              </>
-            )}
-
-            {/* Notes */}
-            <NotesSection form={form} />
-          </div>
-
-          {/* Action Bar */}
-          <SaveBar onBack={goBack} form={form} />
+          <StepFormContainer
+            steps={steps}
+            activeStep={activeStep}
+            onStepChange={setActiveStep}
+            footer={footer}
+          />
         </form>
       </Form>
 
-      {/* Batch Dialog */}
+      {/* Dialogs – completely unchanged */}
       <BatchFormDialog
         open={batchDialogOpen}
         onClose={() => setBatchDialogOpen(false)}
@@ -975,7 +1071,6 @@ export default function InventoryForm() {
         existingPurchases={purchases}
       />
 
-      {/* Supplier Dialog */}
       <SupplierFormDialog
         open={supplierDialogOpen}
         onClose={() => { setSupplierDialogOpen(false); setSupplierPresetName(''); }}
