@@ -328,13 +328,38 @@ async function persistTransition(
     const inventory = await storage.get<Product>('inventory');
     const batches = await storage.get<ProductBatch>('productBatches');
 
-    if (previous && active(previous) && received(previous)) {
-        revertPurchase(inventory, batches, previous);
+    // Determine whether this transition actually changes inventory/batches.
+    // Only revert/apply stock when items, supplier, or receipt status changed.
+    const prevReceived = previous && active(previous) && received(previous);
+    const candReceived = active(candidate) && received(candidate);
+
+    const itemsKey = (items: PurchaseItem[] | undefined) => JSON.stringify((items ?? []).map(i => ({
+        productId: i.productId,
+        quantity: Number(i.quantity || 0),
+        purchaseRate: Number(i.purchaseRate || 0),
+        batchId: i.batchId ?? null,
+        variantName: i.variantName ?? null,
+    })));
+
+    let inventoryChanged = false;
+    if (prevReceived !== candReceived) {
+        inventoryChanged = true;
+    } else if (prevReceived && candReceived && previous) {
+        const prevItemsKey = itemsKey(previous.items);
+        const candItemsKey = itemsKey(candidate.items);
+        if (prevItemsKey !== candItemsKey) inventoryChanged = true;
+        if ((previous.supplierId ?? '') !== (candidate.supplierId ?? '')) inventoryChanged = true;
     }
 
     let saved = candidate;
-    if (active(candidate) && received(candidate)) {
-        saved = applyPurchase(inventory, batches, candidate);
+    if (inventoryChanged) {
+        if (prevReceived && previous) {
+            revertPurchase(inventory, batches, previous);
+        }
+
+        if (candReceived) {
+            saved = applyPurchase(inventory, batches, candidate);
+        }
     }
 
     const nextPurchases = allPurchases.filter(purchase => purchase.id !== candidate.id);
