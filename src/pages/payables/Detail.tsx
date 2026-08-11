@@ -230,7 +230,7 @@ export default function PayableDetail() {
                   {/* Quick percentage buttons */}
                   <div className="flex flex-wrap gap-2">
                     {[25, 50, 75, 100].map(pct => {
-                      const val = Math.round(remainingAmount * pct / 100);
+                      const val = Math.round(remainingAmount * pct) / 100;
                       if (val <= 0) return null;
                       return (
                         <button
