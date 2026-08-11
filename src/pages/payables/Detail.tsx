@@ -254,7 +254,7 @@ export default function PayableDetail() {
                     <Button
                       variant="outline"
                       className="flex-1 h-11 rounded-xl font-semibold"
-                      onClick={() => { setShowPaymentForm(false); setPaymentAmount(''); setPaymentNote(''); }}
+                      onClick={() => { setShowPaymentForm(false); setPaymentAmount(''); }}
                     >
                       Cancel
                     </Button>
