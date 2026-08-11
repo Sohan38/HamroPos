@@ -50,8 +50,7 @@ export default function InventoryForm() {
   const isExpiryEnabled = useFeature('inventory', 'expiry');
   const isVariantsEnabled = useFeature('inventory', 'variants');
   const goBack = useSmartBack('/inventory');
-  const [location] = useLocation();
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const { id } = useParams();
   const { items, add, update } = useInventory();
   const { items: suppliers } = useSuppliers();
@@ -76,7 +75,20 @@ export default function InventoryForm() {
   })();
 
   const isNew = !id || id === 'new';
-  const existingProduct = !isNew ? items.find(i => i.id === id) : null;
+  const existingProduct = useMemo(
+    () => (!isNew ? items.find(i => i.id === id) ?? null : null),
+    [items, id, isNew]
+  );
+
+  const supplierLookup = useMemo(() => {
+    const map = new Map<string, typeof suppliers[number]>();
+
+    for (const supplier of suppliers) {
+      map.set(supplier.id, supplier);
+    }
+
+    return map;
+  }, [suppliers]);
 
   // Local batch list (saved to store on product save)
   const [localBatches, setLocalBatches] = useState<ProductBatch[]>([]);
@@ -288,7 +300,7 @@ export default function InventoryForm() {
 
       for (const supplierId of purchaseSupplierIds) {
         const existing = next[supplierId];
-        const supplier = suppliers.find(candidate => candidate.id === supplierId);
+        const supplier = supplierLookup.get(supplierId)
         const defaultDate = new Date().toLocaleDateString('en-CA');
 
         if (!existing || !existing.invoiceNumber?.trim()) {
@@ -834,8 +846,7 @@ export default function InventoryForm() {
               totalBatchQuantity={totalBatchQuantity}
               totalVariantQuantity={totalVariantQuantity}
               isMultiSupplier={isMultiSupplier}
-              totalSupplierStockQuantity={totalSupplierStockQuantity}
-            />
+              totalSupplierStockQuantity={totalSupplierStockQuantity} hasExpiry={false} hasVariants={false} />
 
             <Separator />
 
