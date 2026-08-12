@@ -242,8 +242,8 @@ export default function ExpenseList() {
         ))}
       </div>
 
-      {/* Type filter chips */}
-      <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 md:mx-0 md:px-0 scrollbar-none">
+      {/* Type filter chips + clear filters */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 -mx-4 px-4 md:mx-0 md:px-0 scrollbar-none">
         {TYPE_FILTERS.map((t) => (
           <Chip
             key={t.id}
@@ -253,8 +253,24 @@ export default function ExpenseList() {
             {t.label}
           </Chip>
         ))}
+        {activeFilterCount > 0 && (
+          <>
+            <div className="w-px h-5 bg-border shrink-0" />
+            <Button
+              variant="ghost"
+              size="sm"
+              className="shrink-0 gap-1.5 text-muted-foreground hover:text-foreground"
+              onClick={clearFilters}
+            >
+              <X className="h-4 w-4" />
+              Clear
+              <Badge variant="secondary" className="ml-1 h-5 w-5 p-0 justify-center">
+                {activeFilterCount}
+              </Badge>
+            </Button>
+          </>
+        )}
       </div>
-
       {/* Search */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
@@ -276,23 +292,7 @@ export default function ExpenseList() {
         )}
       </div>
 
-      {/* Clear filters */}
-      {activeFilterCount > 0 && (
-        <div className="flex justify-end">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="gap-1.5 text-muted-foreground hover:text-foreground"
-            onClick={clearFilters}
-          >
-            <X className="h-4 w-4" />
-            Clear filters
-            <Badge variant="secondary" className="ml-1 h-5 w-5 p-0 justify-center">
-              {activeFilterCount}
-            </Badge>
-          </Button>
-        </div>
-      )}
+
 
       {/* Custom Date Dialog */}
       <Dialog open={customOpen} onOpenChange={setCustomOpen}>
