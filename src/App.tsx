@@ -69,6 +69,7 @@ const RestaurantBillingList = retryLazy(() => import('@/pages/restaurant/Billing
 const RestaurantBillingForm = retryLazy(() => import('@/pages/restaurant/BillingForm'));
 
 import { LicenseProvider } from '@/license/LicenseContext';
+import { ConfirmProvider } from './contexts/ConfirmContext';
 
 const queryClient = new QueryClient();
 
@@ -186,7 +187,9 @@ function App() {
               <TooltipProvider>
                 <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
                   <NavigationProvider>
-                    <Router />
+                    <ConfirmProvider>
+                      <Router />
+                    </ConfirmProvider>
                   </NavigationProvider>
                 </WouterRouter>
                 <Toaster />

@@ -1,7 +1,6 @@
-// src/pages/inventory/Form/hooks/useInventoryForm.ts
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useWatch, useForm } from 'react-hook-form';
-import { useLocation } from 'wouter';
+import { useLocation, useParams } from 'wouter';
 import { v4 as uuidv4 } from 'uuid';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useInventory, useSuppliers, useProductBatches, usePurchases } from '@/contexts/GlobalProviders';
@@ -12,7 +11,7 @@ import { generateSupplierInvoiceNumber, generateBatchNumber } from '@/utils/numb
 import { useStorageProvider } from '@/storage/StorageContext';
 import { createPurchasesForNewItem } from '@/services/purchaseHelpers';
 import { PaymentMethod, ProductUnit, ProductBatch, BatchFormData, PurchasePaymentStatus } from '@/types';
-import { productSchema, ProductFormValues } from '@/pages/inventory/Form/types';
+import { productSchema, ProductFormValues } from '../types';
 
 export type SupplierPurchaseDraft = {
     invoiceNumber: string;
@@ -25,15 +24,14 @@ export type SupplierPurchaseDraft = {
 };
 
 export function useInventoryForm(
-    isNew: boolean,
-    existingProduct: any,
     supplierIdFromQuery: string | null,
-    returnTo: string | null
+    returnTo: string | null,
 ) {
     const isBatchesEnabled = useFeature('inventory', 'batches');
     const isExpiryEnabled = useFeature('inventory', 'expiry');
     const isVariantsEnabled = useFeature('inventory', 'variants');
 
+    const { id } = useParams();
     const { items: allInventory, add, update } = useInventory();
     const { items: suppliers } = useSuppliers();
     const {
@@ -45,7 +43,14 @@ export function useInventoryForm(
     } = useProductBatches();
     const { items: purchases, refresh: refreshPurchases } = usePurchases();
     const storage = useStorageProvider();
-    const [, setLocation] = useLocation(); // for navigation after save
+    const [, setLocation] = useLocation();
+
+    const isNew = !id || id === 'new';
+
+    const existingProduct = useMemo(
+        () => (!isNew ? allInventory.find(i => i.id === id) ?? null : null),
+        [allInventory, id, isNew]
+    );
 
     // Local state
     const [localBatches, setLocalBatches] = useState<ProductBatch[]>([]);
@@ -56,7 +61,14 @@ export function useInventoryForm(
     const [supplierDialogOpen, setSupplierDialogOpen] = useState(false);
     const [supplierPurchaseDrafts, setSupplierPurchaseDrafts] = useState<Record<string, SupplierPurchaseDraft>>({});
 
-    // Form
+    // Load existing batches for editing
+    useEffect(() => {
+        if (!isNew && existingProduct) {
+            setLocalBatches(allBatches.filter(b => b.productId === existingProduct.id));
+        }
+    }, [allBatches, existingProduct, isNew]);
+
+    // Form setup
     const form = useForm<ProductFormValues>({
         resolver: zodResolver(productSchema),
         mode: 'onTouched',
@@ -355,7 +367,7 @@ export function useInventoryForm(
         setEditingBatch(null);
     };
 
-    // Big onSubmit function (identical to original)
+    // Big onSubmit function (identical to original, now using correct existingProduct)
     const onSubmit = useCallback(async (data: ProductFormValues) => {
         try {
             const normalizedName = (data.name ?? '').trim().toLowerCase();
