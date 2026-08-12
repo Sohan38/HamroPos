@@ -115,7 +115,10 @@ export function buildFinancialMetrics(params: {
     const supplierPayments = purchases.reduce((sum, purchase) => {
         const payments = (purchase.payments ?? []).filter(payment => isWithinRange(payment.date, start, end));
         const paymentTotal = payments.reduce((paymentSum, payment) => paymentSum + toNumber(payment.amount), 0);
-        return sum + paymentTotal;
+        const effectivePaid = purchase.paymentMethod === 'credit'
+            ? 0
+            : Math.min(toNumber(purchase.paidAmount), toNumber(purchase.grandTotal));
+        return sum + Math.max(paymentTotal, effectivePaid);
     }, 0);
 
     const customerReceivables = credits
@@ -129,9 +132,10 @@ export function buildFinancialMetrics(params: {
     const supplierPayables = purchases
         .filter(purchase => !isAfter(toDate(purchase.date), end))
         .reduce((sum, purchase) => {
-            const paymentsUpToEnd = (purchase.payments ?? []).filter(payment => !isAfter(toDate(payment.date), end));
-            const paidUpToEnd = paymentsUpToEnd.reduce((paymentSum, payment) => paymentSum + toNumber(payment.amount), 0);
-            return sum + Math.max(0, toNumber(purchase.grandTotal) - paidUpToEnd);
+            const effectivePaid = purchase.paymentMethod === 'credit'
+                ? 0
+                : Math.min(toNumber(purchase.paidAmount), toNumber(purchase.grandTotal));
+            return sum + Math.max(0, toNumber(purchase.grandTotal) - effectivePaid);
         }, 0);
 
     const paymentBreakdown = salesInScope.reduce<Record<string, number>>((map, sale) => {
