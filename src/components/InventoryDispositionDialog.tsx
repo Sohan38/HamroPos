@@ -180,7 +180,11 @@ export function InventoryDispositionDialog({ product, open, onOpenChange, onCrea
     }, [selectedBatch, selectedPurchaseInvoiceId, purchaseInvoiceOptions]);
 
     const quantityValue = Number(quantity || 0);
-    const batchAvailable = selectedBatch?.quantity ?? product.quantity;
+    const selectedSupplierStock = selectedSupplierId
+        ? product.supplierStocks?.find((stock) => stock.supplierId === selectedSupplierId)?.stock
+        : undefined;
+    const supplierAvailable = selectedSupplierStock ?? product.quantity;
+    const batchAvailable = selectedBatch?.quantity ?? supplierAvailable;
     const isAvailable = batchAvailable > 0;
     const canSubmit = isAvailable && quantityValue > 0 && quantityValue <= batchAvailable && (!product.hasExpiry || !!selectedBatchId) && (!product.supplierIds || product.supplierIds.length === 0 || !!selectedSupplierId);
 
