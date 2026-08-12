@@ -64,7 +64,7 @@ export function InventoryDispositionDialog({ product, open, onOpenChange, onCrea
     const [reason, setReason] = useState<DispositionReason>(product.hasExpiry && productBatches[0] && getBatchStatus(productBatches[0].expiryDate) === 'expired' ? 'expired' : 'damaged');
     const [resolution, setResolution] = useState<DispositionResolution>('return_to_supplier');
     const [quantity, setQuantity] = useState<string>('');
-    const [unitCost, setUnitCost] = useState<string>('');
+    const [unitCost, setUnitCost] = useState<string>(String(productBatches[0]?.purchaseRate ?? product.purchaseRate ?? 0));
     const [referenceNumber, setReferenceNumber] = useState<string>('');
     const [notes, setNotes] = useState<string>('');
     const [settlementAmount, setSettlementAmount] = useState<string>('');
@@ -97,17 +97,19 @@ export function InventoryDispositionDialog({ product, open, onOpenChange, onCrea
     const availableReasons = product.hasExpiry ? (
         isExpiredBatch ? reasons : reasons.filter(item => item !== 'expired') as DispositionReason[]
     ) : reasons;
-    const unitCostSource = selectedBatch?.purchaseRate ?? product.purchaseRate ?? 0;
+    const batchPurchaseRate = selectedBatch?.purchaseRate;
+    const purchaseRateToShow = batchPurchaseRate ?? product.purchaseRate ?? 0;
 
     useEffect(() => {
         if (!open) return;
-        setSelectedBatchId(productBatches[0]?.id ?? '');
-        setSelectedSupplierId(product.supplierId || productBatches[0]?.supplierId || '');
-        setSelectedPurchaseInvoiceId(productBatches[0]?.purchaseInvoiceId ?? '');
-        setReason(defaultReason);
+        const initialBatch = productBatches[0];
+        setSelectedBatchId(initialBatch?.id ?? '');
+        setSelectedSupplierId(product.supplierId || initialBatch?.supplierId || '');
+        setSelectedPurchaseInvoiceId(initialBatch?.purchaseInvoiceId ?? '');
+        setReason(product.hasExpiry && initialBatch && getBatchStatus(initialBatch.expiryDate) === 'expired' ? 'expired' : 'damaged');
         setResolution('return_to_supplier');
         setQuantity('');
-        setUnitCost('');
+        setUnitCost(String(initialBatch?.purchaseRate ?? product.purchaseRate ?? 0));
         setReferenceNumber('');
         setNotes('');
         setSettlementAmount('');
@@ -122,7 +124,7 @@ export function InventoryDispositionDialog({ product, open, onOpenChange, onCrea
         setReplacementExpiryDate('');
         setReplacementPurchaseRate(String(product.purchaseRate ?? 0));
         setReplacementNotes('');
-    }, [open, product, productBatches, defaultReason, unitCostSource]);
+    }, [open, product, productBatches]);
 
     useEffect(() => {
         if (!selectedBatch) return;
@@ -163,7 +165,7 @@ export function InventoryDispositionDialog({ product, open, onOpenChange, onCrea
             return;
         }
 
-        if (!selectedBatch && !selectedPurchaseInvoiceId && purchaseInvoiceOptions.length === 1) {
+        if (!selectedPurchaseInvoiceId && purchaseInvoiceOptions.length === 1) {
             setSelectedPurchaseInvoiceId(purchaseInvoiceOptions[0].id);
             return;
         }
@@ -197,7 +199,7 @@ export function InventoryDispositionDialog({ product, open, onOpenChange, onCrea
             purchaseInvoiceId: selectedPurchaseInvoiceId || undefined,
             supplierId: selectedSupplierId || undefined,
             quantity: quantityValue,
-            unitCost: Number(unitCost || (selectedBatch?.purchaseRate ?? product.purchaseRate ?? 0)),
+            unitCost: Number(unitCost || purchaseRateToShow),
             settlementAmount: showSettlementFields ? Number(settlementAmount || 0) : undefined,
             settlementMethod: showSettlementFields ? settlementMethod : undefined,
             settlementStatus: showSettlementFields ? settlementStatus : undefined,
@@ -345,10 +347,10 @@ export function InventoryDispositionDialog({ product, open, onOpenChange, onCrea
                                 step="0.01"
                                 value={unitCost}
                                 onChange={(event) => setUnitCost(event.target.value)}
-                                placeholder={String(unitCostSource)}
+                                placeholder={String(purchaseRateToShow)}
                             />
                             <p className="text-xs text-muted-foreground mt-1">
-                                Batch rate: {selectedBatch ? selectedBatch.purchaseRate.toFixed(2) : unitCostSource.toFixed(2)}
+                                Batch rate: {purchaseRateToShow.toFixed(2)}
                             </p>
                         </div>
                     </div>
@@ -373,16 +375,28 @@ export function InventoryDispositionDialog({ product, open, onOpenChange, onCrea
                             <Label htmlFor="disposition-purchase">Purchase invoice</Label>
                             <Select value={selectedPurchaseInvoiceId} onValueChange={setSelectedPurchaseInvoiceId}>
                                 <SelectTrigger id="disposition-purchase">
-                                    <SelectValue placeholder="Optional invoice" />
+                                    <SelectValue placeholder={purchaseInvoiceOptions.length > 1 ? 'Select purchase invoice' : 'Optional invoice'} />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="">None</SelectItem>
-                                    {purchaseInvoiceOptions.length > 0 ? purchaseInvoiceOptions.map(purchase => (
-                                        <SelectItem key={purchase.id} value={purchase.id}>
-                                            {purchase.invoiceNumber} — {purchase.supplierName ?? 'Unknown'}
-                                        </SelectItem>
-                                    )) : (
-                                        <SelectItem value="" disabled>No matching invoices available</SelectItem>
+                                    {selectedBatch ? (
+                                        purchaseInvoiceOptions.length > 0 ? purchaseInvoiceOptions.map(purchase => (
+                                            <SelectItem key={purchase.id} value={purchase.id}>
+                                                {purchase.invoiceNumber} — {purchase.supplierName ?? 'Unknown'}
+                                            </SelectItem>
+                                        )) : (
+                                            <SelectItem value="" disabled>No purchase invoice linked to this batch</SelectItem>
+                                        )
+                                    ) : (
+                                        <>
+                                            <SelectItem value="">None</SelectItem>
+                                            {purchaseInvoiceOptions.length > 0 ? purchaseInvoiceOptions.map(purchase => (
+                                                <SelectItem key={purchase.id} value={purchase.id}>
+                                                    {purchase.invoiceNumber} — {purchase.supplierName ?? 'Unknown'}
+                                                </SelectItem>
+                                            )) : (
+                                                <SelectItem value="" disabled>No matching invoices available</SelectItem>
+                                            )}
+                                        </>
                                     )}
                                 </SelectContent>
                             </Select>
