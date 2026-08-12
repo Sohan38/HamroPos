@@ -17,7 +17,7 @@ export function BarcodeScanner({ onScan, className, autoClose = true }: BarcodeS
   const [error, setError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const containerId = 'barcode-scanner-container';
-  
+
   // Track last scan to prevent rapid duplicate scanner triggers on same item
   const lastCodeRef = useRef<string>('');
   const lastTimeRef = useRef<number>(0);
@@ -27,16 +27,16 @@ export function BarcodeScanner({ onScan, className, autoClose = true }: BarcodeS
       const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
       const osc = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
-      
+
       osc.type = 'sine';
       osc.frequency.setValueAtTime(1200, audioCtx.currentTime); // Crisp, high confirm pitch
-      
+
       gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.12); // Short beep
-      
+
       osc.connect(gain);
       gain.connect(audioCtx.destination);
-      
+
       osc.start();
       osc.stop(audioCtx.currentTime + 0.12);
     } catch (err) {
@@ -79,7 +79,7 @@ export function BarcodeScanner({ onScan, className, autoClose = true }: BarcodeS
       if (!autoClose && trimmed === lastCodeRef.current && now - lastTimeRef.current < 1500) {
         return;
       }
-      
+
       lastCodeRef.current = trimmed;
       lastTimeRef.current = now;
 
@@ -203,7 +203,7 @@ export function BarcodeScanner({ onScan, className, autoClose = true }: BarcodeS
       >
         <DialogContent
           showCloseButton={false}
-          className="w-[92vw] max-w-[360px] p-0 overflow-hidden rounded-2xl"
+          className="w-[92vw] max-w-90 p-0 overflow-hidden rounded-2xl"
         >
           <DialogHeader className="p-4 pb-2 flex flex-row items-center justify-between">
             <DialogTitle className="flex items-center gap-2">
