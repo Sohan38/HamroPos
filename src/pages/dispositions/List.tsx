@@ -256,10 +256,7 @@ export default function DispositionList() {
                         {dispositions.length} total record{dispositions.length !== 1 ? 's' : ''}
                     </p>
                 </div>
-                <Button onClick={() => setLocation('/dispositions/new')} className="shrink-0">
-                    <Plus className="h-4 w-4 mr-1.5" />
-                    New Disposition
-                </Button>
+
             </div>
 
             {/* Date chips */}

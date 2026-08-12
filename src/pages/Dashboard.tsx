@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useCallback } from 'react';
 import { useLocation } from 'wouter';
 import { useInventory, useSales, useExpenses, useCredit, usePurchases, useProductBatches, useCustomers } from '@/contexts/GlobalProviders';
 import { useAllCustomerStats } from '@/hooks/useCustomerStats';
@@ -31,13 +31,9 @@ export default function Dashboard() {
   const allCustomerStats = useAllCustomerStats();
   const { format: formatCurrency } = useCurrency();
   const { settings } = useApp();
+
   const inventoryMap = useMemo(
-    () => new Map(
-      inventory.map(product => [
-        product.id,
-        product
-      ])
-    ),
+    () => new Map(inventory.map(product => [product.id, product])),
     [inventory]
   );
 
@@ -188,39 +184,28 @@ export default function Dashboard() {
       });
     }
     return data;
-  }, [sales, expenses, inventoryMap]);
+  }, [sales, expenses, purchases, inventoryMap]); // fixed: added purchases
 
   const recentSales = useMemo(
     () =>
       [...sales]
-        .sort((a, b) =>
-          new Date(b.date).getTime() -
-          new Date(a.date).getTime()
-        )
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
         .slice(0, 5),
     [sales]
   );
 
-
   const recentPurchases = useMemo(
     () =>
       [...purchases]
-        .sort((a, b) =>
-          new Date(b.date).getTime() -
-          new Date(a.date).getTime()
-        )
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
         .slice(0, 3),
     [purchases]
   );
 
-
   const recentExpenses = useMemo(
     () =>
       [...expenses]
-        .sort((a, b) =>
-          new Date(b.date).getTime() -
-          new Date(a.date).getTime()
-        )
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
         .slice(0, 3),
     [expenses]
   );
@@ -234,26 +219,29 @@ export default function Dashboard() {
       .slice(0, 5);
   }, [customers, allCustomerStats]);
 
-  // Customers who bought today
+  // Customers who bought today (timezone-safe)
+  const todayStr = useMemo(() => format(startOfDay(new Date()), 'yyyy-MM-dd'), []);
   const customersToday = useMemo(() => {
-    const today = new Date().toLocaleDateString('en-CA');
     const ids = new Set(
-      sales.filter(s => s.customerId && s.date.startsWith(today)).map(s => s.customerId!)
+      sales.filter(s => s.customerId && s.date.startsWith(todayStr)).map(s => s.customerId!)
     );
     return ids.size;
-  }, [sales]);
+  }, [sales, todayStr]);
 
   const isHotelEnabled = useFeature('hospitality', 'hotelGrid');
   const isRestaurantEnabled = useFeature('hospitality', 'restaurantBilling');
 
-  const quickActions = [
-    { label: 'New Sale', icon: ShoppingCart, href: '/sales/new', color: 'bg-blue-500/10 text-blue-600', show: true },
-    { label: 'Purchase', icon: Truck, href: '/purchases/new', color: 'bg-green-500/10 text-green-600', show: true },
-    { label: 'Hotel Bill', icon: Hotel, href: '/hotel/billing/new', color: 'bg-purple-500/10 text-purple-600', show: isHotelEnabled },
-    { label: 'Restaurant', icon: UtensilsCrossed, href: '/restaurant/new', color: 'bg-orange-500/10 text-orange-600', show: isRestaurantEnabled },
-    { label: 'Expense', icon: Receipt, href: '/expenses/new', color: 'bg-red-500/10 text-red-600', show: true },
-    { label: 'Credit', icon: Banknote, href: '/credit/new', color: 'bg-yellow-500/10 text-yellow-600', show: true },
-  ].filter(action => action.show);
+  const quickActions = useMemo(() => {
+    const actions = [
+      { label: 'New Sale', icon: ShoppingCart, href: '/sales/new', color: 'bg-blue-500/10 text-blue-600', show: true },
+      { label: 'Purchase', icon: Truck, href: '/purchases/new', color: 'bg-green-500/10 text-green-600', show: true },
+      { label: 'Hotel Bill', icon: Hotel, href: '/hotel/billing/new', color: 'bg-purple-500/10 text-purple-600', show: isHotelEnabled },
+      { label: 'Restaurant', icon: UtensilsCrossed, href: '/restaurant/new', color: 'bg-orange-500/10 text-orange-600', show: isRestaurantEnabled },
+      { label: 'Expense', icon: Receipt, href: '/expenses/new', color: 'bg-red-500/10 text-red-600', show: true },
+      { label: 'Credit', icon: Banknote, href: '/credit/new', color: 'bg-yellow-500/10 text-yellow-600', show: true },
+    ];
+    return actions.filter(action => action.show);
+  }, [isHotelEnabled, isRestaurantEnabled]);
 
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto pb-24 md:pb-6">
@@ -269,7 +257,7 @@ export default function Dashboard() {
 
       {/* Primary Key Metrics Section */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        <Card className="border border-primary/10 bg-primary/3 dark:bg-primary/1 rounded-2xl shadow-sm hover:shadow-md transition-all duration-300">
+        <Card className="border border-primary/10 bg-primary/5 rounded-xl shadow-sm hover:shadow-md transition-all duration-300">
           <CardContent className="p-5 flex items-center justify-between">
             <div className="space-y-1">
               <p className="text-[11px] font-bold text-primary/80 uppercase tracking-wider">Today's Sales</p>
@@ -281,7 +269,7 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border border-rose-500/10 bg-rose-500/2 dark:bg-rose-500/1 rounded-2xl shadow-sm hover:shadow-md transition-all duration-300" onClick={() => setLocation('/expenses')}>
+        <Card className="border border-rose-500/10 bg-rose-500/5 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer" onClick={() => setLocation('/expenses')}>
           <CardContent className="p-5 flex items-center justify-between">
             <div className="space-y-1">
               <p className="text-[11px] font-bold text-rose-700/80 uppercase tracking-wider">Today's Expenses</p>
@@ -294,10 +282,10 @@ export default function Dashboard() {
         </Card>
 
         <Card className={cn(
-          "border rounded-2xl shadow-sm hover:shadow-md transition-all duration-300",
+          "border rounded-xl shadow-sm hover:shadow-md transition-all duration-300",
           metrics.todayGrossProfit >= 0
-            ? "border-emerald-500/10 bg-emerald-500/2 dark:bg-emerald-500/1"
-            : "border-rose-500/10 bg-rose-500/2 dark:bg-rose-500/1"
+            ? "border-emerald-500/10 bg-emerald-500/5"
+            : "border-rose-500/10 bg-rose-500/5"
         )}>
           <CardContent className="p-5 flex items-center justify-between">
             <div className="space-y-1">
@@ -320,7 +308,7 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border border-emerald-500/10 bg-emerald-500/2 dark:bg-emerald-500/1 rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer hover:bg-emerald-500/4" onClick={() => setLocation('/sales')}>
+        <Card className="border border-emerald-500/10 bg-emerald-500/5 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer hover:bg-emerald-500/10" onClick={() => setLocation('/sales')}>
           <CardContent className="p-5 flex items-center justify-between">
             <div className="space-y-1">
               <p className="text-[11px] font-bold text-emerald-700/80 uppercase tracking-wider">Collected Today</p>
@@ -332,7 +320,7 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border border-orange-500/10 bg-orange-500/2 dark:bg-orange-500/1 rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer hover:bg-orange-500/4" onClick={() => setLocation('/credit')}>
+        <Card className="border border-orange-500/10 bg-orange-500/5 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer hover:bg-orange-500/10" onClick={() => setLocation('/credit')}>
           <CardContent className="p-5 flex items-center justify-between">
             <div className="space-y-1">
               <p className="text-[11px] font-bold text-orange-700/80 uppercase tracking-wider">Credit Created Today</p>
@@ -347,7 +335,7 @@ export default function Dashboard() {
 
       {/* Secondary Metrics Section */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        <Card className="border border-border rounded-2xl shadow-sm hover:shadow-md transition-all duration-300">
+        <Card className="border border-border rounded-xl shadow-sm hover:shadow-md transition-all duration-300">
           <CardContent className="p-4 flex items-center gap-3">
             <div className="h-9 w-9 rounded-xl bg-muted flex items-center justify-center text-foreground shrink-0">
               <Wallet className="h-4.5 w-4.5" />
@@ -359,7 +347,7 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border border-border rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer hover:bg-muted/40" onClick={() => setLocation('/purchases')}>
+        <Card className="border border-border rounded-xl shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer hover:bg-muted/40" onClick={() => setLocation('/purchases')}>
           <CardContent className="p-4 flex items-center gap-3">
             <div className="h-9 w-9 rounded-xl bg-muted flex items-center justify-center text-foreground shrink-0">
               <Truck className="h-4.5 w-4.5" />
@@ -371,7 +359,7 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border border-border rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer hover:bg-muted/40" onClick={() => setLocation('/credit')}>
+        <Card className="border border-border rounded-xl shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer hover:bg-muted/40" onClick={() => setLocation('/credit')}>
           <CardContent className="p-4 flex items-center gap-3">
             <div className="h-9 w-9 rounded-xl bg-orange-500/10 flex items-center justify-center text-orange-600 shrink-0">
               <Banknote className="h-4.5 w-4.5" />
@@ -383,7 +371,7 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border border-border rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer hover:bg-muted/40" onClick={() => setLocation('/payables')}>
+        <Card className="border border-border rounded-xl shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer hover:bg-muted/40" onClick={() => setLocation('/payables')}>
           <CardContent className="p-4 flex items-center gap-3">
             <div className="h-9 w-9 rounded-xl bg-rose-500/10 flex items-center justify-center text-rose-600 shrink-0">
               <ArrowUpFromLine className="h-4.5 w-4.5" />
@@ -395,7 +383,7 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border border-border rounded-2xl shadow-sm hover:shadow-md transition-all duration-300">
+        <Card className="border border-border rounded-xl shadow-sm hover:shadow-md transition-all duration-300">
           <CardContent className="p-4 flex items-center gap-3">
             <div className={cn(
               "h-9 w-9 rounded-xl flex items-center justify-center shrink-0",
@@ -416,25 +404,25 @@ export default function Dashboard() {
 
       {/* Inventory summary */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card className="cursor-pointer hover:bg-muted/40 transition-colors" onClick={() => setLocation('/inventory')}>
+        <Card className="cursor-pointer hover:bg-muted/40 transition-colors rounded-xl shadow-sm" onClick={() => setLocation('/inventory')}>
           <CardContent className="p-4">
             <p className="text-xs text-muted-foreground">Products</p>
             <p className="font-bold text-lg mt-1">{metrics.inventoryCount}</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="rounded-xl shadow-sm">
           <CardContent className="p-4">
             <p className="text-xs text-muted-foreground">Inventory (Cost)</p>
             <p className="font-bold text-lg mt-1">{formatCurrency(metrics.inventoryPurchaseValue)}</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="rounded-xl shadow-sm">
           <CardContent className="p-4">
             <p className="text-xs text-muted-foreground">Inventory (Retail)</p>
             <p className="font-bold text-lg mt-1">{formatCurrency(metrics.inventorySellingValue)}</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="rounded-xl shadow-sm">
           <CardContent className="p-4">
             <p className="text-xs text-muted-foreground">Est. Inv. Profit</p>
             <p className="font-bold text-lg mt-1 text-green-600">{formatCurrency(metrics.estimatedInventoryProfit)}</p>
@@ -443,14 +431,13 @@ export default function Dashboard() {
       </div>
 
       {/* Stock + Expiry alerts */}
-      {/* Stock + Expiry alerts */}
       {(
         metrics.lowStockItems.length > 0 ||
         metrics.outOfStockItems.length > 0 ||
         metrics.expiredBatches.length > 0 ||
         metrics.expiringSoonBatches.length > 0
       ) && (
-          <Card className="border-orange-300/50">
+          <Card className="border-orange-300/50 rounded-xl shadow-sm">
             <CardHeader className="pb-2 pt-4">
               <CardTitle className="text-sm flex items-center gap-2 text-orange-600">
                 <AlertTriangle className="h-4 w-4" />
@@ -462,35 +449,19 @@ export default function Dashboard() {
                 })
               </CardTitle>
             </CardHeader>
-
             <CardContent className="pb-4 space-y-3">
-
               {/* Out of stock */}
               {metrics.outOfStockItems.length > 0 && (
                 <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-red-500 mb-1.5">
-                    Out of Stock
-                  </p>
-
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-red-500 mb-1.5">Out of Stock</p>
                   <div className="flex flex-wrap gap-2">
                     {metrics.outOfStockItems.slice(0, 5).map(item => (
-                      <Badge
-                        key={item.id}
-                        variant="destructive"
-                        className="text-xs cursor-pointer"
-                        onClick={() => setLocation(`/inventory/${item.id}`)}
-                      >
+                      <Badge key={item.id} variant="destructive" className="text-xs cursor-pointer" onClick={() => setLocation(`/inventory/${item.id}`)}>
                         {item.name} — OUT
                       </Badge>
                     ))}
-
                     {metrics.outOfStockItems.length > 5 && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-xs h-6 px-2"
-                        onClick={() => setLocation('/inventory')}
-                      >
+                      <Button variant="ghost" size="sm" className="text-xs h-6 px-2" onClick={() => setLocation('/inventory')}>
                         +{metrics.outOfStockItems.length - 5} more
                       </Button>
                     )}
@@ -498,32 +469,18 @@ export default function Dashboard() {
                 </div>
               )}
 
-
               {/* Low stock */}
               {metrics.lowStockItems.length > 0 && (
                 <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-orange-500 mb-1.5">
-                    Low Stock
-                  </p>
-
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-orange-500 mb-1.5">Low Stock</p>
                   <div className="flex flex-wrap gap-2">
                     {metrics.lowStockItems.slice(0, 5).map(item => (
-                      <Badge
-                        key={item.id}
-                        className="text-xs bg-orange-100 text-orange-700 border-orange-300 cursor-pointer"
-                        onClick={() => setLocation(`/inventory/${item.id}`)}
-                      >
+                      <Badge key={item.id} className="text-xs bg-orange-100 text-orange-700 border-orange-300 cursor-pointer" onClick={() => setLocation(`/inventory/${item.id}`)}>
                         {item.name} — {item.quantity} left
                       </Badge>
                     ))}
-
                     {metrics.lowStockItems.length > 5 && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-xs h-6 px-2"
-                        onClick={() => setLocation('/inventory')}
-                      >
+                      <Button variant="ghost" size="sm" className="text-xs h-6 px-2" onClick={() => setLocation('/inventory')}>
                         +{metrics.lowStockItems.length - 5} more
                       </Button>
                     )}
@@ -531,32 +488,18 @@ export default function Dashboard() {
                 </div>
               )}
 
-
               {/* Expired batches */}
               {metrics.expiredBatches.length > 0 && (
                 <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-red-600 mb-1.5">
-                    Expired Batches
-                  </p>
-
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-red-600 mb-1.5">Expired Batches</p>
                   <div className="flex flex-wrap gap-2">
                     {metrics.expiredBatches.slice(0, 5).map(b => (
-                      <Badge
-                        key={b.batchId}
-                        className="text-xs bg-red-100 text-red-700 border-red-300 cursor-pointer"
-                        onClick={() => setLocation(`/inventory/${b.productId}`)}
-                      >
+                      <Badge key={b.batchId} className="text-xs bg-red-100 text-red-700 border-red-300 cursor-pointer" onClick={() => setLocation(`/inventory/${b.productId}`)}>
                         {b.productName} · {b.batchNo} — {b.qty} units
                       </Badge>
                     ))}
-
                     {metrics.expiredBatches.length > 5 && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-xs h-6 px-2"
-                        onClick={() => setLocation('/inventory')}
-                      >
+                      <Button variant="ghost" size="sm" className="text-xs h-6 px-2" onClick={() => setLocation('/inventory')}>
                         +{metrics.expiredBatches.length - 5} more
                       </Button>
                     )}
@@ -564,39 +507,24 @@ export default function Dashboard() {
                 </div>
               )}
 
-
               {/* Expiring soon batches */}
               {metrics.expiringSoonBatches.length > 0 && (
                 <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-yellow-600 mb-1.5">
-                    Expiring Soon
-                  </p>
-
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-yellow-600 mb-1.5">Expiring Soon</p>
                   <div className="flex flex-wrap gap-2">
                     {metrics.expiringSoonBatches.slice(0, 5).map(b => (
-                      <Badge
-                        key={b.batchId}
-                        className="text-xs bg-yellow-100 text-yellow-800 border-yellow-300 cursor-pointer"
-                        onClick={() => setLocation(`/inventory/${b.productId}`)}
-                      >
+                      <Badge key={b.batchId} className="text-xs bg-yellow-100 text-yellow-800 border-yellow-300 cursor-pointer" onClick={() => setLocation(`/inventory/${b.productId}`)}>
                         {b.productName} · {b.batchNo} — exp {format(parseISO(b.expiryDate), 'dd MMM')}
                       </Badge>
                     ))}
-
                     {metrics.expiringSoonBatches.length > 5 && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-xs h-6 px-2"
-                        onClick={() => setLocation('/inventory')}
-                      >
+                      <Button variant="ghost" size="sm" className="text-xs h-6 px-2" onClick={() => setLocation('/inventory')}>
                         +{metrics.expiringSoonBatches.length - 5} more
                       </Button>
                     )}
                   </div>
                 </div>
               )}
-
             </CardContent>
           </Card>
         )}
@@ -623,7 +551,7 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* 7-day revenue chart */}
-        <Card className="lg:col-span-2">
+        <Card className="lg:col-span-2 rounded-xl shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Revenue vs Expenses — Last 7 Days</CardTitle>
           </CardHeader>
@@ -655,7 +583,7 @@ export default function Dashboard() {
         </Card>
 
         {/* Best Sellers */}
-        <Card>
+        <Card className="rounded-xl shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Best Sellers</CardTitle>
           </CardHeader>
@@ -695,23 +623,21 @@ export default function Dashboard() {
             </Button>
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            {/* Summary cards */}
             <div className="grid grid-cols-2 gap-3 lg:col-span-1">
-              <Card>
+              <Card className="rounded-xl shadow-sm">
                 <CardContent className="p-4">
                   <p className="text-xs text-muted-foreground">Total Customers</p>
                   <p className="text-xl font-bold mt-1">{customers.length}</p>
                 </CardContent>
               </Card>
-              <Card>
+              <Card className="rounded-xl shadow-sm">
                 <CardContent className="p-4">
                   <p className="text-xs text-muted-foreground">Customers Today</p>
                   <p className="text-xl font-bold mt-1 text-primary">{customersToday}</p>
                 </CardContent>
               </Card>
             </div>
-            {/* Top customers */}
-            <Card className="lg:col-span-2">
+            <Card className="lg:col-span-2 rounded-xl shadow-sm">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm">Top Customers</CardTitle>
               </CardHeader>
@@ -753,8 +679,7 @@ export default function Dashboard() {
 
       {/* Recent activity */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Recent Sales */}
-        <Card>
+        <Card className="rounded-xl shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center justify-between">
               Recent Sales
@@ -784,8 +709,7 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        {/* Recent Purchases */}
-        <Card>
+        <Card className="rounded-xl shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center justify-between">
               Recent Purchases
@@ -809,8 +733,7 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        {/* Recent Expenses */}
-        <Card>
+        <Card className="rounded-xl shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center justify-between">
               Recent Expenses

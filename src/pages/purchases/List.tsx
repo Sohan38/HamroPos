@@ -1,37 +1,69 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useMemo, useState, useCallback, useEffect } from 'react';
 import { useLocation } from 'wouter';
-import { useSuppliers, usePurchases, useInventory } from '@/contexts/GlobalProviders';
+import { usePurchases, useSuppliers } from '@/contexts/GlobalProviders';
 import { useCurrency } from '@/hooks/useCurrency';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import {
   Search,
   Plus,
   Truck,
-  Phone,
-  MapPin,
+  Calendar,
   Package,
-  ChevronRight,
-  Building2,
   X,
   ChevronDown,
-  Users,
   ClipboardList,
   Coins,
+  Receipt,
+  TrendingUp,
 } from 'lucide-react';
+import {
+  format as formatDate,
+  parseISO,
+  subDays,
+  startOfWeek,
+  startOfMonth,
+} from 'date-fns';
 import { rankSearch } from '@/utils/search/rank';
 
-type SupplierStatusFilter = 'all' | 'active' | 'inactive';
+type PurchaseStatusFilter = 'all' | 'received' | 'draft' | 'cancelled';
+type PaymentStatusFilter = 'all' | 'paid' | 'partial' | 'unpaid';
+type DatePreset = 'all' | 'today' | 'yesterday' | 'week' | 'month' | 'custom';
 
 const PAGE_SIZE = 30;
 
-const STATUS_FILTERS: Array<{ id: SupplierStatusFilter; label: string }> = [
-  { id: 'all', label: 'All' },
-  { id: 'active', label: 'Active' },
-  { id: 'inactive', label: 'Inactive' },
+const DATE_PRESETS: Array<{ id: DatePreset; label: string }> = [
+  { id: 'today', label: 'Today' },
+  { id: 'yesterday', label: 'Yesterday' },
+  { id: 'week', label: 'This Week' },
+  { id: 'month', label: 'This Month' },
+  { id: 'custom', label: 'Custom' },
+  { id: 'all', label: 'All Time' },
 ];
+
+const STATUS_FILTERS: Array<{ id: PurchaseStatusFilter; label: string }> = [
+  { id: 'all', label: 'All' },
+  { id: 'received', label: 'Received' },
+  { id: 'draft', label: 'Draft' },
+  { id: 'cancelled', label: 'Cancelled' },
+];
+
+const PAYMENT_FILTERS: Array<{ id: PaymentStatusFilter; label: string }> = [
+  { id: 'all', label: 'All' },
+  { id: 'paid', label: 'Paid' },
+  { id: 'partial', label: 'Partial' },
+  { id: 'unpaid', label: 'Unpaid' },
+];
+
+// Helper to derive payment state from invoice fields
+function getPaymentState(invoice: any): 'paid' | 'partial' | 'unpaid' {
+  if (invoice.paymentStatus) return invoice.paymentStatus;
+  if (invoice.paidAmount && invoice.paidAmount > 0) return 'partial';
+  return 'unpaid';
+}
 
 // Chip component (shared pattern)
 interface ChipProps {
@@ -59,112 +91,162 @@ function Chip({ active, onClick, children, className = '' }: ChipProps) {
   );
 }
 
-export default function SupplierList() {
+export default function PurchaseList() {
   const [, setLocation] = useLocation();
-  const { items: suppliers } = useSuppliers();
   const { items: purchases } = usePurchases();
-  const { items: inventory } = useInventory();
+  const { items: suppliers } = useSuppliers();
   const { format } = useCurrency();
 
-  // Debounced search input
+  // Filter state
   const [inputValue, setInputValue] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<SupplierStatusFilter>('all');
+  const [statusFilter, setStatusFilter] = useState<PurchaseStatusFilter>('all');
+  const [paymentFilter, setPaymentFilter] = useState<PaymentStatusFilter>('all');
+  const [datePreset, setDatePreset] = useState<DatePreset>('all');
+  const [customOpen, setCustomOpen] = useState(false);
+  const [customDateFrom, setCustomDateFrom] = useState('');
+  const [customDateTo, setCustomDateTo] = useState('');
   const [displayCount, setDisplayCount] = useState(PAGE_SIZE);
 
-  // Debounce effect
+  // Debounce search
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(inputValue), 200);
     return () => clearTimeout(t);
   }, [inputValue]);
 
-  // Reset display count on filter changes
+  // Reset display count when any filter changes
   useEffect(() => {
     setDisplayCount(PAGE_SIZE);
-  }, [debouncedQuery, statusFilter]);
+  }, [debouncedQuery, statusFilter, paymentFilter, datePreset, customDateFrom, customDateTo]);
 
-  // Precompute supplier stats (O(n + m))
-  const supplierStatsMap = useMemo(() => {
-    const statsMap: Record<string, { totalPurchased: number; totalOrders: number; productCount: number }> = {};
+  // Derived date range from preset
+  const dateRange = useMemo(() => {
+    const now = new Date();
+    const fmt = (d: Date) => formatDate(d, 'yyyy-MM-dd');
 
-    // Initialize for all suppliers
-    suppliers.forEach((supplier) => {
-      statsMap[supplier.id] = { totalPurchased: 0, totalOrders: 0, productCount: 0 };
+    switch (datePreset) {
+      case 'today':
+        return { from: fmt(now), to: fmt(now) };
+      case 'yesterday':
+        const y = subDays(now, 1);
+        return { from: fmt(y), to: fmt(y) };
+      case 'week':
+        return { from: fmt(subDays(now, 6)), to: fmt(now) };
+      case 'month':
+        return { from: fmt(startOfMonth(now)), to: fmt(now) };
+      case 'custom':
+        return { from: customDateFrom, to: customDateTo };
+      default:
+        return { from: '', to: '' };
+    }
+  }, [datePreset, customDateFrom, customDateTo]);
+
+  // Process purchases: enrich → date filter → status filter → payment filter → search → sort
+  const processedPurchases = useMemo(() => {
+    // 1. Enrich with supplier and search text
+    const enriched = purchases.map((invoice) => {
+      const supplier = suppliers.find((c) => c.id === invoice.supplierId);
+      const supplierName = supplier?.name ?? invoice.supplierName ?? 'Unknown';
+      return {
+        ...invoice,
+        name: supplierName, // required for rankSearch
+        supplierName,
+        searchText: [
+          invoice.invoiceNumber,
+          invoice.referenceNumber,
+          supplier?.name,
+          invoice.notes,
+          ...invoice.items.map((i) => i.productName),
+        ].join(' '),
+      };
     });
 
-    // Aggregate purchases
-    purchases.forEach((purchase) => {
-      const sid = purchase.supplierId;
-      if (sid && statsMap[sid]) {
-        statsMap[sid].totalPurchased += purchase.grandTotal;
-        statsMap[sid].totalOrders += 1;
-      }
-    });
-
-    // Count products per supplier
-    inventory.forEach((item) => {
-      const supplierIds = item.supplierIds ?? (item.supplierId ? [item.supplierId] : []);
-      supplierIds.forEach((sid) => {
-        if (statsMap[sid]) {
-          statsMap[sid].productCount += 1;
-        }
-      });
-    });
-
-    return statsMap;
-  }, [suppliers, purchases, inventory]);
-
-  // Summary metrics
-  const summary = useMemo(() => {
-    const totalSuppliers = suppliers.length;
-    const activeSuppliers = suppliers.filter((s) => (s.status ?? 'active') === 'active').length;
-    const totalPurchasedValue = purchases.reduce((sum, p) => sum + p.grandTotal, 0);
-    return { totalSuppliers, activeSuppliers, totalPurchasedValue };
-  }, [suppliers, purchases]);
-
-  // Main processing pipeline: enrich → search → status filter → sort
-  const processedSuppliers = useMemo(() => {
-    // 1. Enrich with search text (required by rankSearch)
-    const enriched = suppliers.map((supplier) => ({
-      ...supplier,
-      searchText: [
-        supplier.name,
-        supplier.phone,
-        supplier.address,
-        supplier.vatPan,
-        supplier.contactPerson,
-      ].join(' '),
-    }));
-
-    // 2. Search filter (debounced)
     let filtered = enriched;
+
+    // 2. Date filter
+    const { from, to } = dateRange;
+    if (from || to) {
+      filtered = filtered.filter((invoice) => {
+        const day = invoice.date.slice(0, 10);
+        if (from && day < from) return false;
+        if (to && day > to) return false;
+        return true;
+      });
+    }
+
+    // 3. Purchase status filter
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter((invoice) => (invoice.status ?? 'received') === statusFilter);
+    }
+
+    // 4. Payment status filter
+    if (paymentFilter !== 'all') {
+      filtered = filtered.filter((invoice) => getPaymentState(invoice) === paymentFilter);
+    }
+
+    // 5. Search
     if (debouncedQuery.trim()) {
       filtered = rankSearch(filtered, debouncedQuery, filtered.length);
     }
 
-    // 3. Status filter
-    if (statusFilter !== 'all') {
-      filtered = filtered.filter((s) => (s.status ?? 'active') === statusFilter);
-    }
+    // 6. Sort by latest date / createdAt
+    return filtered.sort((a, b) => {
+      const dateCompare = (b.date ?? '').localeCompare(a.date ?? '');
+      if (dateCompare !== 0) return dateCompare;
+      return (b.createdAt ?? '').localeCompare(a.createdAt ?? '');
+    });
+  }, [purchases, suppliers, debouncedQuery, statusFilter, paymentFilter, dateRange]);
 
-    // 4. Sort by name (ascending)
-    return filtered.sort((a, b) => a.name.localeCompare(b.name));
-  }, [suppliers, debouncedQuery, statusFilter]);
+  // Summary stats
+  const summary = useMemo(() => {
+    const receivedValue = processedPurchases
+      .filter((invoice) => (invoice.status ?? 'received') === 'received')
+      .reduce((sum, invoice) => sum + invoice.grandTotal, 0);
+    return {
+      count: processedPurchases.length,
+      receivedValue,
+    };
+  }, [processedPurchases]);
 
   // Pagination
-  const visibleSuppliers = useMemo(
-    () => processedSuppliers.slice(0, displayCount),
-    [processedSuppliers, displayCount],
+  const visiblePurchases = useMemo(
+    () => processedPurchases.slice(0, displayCount),
+    [processedPurchases, displayCount],
   );
 
-  const hasMore = displayCount < processedSuppliers.length;
-  const remaining = processedSuppliers.length - displayCount;
+  const hasMore = displayCount < processedPurchases.length;
+  const remaining = processedPurchases.length - displayCount;
 
-  const activeFilterCount = [debouncedQuery !== '', statusFilter !== 'all'].filter(Boolean).length;
+  const activeFilterCount = [
+    debouncedQuery !== '',
+    statusFilter !== 'all',
+    paymentFilter !== 'all',
+    datePreset !== 'all',
+  ].filter(Boolean).length;
 
   const clearFilters = useCallback(() => {
     setInputValue('');
     setStatusFilter('all');
+    setPaymentFilter('all');
+    setDatePreset('all');
+    setCustomDateFrom('');
+    setCustomDateTo('');
+    setCustomOpen(false);
+  }, []);
+
+  const handleDatePreset = useCallback((p: DatePreset) => {
+    if (p === 'custom') {
+      setDatePreset('custom');
+      setCustomOpen(true);
+      return;
+    }
+    setDatePreset(p);
+    setCustomOpen(false);
+  }, []);
+
+  const applyCustomDates = useCallback(() => {
+    setDatePreset('custom');
+    setCustomOpen(false);
   }, []);
 
   const loadMore = useCallback(() => {
@@ -174,127 +256,189 @@ export default function SupplierList() {
   return (
     <div className="max-w-3xl mx-auto p-4 md:p-6 pb-28 md:pb-8 space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Suppliers</h1>
+          <h1 className="text-2xl font-bold">Purchases</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            {suppliers.length} total · {summary.activeSuppliers} active
+            {purchases.length} total invoice{purchases.length !== 1 ? 's' : ''}
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button onClick={() => setLocation('/purchases/new')} variant="outline" className="shrink-0">
-            <Truck className="h-4 w-4 mr-1.5" />
-            New Purchase
-          </Button>
-          <Button onClick={() => setLocation('/suppliers/new')} className="shrink-0">
-            <Plus className="h-4 w-4 mr-1.5" />
-            Add Supplier
-          </Button>
-        </div>
+        <Button onClick={() => setLocation('/purchases/new')} className="w-full sm:w-auto shrink-0">
+          <Plus className="h-4 w-4 mr-1.5" />
+          New Purchase
+        </Button>
       </div>
 
-      {/* Status filter chips */}
+      {/* Date chips */}
+      <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 md:mx-0 md:px-0 scrollbar-none">
+        {DATE_PRESETS.map((p) => (
+          <Chip
+            key={p.id}
+            active={datePreset === p.id}
+            onClick={() => handleDatePreset(p.id)}
+          >
+            {(p.id === 'today' || p.id === 'yesterday') && <Calendar className="h-3 w-3" />}
+            {p.label}
+          </Chip>
+        ))}
+      </div>
+
+      {/* Status chips */}
       <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 md:mx-0 md:px-0 scrollbar-none">
         {STATUS_FILTERS.map((s) => (
-          <Chip key={s.id} active={statusFilter === s.id} onClick={() => setStatusFilter(s.id)}>
+          <Chip
+            key={s.id}
+            active={statusFilter === s.id}
+            onClick={() => setStatusFilter(s.id)}
+          >
             {s.label}
           </Chip>
         ))}
       </div>
 
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-        <Input
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
-          placeholder="Search by name, phone, contact person…"
-          className="pl-9 pr-9"
-        />
-        {inputValue && (
-          <button
-            type="button"
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-            onClick={() => setInputValue('')}
+      {/* Payment status chips */}
+      <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 md:mx-0 md:px-0 scrollbar-none">
+        {PAYMENT_FILTERS.map((p) => (
+          <Chip
+            key={p.id}
+            active={paymentFilter === p.id}
+            onClick={() => setPaymentFilter(p.id)}
           >
-            <X className="h-4 w-4" />
-          </button>
-        )}
+            {p.label}
+          </Chip>
+        ))}
       </div>
 
-      {/* Clear filters */}
-      {activeFilterCount > 0 && (
-        <div className="flex justify-end">
+      {/* Search + clear filters */}
+      <div className="flex gap-2 items-center">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+          <Input
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            placeholder="Search by invoice #, supplier, product…"
+            className="pl-9 pr-9"
+            aria-label="Search purchases"
+          />
+          {inputValue && (
+            <button
+              type="button"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+              onClick={() => setInputValue('')}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+        {activeFilterCount > 0 && (
           <Button
             variant="ghost"
             size="sm"
-            className="gap-1.5 text-muted-foreground hover:text-foreground"
+            className="shrink-0 gap-1.5 text-muted-foreground hover:text-foreground"
             onClick={clearFilters}
           >
             <X className="h-4 w-4" />
-            Clear filters
+            Clear
             <Badge variant="secondary" className="ml-1 h-5 w-5 p-0 justify-center">
               {activeFilterCount}
             </Badge>
           </Button>
-        </div>
-      )}
+        )}
+      </div>
+
+      {/* Custom Date Dialog */}
+      <Dialog open={customOpen} onOpenChange={setCustomOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Custom date range</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <label className="text-sm font-medium text-muted-foreground space-y-2 block">
+              <span>From date</span>
+              <Input
+                type="date"
+                value={customDateFrom}
+                onChange={(e) => setCustomDateFrom(e.target.value)}
+              />
+            </label>
+            <label className="text-sm font-medium text-muted-foreground space-y-2 block">
+              <span>To date</span>
+              <Input
+                type="date"
+                value={customDateTo}
+                onChange={(e) => setCustomDateTo(e.target.value)}
+              />
+            </label>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setCustomDateFrom('');
+                setCustomDateTo('');
+                setDatePreset('all');
+                setCustomOpen(false);
+              }}
+            >
+              Clear
+            </Button>
+            <Button onClick={applyCustomDates}>Apply</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Summary card */}
       <Card>
-        <CardContent className="p-4 grid grid-cols-3 gap-4">
+        <CardContent className="p-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
-              <Users className="h-4 w-4" />
+            <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center">
+              <Receipt className="h-4 w-4 text-primary" />
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Suppliers</p>
-              <p className="font-bold text-lg leading-tight">{summary.totalSuppliers}</p>
+              <p className="text-xs text-muted-foreground">
+                {activeFilterCount > 0 ? 'Matching purchases' : 'Total purchases'}
+              </p>
+              <p className="font-bold text-lg leading-tight">{summary.count}</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
-              <ClipboardList className="h-4 w-4" />
-            </div>
+          <div className="flex items-center gap-3 text-right">
             <div>
-              <p className="text-xs text-muted-foreground">Active</p>
-              <p className="font-bold text-lg leading-tight">{summary.activeSuppliers}</p>
+              <p className="text-xs text-muted-foreground">
+                {activeFilterCount > 0 ? 'Filtered received value' : 'Received value'}
+              </p>
+              <p className="font-bold text-lg leading-tight text-green-600 tabular-nums">
+                {format(summary.receivedValue)}
+              </p>
             </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-lg bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
-              <Coins className="h-4 w-4" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Purchased</p>
-              <p className="font-bold text-lg leading-tight tabular-nums">{format(summary.totalPurchasedValue)}</p>
+            <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center">
+              <TrendingUp className="h-4 w-4 text-primary" />
             </div>
           </div>
         </CardContent>
       </Card>
 
       {/* Results / Empty states */}
-      {suppliers.length === 0 ? (
+      {purchases.length === 0 ? (
         <Card>
           <CardContent className="py-16 text-center space-y-3">
-            <Building2 className="mx-auto h-12 w-12 text-muted-foreground/30" />
-            <h3 className="text-lg font-semibold">No suppliers yet</h3>
-            <p className="text-muted-foreground text-sm">Add your first supplier to get started.</p>
-            <Button onClick={() => setLocation('/suppliers/new')} className="mt-2">
+            <Truck className="mx-auto h-12 w-12 text-muted-foreground/30" />
+            <h3 className="text-lg font-semibold">No purchases yet</h3>
+            <p className="text-muted-foreground text-sm">Start recording purchases to see them here.</p>
+            <Button onClick={() => setLocation('/purchases/new')} className="mt-2">
               <Plus className="h-4 w-4 mr-2" />
-              Add Supplier
+              New Purchase
             </Button>
           </CardContent>
         </Card>
-      ) : processedSuppliers.length === 0 ? (
+      ) : processedPurchases.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center space-y-3">
             <Search className="mx-auto h-10 w-10 text-muted-foreground/30" />
-            <h3 className="text-base font-semibold">No matching suppliers</h3>
+            <h3 className="text-base font-semibold">No matching purchases</h3>
             <p className="text-muted-foreground text-sm">
               {activeFilterCount > 0
-                ? 'Try a different status or search term.'
-                : 'No suppliers found for your search.'}
+                ? 'Try a different date, status, payment, or search term.'
+                : 'No purchases found for your search.'}
             </p>
             {activeFilterCount > 0 && (
               <Button variant="outline" size="sm" onClick={clearFilters} className="mt-1">
@@ -307,102 +451,90 @@ export default function SupplierList() {
       ) : (
         <div className="space-y-5">
           <div className="space-y-2">
-            {visibleSuppliers.map((supplier, index) => {
-              const stats = supplierStatsMap[supplier.id] ?? {
-                totalPurchased: 0,
-                totalOrders: 0,
-                productCount: 0,
-              };
-              const isActive = (supplier.status ?? 'active') === 'active';
+            {visiblePurchases.map((invoice, index) => {
+              const supplier = suppliers.find((c) => c.id === invoice.supplierId);
+              const status = invoice.status ?? 'received';
+              const paymentState = getPaymentState(invoice);
+
+              const paymentBadgeClass =
+                paymentState === 'paid'
+                  ? 'bg-emerald-100 text-emerald-700'
+                  : paymentState === 'partial'
+                    ? 'bg-sky-100 text-sky-700'
+                    : 'bg-amber-100 text-amber-700';
 
               return (
                 <div
-                  key={supplier.id}
+                  key={invoice.id}
                   role="button"
                   tabIndex={0}
-                  onClick={() => setLocation(`/suppliers/${supplier.id}`)}
-                  onKeyDown={(e) => e.key === 'Enter' && setLocation(`/suppliers/${supplier.id}`)}
-                  className={`
+                  onClick={() => setLocation(`/purchases/${invoice.id}`)}
+                  onKeyDown={(e) => e.key === 'Enter' && setLocation(`/purchases/${invoice.id}`)}
+                  className="
                     group flex items-center gap-3 rounded-xl border bg-card
-                    px-4 py-3 cursor-pointer
+                    px-3 py-3 sm:px-4 sm:py-3 cursor-pointer
                     hover:bg-muted/40 active:scale-[0.99]
                     transition-all duration-100 select-none
-                    ${isActive ? '' : 'border-l-4 border-l-amber-500'}
-                  `}
+                  "
                 >
                   {/* Serial number */}
-                  <div className="text-xs text-muted-foreground tabular-nums w-6 text-center shrink-0 font-medium">
+                  <div className="text-xs text-muted-foreground tabular-nums w-5 sm:w-6 text-center shrink-0 font-medium">
                     {index + 1}
                   </div>
 
-                  {/* Avatar */}
-                  <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-sm shrink-0">
-                    {supplier.name.charAt(0).toUpperCase()}
+                  {/* Icon */}
+                  <div className="h-9 w-9 sm:h-10 sm:w-10 rounded-full bg-green-100 text-green-600 flex items-center justify-center shrink-0">
+                    <Truck className="h-4 w-4 sm:h-5 sm:w-5" />
                   </div>
 
                   {/* Main info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="font-semibold text-sm truncate">{supplier.name}</span>
-                      {!isActive && (
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">
-                          Inactive
-                        </Badge>
-                      )}
+                      <span className="font-semibold text-sm truncate">
+                        {invoice.invoiceNumber || 'No Ref #'}
+                      </span>
+                      <Badge
+                        variant={
+                          status === 'received'
+                            ? 'secondary'
+                            : status === 'cancelled'
+                              ? 'destructive'
+                              : 'outline'
+                        }
+                        className="uppercase text-[10px] tracking-wide"
+                      >
+                        {status}
+                      </Badge>
                     </div>
-                    <div className="text-xs text-muted-foreground flex items-center gap-2 mt-0.5 flex-wrap">
-                      {supplier.contactPerson && (
-                        <span className="truncate">{supplier.contactPerson}</span>
-                      )}
-                      {supplier.phone && (
-                        <span className="inline-flex items-center gap-1">
-                          <Phone className="h-3 w-3" />
-                          {supplier.phone}
-                        </span>
-                      )}
-                      {supplier.address && (
-                        <span className="inline-flex items-center gap-1 truncate">
-                          <MapPin className="h-3 w-3 shrink-0" />
-                          {supplier.address}
-                        </span>
-                      )}
+
+                    <p className="text-xs text-muted-foreground truncate mt-0.5">
+                      {supplier?.name ?? invoice.supplierName ?? 'Unknown supplier'} ·{' '}
+                      {invoice.items.length} item{invoice.items.length !== 1 ? 's' : ''}
+                    </p>
+
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                      <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
+                        <Calendar className="h-3 w-3" />
+                        {formatDate(parseISO(invoice.date), 'dd MMM yyyy')}
+                      </span>
+                      <span className="text-muted-foreground/40 text-xs">·</span>
+                      <Badge variant="outline" className={`capitalize text-[10px] px-1.5 py-0 h-4 ${paymentBadgeClass}`}>
+                        {paymentState}
+                      </Badge>
                     </div>
                   </div>
 
-                  {/* Stats (desktop) */}
-                  <div className="hidden md:flex items-center gap-4 text-right shrink-0">
-                    <div>
-                      <p className="text-[10px] text-muted-foreground uppercase">Purchased</p>
-                      <p className="font-bold text-primary text-sm tabular-nums">
-                        {format(stats.totalPurchased)}
+                  {/* Amount + arrow */}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <div className="text-right">
+                      <p className="font-bold tabular-nums text-sm text-green-600">
+                        {format(invoice.grandTotal)}
                       </p>
                     </div>
-                    <div>
-                      <p className="text-[10px] text-muted-foreground uppercase">Orders</p>
-                      <p className="font-bold text-sm">{stats.totalOrders}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] text-muted-foreground uppercase">Products</p>
-                      <p className="font-bold text-sm">{stats.productCount}</p>
+                    <div className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
+                      <ChevronDown className="h-4 w-4" />
                     </div>
                   </div>
-
-                  {/* Stats (mobile) */}
-                  <div className="flex md:hidden items-center gap-3 text-xs text-right shrink-0">
-                    <div>
-                      <p className="text-[10px] text-muted-foreground">Total</p>
-                      <p className="font-bold text-primary tabular-nums">{format(stats.totalPurchased)}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] text-muted-foreground flex items-center gap-0.5">
-                        <Package className="h-2.5 w-2.5" />
-                      </p>
-                      <p className="font-bold">{stats.productCount}</p>
-                    </div>
-                  </div>
-
-                  {/* Chevron */}
-                  <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 ml-1" />
                 </div>
               );
             })}
@@ -414,15 +546,17 @@ export default function SupplierList() {
               <Button variant="outline" className="w-full sm:w-auto gap-2" onClick={loadMore}>
                 <ChevronDown className="h-4 w-4" />
                 Load {Math.min(PAGE_SIZE, remaining)} more
-                <span className="text-muted-foreground text-xs">({remaining} remaining)</span>
+                <span className="text-muted-foreground text-xs">
+                  ({remaining} remaining)
+                </span>
               </Button>
             </div>
           )}
 
           {/* End of list */}
-          {!hasMore && processedSuppliers.length > PAGE_SIZE && (
+          {!hasMore && processedPurchases.length > PAGE_SIZE && (
             <p className="text-center text-xs text-muted-foreground py-2">
-              All {processedSuppliers.length} suppliers shown
+              All {processedPurchases.length} purchases shown
             </p>
           )}
         </div>
