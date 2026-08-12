@@ -129,11 +129,15 @@ export function InventoryDispositionDialog({ product, open, onOpenChange, onCrea
     useEffect(() => {
         if (!selectedBatch) return;
         setUnitCost(String(selectedBatch.purchaseRate));
+        if (selectedBatch.supplierId) {
+            setSelectedSupplierId(selectedBatch.supplierId);
+        }
         if (reason === 'expired' && !isExpiredBatch) {
             setReason('damaged');
         }
     }, [selectedBatch, isExpiredBatch, reason]);
 
+    const selectedBatchSupplier = selectedBatch ? suppliers.find(supplier => supplier.id === selectedBatch.supplierId) ?? null : null;
     const batchOptions = product.hasExpiry ? productBatches : [];
     const supplierOptions = productSuppliers.length > 0 ? productSuppliers : suppliers;
 
@@ -348,6 +352,7 @@ export function InventoryDispositionDialog({ product, open, onOpenChange, onCrea
                                 value={unitCost}
                                 onChange={(event) => setUnitCost(event.target.value)}
                                 placeholder={String(purchaseRateToShow)}
+                                readOnly={!!selectedBatch}
                             />
                             <p className="text-xs text-muted-foreground mt-1">
                                 Batch rate: {purchaseRateToShow.toFixed(2)}
@@ -358,18 +363,26 @@ export function InventoryDispositionDialog({ product, open, onOpenChange, onCrea
                     <div className="grid gap-3 sm:grid-cols-2">
                         <div>
                             <Label htmlFor="disposition-supplier">Supplier</Label>
-                            <Select value={selectedSupplierId} onValueChange={setSelectedSupplierId}>
-                                <SelectTrigger id="disposition-supplier">
-                                    <SelectValue placeholder="Select supplier" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {supplierOptions.length > 0 ? supplierOptions.map(supplier => (
-                                        <SelectItem key={supplier.id} value={supplier.id}>{supplier.name}</SelectItem>
-                                    )) : (
-                                        <SelectItem value="" disabled>No supplier available</SelectItem>
-                                    )}
-                                </SelectContent>
-                            </Select>
+                            {selectedBatch ? (
+                                <Input
+                                    id="disposition-supplier"
+                                    value={selectedBatchSupplier?.name ?? 'Unknown supplier'}
+                                    readOnly
+                                />
+                            ) : (
+                                <Select value={selectedSupplierId} onValueChange={setSelectedSupplierId}>
+                                    <SelectTrigger id="disposition-supplier">
+                                        <SelectValue placeholder="Select supplier" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {supplierOptions.length > 0 ? supplierOptions.map(supplier => (
+                                            <SelectItem key={supplier.id} value={supplier.id}>{supplier.name}</SelectItem>
+                                        )) : (
+                                            <SelectItem value="" disabled>No supplier available</SelectItem>
+                                        )}
+                                    </SelectContent>
+                                </Select>
+                            )}
                         </div>
                         <div>
                             <Label htmlFor="disposition-purchase">Purchase invoice</Label>
