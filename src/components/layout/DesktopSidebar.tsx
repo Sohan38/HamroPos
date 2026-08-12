@@ -23,6 +23,7 @@ export function DesktopSidebar() {
       items: [
         { href: '/hotel', label: 'Hotel', icon: Hotel, show: isHotelEnabled },
         { href: '/restaurant', label: 'Restaurant', icon: UtensilsCrossed, show: isRestaurantEnabled },
+        { href: '/dispositions', label: 'Dispositions', icon: FileText, show: true },
         { href: '/purchases', label: 'Purchases', icon: Truck, show: true },
       ]
     },
@@ -67,8 +68,8 @@ export function DesktopSidebar() {
                       href={item.href}
                       className={cn(
                         "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                        isActive 
-                          ? "bg-primary text-primary-foreground shadow-sm" 
+                        isActive
+                          ? "bg-primary text-primary-foreground shadow-sm"
                           : "text-muted-foreground hover:bg-muted hover:text-foreground"
                       )}
                     >

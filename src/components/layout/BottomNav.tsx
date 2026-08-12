@@ -32,6 +32,7 @@ export function BottomNav() {
   // Dynamically assemble more sheets options
   const moreNavItems = [
     { href: '/purchases', label: 'Purchases', icon: Truck, show: true },
+    { href: '/dispositions', label: 'Dispositions', icon: FileText, show: true },
     { href: '/restaurant', label: 'Restaurant', icon: UtensilsCrossed, show: isRestaurantEnabled },
     { href: '/expenses', label: 'Expenses', icon: Receipt, show: true },
     { href: '/cash-book', label: 'Cash Book', icon: Wallet, show: true },
@@ -63,7 +64,7 @@ export function BottomNav() {
             </Link>
           );
         })}
- 
+
         <Sheet open={isMoreOpen} onOpenChange={setIsMoreOpen}>
           <SheetTrigger asChild>
             <button className="flex-1 flex flex-col items-center justify-center py-1 gap-1 text-muted-foreground hover:text-foreground transition-colors">
@@ -78,8 +79,8 @@ export function BottomNav() {
             <ScrollArea className="h-[calc(100%-60px)] px-6 pb-6">
               <div className="grid grid-cols-3 gap-4 pb-8">
                 {moreNavItems.map((item) => (
-                  <Link 
-                    key={item.href} 
+                  <Link
+                    key={item.href}
                     href={item.href}
                     onClick={() => setIsMoreOpen(false)}
                     className="flex flex-col items-center gap-2 p-3 rounded-xl bg-muted/50 hover:bg-muted active:scale-95 transition-all"

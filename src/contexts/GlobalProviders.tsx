@@ -1,5 +1,5 @@
 import React from 'react';
-import { Product, ProductBatch, Supplier, Customer, PurchaseInvoice, SaleInvoice, HotelRoom, HotelBill, RestaurantBill, Expense, CashBookEntry, Credit } from '../types';
+import { Product, ProductBatch, Supplier, Customer, PurchaseInvoice, SaleInvoice, HotelRoom, HotelBill, RestaurantBill, Expense, CashBookEntry, Credit, InventoryDisposition } from '../types';
 import { createStorageContext } from './createStorageContext';
 
 export const { Provider: InventoryProvider, useStorage: useInventory } = createStorageContext<Product>('inventory');
@@ -8,6 +8,7 @@ export const { Provider: SuppliersProvider, useStorage: useSuppliers } = createS
 export const { Provider: CustomersProvider, useStorage: useCustomers } = createStorageContext<Customer>('customers');
 export const { Provider: PurchasesProvider, useStorage: usePurchases } = createStorageContext<PurchaseInvoice>('purchases');
 export const { Provider: SalesProvider, useStorage: useSales } = createStorageContext<SaleInvoice>('sales');
+export const { Provider: DispositionsProvider, useStorage: useDispositions } = createStorageContext<InventoryDisposition>('dispositions');
 export const { Provider: HotelRoomsProvider, useStorage: useHotelRooms } = createStorageContext<HotelRoom>('hotelRooms');
 export const { Provider: HotelBillsProvider, useStorage: useHotelBills } = createStorageContext<HotelBill>('hotelBills');
 export const { Provider: RestaurantBillsProvider, useStorage: useRestaurantBills } = createStorageContext<RestaurantBill>('restaurantBills');
@@ -23,19 +24,21 @@ export function GlobalProviders({ children }: { children: React.ReactNode }) {
           <CustomersProvider>
             <PurchasesProvider>
               <SalesProvider>
-                <HotelRoomsProvider>
-                  <HotelBillsProvider>
-                    <RestaurantBillsProvider>
-                      <ExpensesProvider>
-                        <CashBookProvider>
-                          <CreditProvider>
-                            {children}
-                          </CreditProvider>
-                        </CashBookProvider>
-                      </ExpensesProvider>
-                    </RestaurantBillsProvider>
-                  </HotelBillsProvider>
-                </HotelRoomsProvider>
+                <DispositionsProvider>
+                  <HotelRoomsProvider>
+                    <HotelBillsProvider>
+                      <RestaurantBillsProvider>
+                        <ExpensesProvider>
+                          <CashBookProvider>
+                            <CreditProvider>
+                              {children}
+                            </CreditProvider>
+                          </CashBookProvider>
+                        </ExpensesProvider>
+                      </RestaurantBillsProvider>
+                    </HotelBillsProvider>
+                  </HotelRoomsProvider>
+                </DispositionsProvider>
               </SalesProvider>
             </PurchasesProvider>
           </CustomersProvider>

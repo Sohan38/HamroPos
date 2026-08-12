@@ -86,6 +86,44 @@ export interface Customer extends StorageRecord {
 
 export type PaymentMethod = 'cash' | 'qr' | 'card' | 'bank' | 'split' | 'credit';
 
+export type DispositionReason = 'expired' | 'damaged' | 'defective' | 'supplier_recall' | 'wrong_item_supplied' | 'other';
+export type DispositionResolution = 'return_to_supplier' | 'supplier_replacement' | 'supplier_credit' | 'supplier_refund' | 'write_off' | 'reversal';
+export type DispositionStatus = 'completed' | 'reversed';
+export type DispositionSettlementType = 'none' | 'credit' | 'refund' | 'replacement';
+export type DispositionSettlementStatus = 'pending' | 'completed' | 'cancelled';
+
+export interface InventoryDisposition extends StorageRecord {
+  referenceNumber: string;
+  date: string;
+  performedById: string | null;
+  performedByName: string | null;
+  reason: DispositionReason;
+  resolution: DispositionResolution;
+  status: DispositionStatus;
+  productId: string;
+  productName: string;
+  batchId: string | null;
+  batchNumber: string | null;
+  purchaseInvoiceId: string | null;
+  purchaseInvoiceNumber: string | null;
+  supplierId: string | null;
+  supplierName: string | null;
+  quantity: number;
+  unitCost: number;
+  totalValue: number;
+  settlementAmount: number;
+  settlementMethod: PaymentMethod | null;
+  settlementType: DispositionSettlementType;
+  settlementStatus?: DispositionSettlementStatus | null;
+  settlementReference?: string | null;
+  settlementDate?: string | null;
+  notes: string | null;
+  reversalOfId: string | null;
+  reversedById: string | null;
+  replacementPurchaseInvoiceId: string | null;
+  idempotencyKey: string | null;
+}
+
 export interface PurchaseItem {
   productId: string;
   productName: string;

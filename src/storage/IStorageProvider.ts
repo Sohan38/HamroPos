@@ -17,8 +17,7 @@ export interface IStorageProvider {
   save<T extends StorageRecord>(key: string, record: T): Promise<T>;
   softDelete(key: string, id: string): Promise<void>;
   undoSoftDelete(key: string, id: string): Promise<void>;
-  hardDelete(key: string, id: string): Promise<void>;
-
+  hardDelete(key: string, id: string): Promise<void>; transaction?<T>(storeKeys: string[], mode: 'rw' | 'r', callback: () => Promise<T>): Promise<T>;
   /* ── Settings ────────────────────────────────────────────────────── */
   getSettings(): Promise<any>;
   saveSettings(settings: any): Promise<void>;

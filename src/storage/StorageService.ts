@@ -77,9 +77,9 @@ export class LocalStorageProvider implements IStorageProvider {
   async save<T extends StorageRecord>(key: string, record: T): Promise<T> {
     const items = await this.get<T>(key);
     const existingIndex = items.findIndex((item) => item.id === record.id);
-    
+
     const now = new Date().toISOString();
-    
+
     if (existingIndex >= 0) {
       items[existingIndex] = {
         ...record,
@@ -94,7 +94,7 @@ export class LocalStorageProvider implements IStorageProvider {
         version: 1,
       });
     }
-    
+
     await this.set(key, items);
     return items[existingIndex >= 0 ? existingIndex : items.length - 1];
   }
@@ -109,7 +109,7 @@ export class LocalStorageProvider implements IStorageProvider {
       await this.set(key, items);
     }
   }
-  
+
   async undoSoftDelete(key: string, id: string): Promise<void> {
     const items = await this.get<StorageRecord>(key);
     const existingIndex = items.findIndex((item) => item.id === id);
@@ -137,7 +137,7 @@ export class LocalStorageProvider implements IStorageProvider {
     const allKeys = [
       'inventory', 'settings', 'suppliers', 'customers', 'sales',
       'purchases', 'expenses', 'hotelRooms', 'productBatches',
-      'hotelBills', 'restaurantBills', 'cashBook', 'credit'
+      'hotelBills', 'restaurantBills', 'cashBook', 'credit', 'dispositions'
     ];
 
     for (const key of allKeys) {
@@ -202,8 +202,9 @@ export class LocalStorageProvider implements IStorageProvider {
       const allKeys = [
         'inventory', 'settings', 'suppliers', 'customers', 'sales',
         'purchases', 'expenses', 'hotelRooms', 'productBatches',
-        'hotelBills', 'restaurantBills', 'cashBook', 'credit'
+        'hotelBills', 'restaurantBills', 'cashBook', 'credit', 'dispositions'
       ];
+
       for (const key of allKeys) {
         const fullKey = this.getFullKey(key);
         if (fullKey in collections) {
@@ -225,7 +226,7 @@ export class LocalStorageProvider implements IStorageProvider {
 
       // 5. Overwrite only after every validation succeeds
       await this.clearAll(); // also clears in-memory cache
-      
+
       for (const [k, v] of Object.entries(collections)) {
         if (k.startsWith(this.KEY_PREFIX)) {
           localStorage.setItem(k, JSON.stringify(v));
@@ -238,11 +239,28 @@ export class LocalStorageProvider implements IStorageProvider {
     }
   }
 
+  async transaction<T>(storeKeys: string[], mode: 'rw' | 'r', callback: () => Promise<T>): Promise<T> {
+    const backups = new Map<string, StorageRecord[]>();
+    for (const key of storeKeys) {
+      const items = await this.get<StorageRecord>(key);
+      backups.set(key, items.map((item) => ({ ...item })));
+    }
+
+    try {
+      return await callback();
+    } catch (error) {
+      for (const [key, items] of backups) {
+        await this.set(key, items as any);
+      }
+      throw error;
+    }
+  }
+
   async clearKey(key: string): Promise<void> {
     localStorage.removeItem(this.getFullKey(key));
     this.memCache.delete(key);
   }
-  
+
   async clearAll(): Promise<void> {
     const keysToRemove = [];
     for (let i = 0; i < localStorage.length; i++) {
@@ -261,7 +279,7 @@ export class LocalStorageProvider implements IStorageProvider {
     const { clearSeedFlag } = await import('@/utils/seedHelper');
     clearSeedFlag();
   }
-  
+
   async getSettings(): Promise<any> {
     const defaultFeatures = {
       inventory: {
@@ -303,7 +321,7 @@ export class LocalStorageProvider implements IStorageProvider {
       language: 'en',
       features: defaultFeatures
     };
-    
+
     try {
       const raw = localStorage.getItem(`${this.KEY_PREFIX}settings`);
       if (raw) {
@@ -317,7 +335,7 @@ export class LocalStorageProvider implements IStorageProvider {
     }
     return defaultSettings;
   }
-  
+
   async saveSettings(settings: any): Promise<void> {
     localStorage.setItem(`${this.KEY_PREFIX}settings`, JSON.stringify(settings));
   }

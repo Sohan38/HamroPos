@@ -14,7 +14,8 @@ import {
   FileText, ShoppingCart,
 } from 'lucide-react';
 import { ExpiryBadge, getBatchStatus } from '@/components/BatchFormDialog';
-import { useMemo } from 'react';
+import { InventoryDispositionDialog } from '@/components/InventoryDispositionDialog';
+import { useMemo, useState } from 'react';
 
 import { useFeature } from '@/hooks/useFeature';
 
@@ -30,6 +31,7 @@ export default function InventoryDetail() {
   const { items: allBatches } = useProductBatches();
   const { items: suppliers } = useSuppliers();
   const { format } = useCurrency();
+  const [dispositionDialogOpen, setDispositionDialogOpen] = useState(false);
 
   const product = inventory.find(p => p.id === id);
 
@@ -128,12 +130,15 @@ export default function InventoryDetail() {
             <p className="text-xs text-muted-foreground">{product.category}{product.brand ? ` · ${product.brand}` : ''}</p>
           </div>
         </div>
-        <div className="flex gap-2 shrink-0">
+        <div className="flex gap-2 shrink-0 flex-wrap">
           <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setLocation(`/purchases/new?productId=${id}&supplierId=${encodeURIComponent(product.supplierId || '')}`)}>
             <Truck className="h-4 w-4" /> Restock
           </Button>
           <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setLocation('/sales/new')}>
             <ShoppingCart className="h-4 w-4" /> Sell
+          </Button>
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setDispositionDialogOpen(true)}>
+            <AlertTriangle className="h-4 w-4" /> Disposition
           </Button>
           <Button size="sm" className="gap-1.5" onClick={() => setLocation(`/inventory/${id}/edit`)}>
             <Edit className="h-4 w-4" /> Edit
@@ -521,6 +526,11 @@ export default function InventoryDetail() {
         </Card>
       )}
 
+      <InventoryDispositionDialog
+        product={product}
+        open={dispositionDialogOpen}
+        onOpenChange={setDispositionDialogOpen}
+      />
     </div>
   );
 }

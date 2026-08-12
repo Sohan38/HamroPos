@@ -21,6 +21,7 @@ const COLLECTION_KEYS = [
   'restaurantBills',
   'cashBook',
   'credit',
+  'dispositions',
 ] as const;
 
 type CollectionKey = typeof COLLECTION_KEYS[number];
@@ -169,6 +170,12 @@ export class DexieProvider implements IStorageProvider {
       console.error(`[DexieProvider] save("${key}") failed:`, error);
       throw error;
     }
+  }
+
+  async transaction<T>(storeKeys: string[], mode: 'rw' | 'r', callback: () => Promise<T>): Promise<T> {
+    if (storeKeys.length === 0) return callback();
+    const tables = storeKeys.map((key) => this.table(key));
+    return db.transaction(mode, tables, callback);
   }
 
   async softDelete(key: string, id: string): Promise<void> {
