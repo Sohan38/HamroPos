@@ -24,8 +24,10 @@ function retryLazy<T extends { default: any }>(
   return lazy(() =>
     factory().catch((err) => {
       if (retries <= 0) throw err;
-      return new Promise<T>((resolve) =>
-        setTimeout(() => resolve(retryLazy(factory, retries - 1) as any), 500)
+      return new Promise<T>((resolve, reject) =>
+        setTimeout(() => {
+          factory().then(resolve).catch(reject);
+        }, 500)
       );
     })
   );

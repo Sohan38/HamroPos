@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { getBatchStatus } from '@/components/BatchFormDialog';
 import { useBackModal } from '@/contexts/NavigationContext';
 import { useInventory, useProductBatches, usePurchases, useSuppliers, useDispositions } from '@/contexts/GlobalProviders';
 import { useStorageProvider } from '@/storage/StorageContext';
@@ -60,10 +61,10 @@ export function InventoryDispositionDialog({ product, open, onOpenChange, onCrea
     const [selectedBatchId, setSelectedBatchId] = useState<string>(productBatches[0]?.id ?? '');
     const [selectedSupplierId, setSelectedSupplierId] = useState<string>(product.supplierId || productBatches[0]?.supplierId || '');
     const [selectedPurchaseInvoiceId, setSelectedPurchaseInvoiceId] = useState<string>('');
-    const [reason, setReason] = useState<DispositionReason>(product.hasExpiry ? 'expired' : 'damaged');
+    const [reason, setReason] = useState<DispositionReason>(product.hasExpiry && productBatches[0] && getBatchStatus(productBatches[0].expiryDate) === 'expired' ? 'expired' : 'damaged');
     const [resolution, setResolution] = useState<DispositionResolution>('return_to_supplier');
     const [quantity, setQuantity] = useState<string>('');
-    const [unitCost, setUnitCost] = useState<string>(String(product.purchaseRate ?? 0));
+    const [unitCost, setUnitCost] = useState<string>('');
     const [referenceNumber, setReferenceNumber] = useState<string>('');
     const [notes, setNotes] = useState<string>('');
     const [settlementAmount, setSettlementAmount] = useState<string>('');
@@ -82,15 +83,31 @@ export function InventoryDispositionDialog({ product, open, onOpenChange, onCrea
 
     useBackModal(open, () => onOpenChange(false), 'inventory-disposition-dialog');
 
+    const selectedBatch = useMemo(() => {
+        return productBatches.find(batch => batch.id === selectedBatchId) ?? null;
+    }, [productBatches, selectedBatchId]);
+
+    const selectedPurchaseInvoice = useMemo(() => {
+        return purchases.find(purchase => purchase.id === selectedPurchaseInvoiceId) ?? null;
+    }, [purchases, selectedPurchaseInvoiceId]);
+
+    const selectedBatchStatus = selectedBatch ? getBatchStatus(selectedBatch.expiryDate) : 'none';
+    const isExpiredBatch = selectedBatchStatus === 'expired';
+    const defaultReason: DispositionReason = product.hasExpiry && selectedBatch && isExpiredBatch ? 'expired' : 'damaged';
+    const availableReasons = product.hasExpiry ? (
+        isExpiredBatch ? reasons : reasons.filter(item => item !== 'expired') as DispositionReason[]
+    ) : reasons;
+    const unitCostSource = selectedBatch?.purchaseRate ?? product.purchaseRate ?? 0;
+
     useEffect(() => {
         if (!open) return;
         setSelectedBatchId(productBatches[0]?.id ?? '');
         setSelectedSupplierId(product.supplierId || productBatches[0]?.supplierId || '');
         setSelectedPurchaseInvoiceId(productBatches[0]?.purchaseInvoiceId ?? '');
-        setReason(product.hasExpiry ? 'expired' : 'damaged');
+        setReason(defaultReason);
         setResolution('return_to_supplier');
         setQuantity('');
-        setUnitCost(String(product.purchaseRate ?? 0));
+        setUnitCost('');
         setReferenceNumber('');
         setNotes('');
         setSettlementAmount('');
@@ -105,15 +122,15 @@ export function InventoryDispositionDialog({ product, open, onOpenChange, onCrea
         setReplacementExpiryDate('');
         setReplacementPurchaseRate(String(product.purchaseRate ?? 0));
         setReplacementNotes('');
-    }, [open, product, productBatches]);
+    }, [open, product, productBatches, defaultReason, unitCostSource]);
 
-    const selectedBatch = useMemo(() => {
-        return productBatches.find(batch => batch.id === selectedBatchId) ?? null;
-    }, [productBatches, selectedBatchId]);
-
-    const selectedPurchaseInvoice = useMemo(() => {
-        return purchases.find(purchase => purchase.id === selectedPurchaseInvoiceId) ?? null;
-    }, [purchases, selectedPurchaseInvoiceId]);
+    useEffect(() => {
+        if (!selectedBatch) return;
+        setUnitCost(String(selectedBatch.purchaseRate));
+        if (reason === 'expired' && !isExpiredBatch) {
+            setReason('damaged');
+        }
+    }, [selectedBatch, isExpiredBatch, reason]);
 
     const batchOptions = product.hasExpiry ? productBatches : [];
     const supplierOptions = productSuppliers.length > 0 ? productSuppliers : suppliers;
@@ -130,15 +147,24 @@ export function InventoryDispositionDialog({ product, open, onOpenChange, onCrea
 
     const supplierPurchaseInvoiceOptions = useMemo(() => {
         const supplierId = selectedSupplierId || product.supplierId;
-        if (!supplierId) return purchases;
-        return purchases.filter((purchase) => purchase.supplierId === supplierId);
-    }, [purchases, selectedSupplierId, product.supplierId]);
+        return purchases.filter((purchase) => {
+            if (supplierId && purchase.supplierId !== supplierId) {
+                return false;
+            }
+            return purchase.items.some((item) => item.productId === product.id);
+        });
+    }, [purchases, selectedSupplierId, product.supplierId, product.id]);
 
     const purchaseInvoiceOptions = selectedBatch ? batchPurchaseInvoiceOptions : supplierPurchaseInvoiceOptions;
 
     useEffect(() => {
         if (selectedBatch?.purchaseInvoiceId) {
             setSelectedPurchaseInvoiceId(selectedBatch.purchaseInvoiceId);
+            return;
+        }
+
+        if (!selectedBatch && !selectedPurchaseInvoiceId && purchaseInvoiceOptions.length === 1) {
+            setSelectedPurchaseInvoiceId(purchaseInvoiceOptions[0].id);
             return;
         }
 
@@ -149,10 +175,12 @@ export function InventoryDispositionDialog({ product, open, onOpenChange, onCrea
 
     const quantityValue = Number(quantity || 0);
     const batchAvailable = selectedBatch?.quantity ?? product.quantity;
-    const canSubmit = quantityValue > 0 && quantityValue <= batchAvailable && (!product.hasExpiry || !!selectedBatchId) && (!product.supplierIds || product.supplierIds.length === 0 || !!selectedSupplierId);
+    const isAvailable = batchAvailable > 0;
+    const canSubmit = isAvailable && quantityValue > 0 && quantityValue <= batchAvailable && (!product.hasExpiry || !!selectedBatchId) && (!product.supplierIds || product.supplierIds.length === 0 || !!selectedSupplierId);
 
     const showSettlementFields = resolution === 'supplier_credit' || resolution === 'supplier_refund';
     const showReplacementFields = resolution === 'supplier_replacement';
+    const expiryReasonDisabled = product.hasExpiry && selectedBatch ? !isExpiredBatch : false;
 
     const handleSubmit = async () => {
         if (!canSubmit) {
@@ -169,7 +197,7 @@ export function InventoryDispositionDialog({ product, open, onOpenChange, onCrea
             purchaseInvoiceId: selectedPurchaseInvoiceId || undefined,
             supplierId: selectedSupplierId || undefined,
             quantity: quantityValue,
-            unitCost: Number(unitCost || selectedBatch?.purchaseRate || product.purchaseRate || 0),
+            unitCost: Number(unitCost || (selectedBatch?.purchaseRate ?? product.purchaseRate ?? 0)),
             settlementAmount: showSettlementFields ? Number(settlementAmount || 0) : undefined,
             settlementMethod: showSettlementFields ? settlementMethod : undefined,
             settlementStatus: showSettlementFields ? settlementStatus : undefined,
@@ -236,11 +264,16 @@ export function InventoryDispositionDialog({ product, open, onOpenChange, onCrea
                                     <SelectValue placeholder="Select reason" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    {reasons.map(item => (
-                                        <SelectItem key={item} value={item}>{item.replace(/_/g, ' ')}</SelectItem>
+                                    {availableReasons.map(item => (
+                                        <SelectItem key={item} value={item}>
+                                            {item.replace(/_/g, ' ')}
+                                        </SelectItem>
                                     ))}
                                 </SelectContent>
                             </Select>
+                            {product.hasExpiry && selectedBatch && !isExpiredBatch && (
+                                <p className="text-xs text-muted-foreground mt-1">Only expired batches may be marked as expired.</p>
+                            )}
                         </div>
                         <div>
                             <Label htmlFor="disposition-resolution">Resolution</Label>
@@ -287,10 +320,21 @@ export function InventoryDispositionDialog({ product, open, onOpenChange, onCrea
                                 id="disposition-quantity"
                                 type="number"
                                 min={1}
+                                max={batchAvailable}
                                 value={quantity}
-                                onChange={(event) => setQuantity(event.target.value)}
+                                onChange={(event) => {
+                                    const raw = Number(event.target.value);
+                                    if (Number.isNaN(raw)) {
+                                        setQuantity('');
+                                        return;
+                                    }
+                                    setQuantity(String(Math.max(1, Math.min(raw, batchAvailable))));
+                                }}
                                 placeholder="Enter quantity"
                             />
+                            <p className="text-xs text-muted-foreground mt-1">
+                                Available: {batchAvailable} {product.unit}
+                            </p>
                         </div>
                         <div>
                             <Label htmlFor="disposition-unit-cost">Unit Cost</Label>
@@ -301,7 +345,11 @@ export function InventoryDispositionDialog({ product, open, onOpenChange, onCrea
                                 step="0.01"
                                 value={unitCost}
                                 onChange={(event) => setUnitCost(event.target.value)}
+                                placeholder={String(unitCostSource)}
                             />
+                            <p className="text-xs text-muted-foreground mt-1">
+                                Batch rate: {selectedBatch ? selectedBatch.purchaseRate.toFixed(2) : unitCostSource.toFixed(2)}
+                            </p>
                         </div>
                     </div>
 

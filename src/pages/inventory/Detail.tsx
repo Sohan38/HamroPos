@@ -9,9 +9,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
   ArrowLeft, Edit, Package, Tag, Barcode, Factory,
   Layers, TrendingUp, AlertTriangle, CalendarDays, Truck,
-  FileText, ShoppingCart,
+  FileText, ShoppingCart, MoreHorizontal,
 } from 'lucide-react';
 import { ExpiryBadge, getBatchStatus } from '@/components/BatchFormDialog';
 import { InventoryDispositionDialog } from '@/components/InventoryDispositionDialog';
@@ -52,11 +58,9 @@ export default function InventoryDetail() {
 
   const suppliersById = useMemo(() => {
     const map = new Map<string, (typeof suppliers)[number]>();
-
     for (const supplier of suppliers) {
       map.set(supplier.id, supplier);
     }
-
     return map;
   }, [suppliers]);
 
@@ -66,7 +70,6 @@ export default function InventoryDetail() {
       : product.supplierId
         ? [product.supplierId]
         : [];
-
     return ids
       .map(id => suppliersById.get(id)?.name)
       .filter(Boolean) as string[];
@@ -103,46 +106,91 @@ export default function InventoryDetail() {
     b => getBatchStatus(b.expiryDate) !== 'expired'
   );
 
-
   const latestExpiryBatch =
     batches.length > 0
       ? [...batches].reverse().find(b => b.expiryDate)
       : undefined;
 
-  console.log('Product ID:', id);
-  console.log('All batches:', allBatches);
-  console.log(
-    'Matching batches:',
-    allBatches.filter(b => b.productId === id)
-  );
-
   return (
     <div className="p-4 md:p-6 space-y-5 max-w-3xl mx-auto pb-24 md:pb-8">
 
-      {/* Header */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <Button variant="ghost" size="icon" onClick={goBack}>
+      {/* Header – mobile responsive */}
+      <div className="flex items-start justify-between gap-3">
+        {/* Left: back + product info */}
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <Button variant="ghost" size="icon" onClick={goBack} className="shrink-0">
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div className="min-w-0">
             <h1 className="text-xl font-bold truncate">{product.name}</h1>
-            <p className="text-xs text-muted-foreground">{product.category}{product.brand ? ` · ${product.brand}` : ''}</p>
+            <p className="text-xs text-muted-foreground truncate">
+              {product.category}{product.brand ? ` · ${product.brand}` : ''}
+            </p>
           </div>
         </div>
-        <div className="flex gap-2 shrink-0 flex-wrap">
-          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setLocation(`/purchases/new?productId=${id}&supplierId=${encodeURIComponent(product.supplierId || '')}`)}>
-            <Truck className="h-4 w-4" /> Restock
+
+        {/* Right: action buttons */}
+        <div className="flex gap-2 shrink-0 items-center">
+          {/* Primary actions: always visible, icon only on smallest screens */}
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={() =>
+              setLocation(
+                `/purchases/new?productId=${id}&supplierId=${encodeURIComponent(product.supplierId || '')}`
+              )
+            }
+          >
+            <Truck className="h-4 w-4" />
+            <span className="hidden sm:inline">Restock</span>
           </Button>
-          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setLocation('/sales/new')}>
-            <ShoppingCart className="h-4 w-4" /> Sell
+
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={() => setLocation('/sales/new')}
+          >
+            <ShoppingCart className="h-4 w-4" />
+            <span className="hidden sm:inline">Sell</span>
           </Button>
-          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setDispositionDialogOpen(true)}>
-            <AlertTriangle className="h-4 w-4" /> Disposition
-          </Button>
-          <Button size="sm" className="gap-1.5" onClick={() => setLocation(`/inventory/${id}/edit`)}>
-            <Edit className="h-4 w-4" /> Edit
-          </Button>
+
+          {/* Secondary actions: full labels on md+, hidden otherwise */}
+          <div className="hidden md:flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => setDispositionDialogOpen(true)}
+            >
+              <AlertTriangle className="h-4 w-4" /> Disposition
+            </Button>
+            <Button
+              size="sm"
+              className="gap-1.5"
+              onClick={() => setLocation(`/inventory/${id}/edit`)}
+            >
+              <Edit className="h-4 w-4" /> Edit
+            </Button>
+          </div>
+
+          {/* Mobile dropdown for secondary actions */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild className="md:hidden">
+              <Button variant="outline" size="icon" className="h-9 w-9">
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-40">
+              <DropdownMenuItem onClick={() => setDispositionDialogOpen(true)}>
+                <AlertTriangle className="mr-2 h-4 w-4" /> Disposition
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setLocation(`/inventory/${id}/edit`)}>
+                <Edit className="mr-2 h-4 w-4" /> Edit
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -373,7 +421,6 @@ export default function InventoryDetail() {
                   );
                 })}
               </div>
-
             )}
             {/* Expiry Summary */}
             <Card>
@@ -383,7 +430,6 @@ export default function InventoryDetail() {
                   Expiry Summary
                 </CardTitle>
               </CardHeader>
-
               <CardContent className="pb-4">
                 {!product.hasExpiry ? (
                   <p className="text-sm text-muted-foreground">
@@ -395,101 +441,57 @@ export default function InventoryDetail() {
                   </p>
                 ) : (
                   <div className="grid grid-cols-2 gap-4 text-sm">
-
                     <div>
-                      <p className="text-[10px] uppercase text-muted-foreground mb-1">
-                        Total Batches
-                      </p>
+                      <p className="text-[10px] uppercase text-muted-foreground mb-1">Total Batches</p>
                       <p className="font-semibold">{batches.length}</p>
                     </div>
-
                     <div>
-                      <p className="text-[10px] uppercase text-muted-foreground mb-1">
-                        Batch Stock
-                      </p>
-                      <p className="font-semibold">
-                        {totalBatchStock} {product.unit}
-                      </p>
+                      <p className="text-[10px] uppercase text-muted-foreground mb-1">Batch Stock</p>
+                      <p className="font-semibold">{totalBatchStock} {product.unit}</p>
                     </div>
-
                     <div>
-                      <p className="text-[10px] uppercase text-muted-foreground mb-1">
-                        Product Stock
-                      </p>
-
+                      <p className="text-[10px] uppercase text-muted-foreground mb-1">Product Stock</p>
                       <div className="flex items-center gap-2">
-                        <span className="font-semibold">
-                          {product.quantity} {product.unit}
-                        </span>
-
+                        <span className="font-semibold">{product.quantity} {product.unit}</span>
                         {product.quantity === totalBatchStock ? (
-                          <Badge className="bg-green-100 text-green-700 border-green-300">
-                            Match
-                          </Badge>
+                          <Badge className="bg-green-100 text-green-700 border-green-300">Match</Badge>
                         ) : (
-                          <Badge variant="destructive">
-                            Mismatch
-                          </Badge>
+                          <Badge variant="destructive">Mismatch</Badge>
                         )}
                       </div>
                     </div>
-
                     <div>
-                      <p className="text-[10px] uppercase text-muted-foreground mb-1">
-                        Healthy
-                      </p>
-                      <p className="font-semibold">
-                        {healthyCount} batch{healthyCount !== 1 && 'es'}
-                      </p>
+                      <p className="text-[10px] uppercase text-muted-foreground mb-1">Healthy</p>
+                      <p className="font-semibold">{healthyCount} batch{healthyCount !== 1 && 'es'}</p>
                     </div>
-
                     <div>
-                      <p className="text-[10px] uppercase text-muted-foreground mb-1">
-                        Expiring Soon
-                      </p>
-                      <p className="font-semibold text-yellow-700">
-                        {expiringSoonCount} batch{expiringSoonCount !== 1 && 'es'}
-                      </p>
+                      <p className="text-[10px] uppercase text-muted-foreground mb-1">Expiring Soon</p>
+                      <p className="font-semibold text-yellow-700">{expiringSoonCount} batch{expiringSoonCount !== 1 && 'es'}</p>
                     </div>
-
                     <div>
-                      <p className="text-[10px] uppercase text-muted-foreground mb-1">
-                        Expired
-                      </p>
-                      <p className="font-semibold text-red-600">
-                        {expiredCount} batch{expiredCount !== 1 && 'es'}
-                      </p>
+                      <p className="text-[10px] uppercase text-muted-foreground mb-1">Expired</p>
+                      <p className="font-semibold text-red-600">{expiredCount} batch{expiredCount !== 1 && 'es'}</p>
                     </div>
-
                     <div>
-                      <p className="text-[10px] uppercase text-muted-foreground mb-1">
-                        Next Expiry
-                      </p>
-
+                      <p className="text-[10px] uppercase text-muted-foreground mb-1">Next Expiry</p>
                       <p className="font-semibold">
                         {nextExpiryBatch?.expiryDate
                           ? formatDate(parseISO(nextExpiryBatch.expiryDate), 'dd MMM yyyy')
                           : '—'}
                       </p>
                     </div>
-
                     <div>
-                      <p className="text-[10px] uppercase text-muted-foreground mb-1">
-                        Latest Expiry
-                      </p>
-
+                      <p className="text-[10px] uppercase text-muted-foreground mb-1">Latest Expiry</p>
                       <p className="font-semibold">
                         {latestExpiryBatch?.expiryDate
                           ? formatDate(parseISO(latestExpiryBatch.expiryDate), 'dd MMM yyyy')
                           : '—'}
                       </p>
                     </div>
-
                   </div>
                 )}
               </CardContent>
             </Card>
-
             <Button
               variant="outline"
               size="sm"
