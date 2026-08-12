@@ -1,5 +1,5 @@
 import { endOfDay, isAfter, isBefore, parseISO, startOfDay } from 'date-fns';
-import type { Credit, Expense, Product, PurchaseInvoice, SaleInvoice } from '@/types';
+import type { Credit, Expense, Product, PurchaseInvoice, SaleInvoice, SaleItem } from '@/types';
 
 function toDate(value: string | Date): Date {
     if (value instanceof Date) return value;
@@ -23,6 +23,32 @@ function getProductCost(product: Product | undefined) {
     return product?.purchaseRate ?? 0;
 }
 
+export function getSaleItemCOGS(
+    item: SaleItem,
+    saleDate: string,
+    product: Product | undefined,
+    purchaseHistory: Array<{ date: string; purchaseRate: number }> = [],
+) {
+    const itemCOGSFromAllocations = Array.isArray(item.costAllocations) && item.costAllocations.length > 0
+        ? item.costAllocations.reduce((sum, allocation) => {
+            const qty = Number(allocation.quantity ?? 0);
+            const rate = Number(allocation.purchaseRate ?? 0);
+            return sum + (qty * rate);
+        }, 0)
+        : null;
+
+    if (itemCOGSFromAllocations !== null) {
+        return itemCOGSFromAllocations;
+    }
+
+    const priorPurchases = purchaseHistory
+        .filter(entry => !isAfter(toDate(entry.date), toDate(saleDate)))
+        .sort((a, b) => toDate(b.date).getTime() - toDate(a.date).getTime());
+
+    const buyRate = priorPurchases[0]?.purchaseRate ?? getProductCost(product);
+    return buyRate * item.quantity;
+}
+
 export function buildFinancialMetrics(params: {
     sales: SaleInvoice[];
     expenses: Expense[];
@@ -38,6 +64,7 @@ export function buildFinancialMetrics(params: {
 
     const salesInScope = sales.filter(sale => isWithinRange(sale.date, start, end));
     const expensesInScope = expenses.filter(expense => isWithinRange(expense.date, start, end));
+    const operatingExpensesInScope = expensesInScope.filter(expense => !expense.sourcePurchaseId);
     const purchasesInScope = purchases.filter(purchase => isWithinRange(purchase.date, start, end));
 
     const purchaseHistoryByProduct = new Map<string, Array<{ date: string; purchaseRate: number }>>();
@@ -60,11 +87,7 @@ export function buildFinancialMetrics(params: {
         for (const item of sale.items) {
             const product = productMap.get(item.productId);
             const history = purchaseHistoryByProduct.get(item.productId) ?? [];
-            const priorPurchases = history
-                .filter(entry => !isAfter(toDate(entry.date), toDate(sale.date)))
-                .sort((a, b) => toDate(b.date).getTime() - toDate(a.date).getTime());
-            const buyRate = priorPurchases[0]?.purchaseRate ?? getProductCost(product);
-            const itemCOGS = buyRate * item.quantity;
+            const itemCOGS = getSaleItemCOGS(item, sale.date, product, history);
             const itemProfit = item.subtotal - itemCOGS;
             cogs += itemCOGS;
 
@@ -77,7 +100,7 @@ export function buildFinancialMetrics(params: {
         }
     }
 
-    const expensesTotal = expensesInScope.reduce((sum, expense) => sum + toNumber(expense.amount), 0);
+    const expensesTotal = operatingExpensesInScope.reduce((sum, expense) => sum + toNumber(expense.amount), 0);
     const purchasesTotal = purchasesInScope.reduce((sum, purchase) => sum + toNumber(purchase.grandTotal), 0);
     const grossProfit = salesRevenue - cogs;
     const netProfit = grossProfit - expensesTotal;
@@ -134,7 +157,7 @@ export function buildFinancialMetrics(params: {
         .slice(0, 10);
 
     const expenseBreakdown: Record<string, number> = {};
-    for (const expense of expensesInScope) {
+    for (const expense of operatingExpensesInScope) {
         expenseBreakdown[expense.category] = (expenseBreakdown[expense.category] || 0) + expense.amount;
     }
 

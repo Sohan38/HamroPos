@@ -124,6 +124,12 @@ export interface PurchaseInvoice extends StorageRecord {
   payments?: CreditPayment[];
 }
 
+export interface SaleCostAllocation {
+  batchId: string;
+  quantity: number;
+  purchaseRate: number;
+}
+
 export interface SaleItem {
   productId: string;
   productName: string;
@@ -132,6 +138,8 @@ export interface SaleItem {
   subtotal: number;
   /** Optional variant selected at the POS (for example, Red or XL). */
   variantName?: string;
+  /** Actual batch cost allocation used for this sale line when batched inventory is involved. */
+  costAllocations?: SaleCostAllocation[];
 }
 
 export interface SaleInvoice extends StorageRecord {

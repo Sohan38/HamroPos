@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, lazy, Suspense, useEffect, useCallback } from 'react';
+import { isAfter, isBefore, parseISO, startOfDay } from 'date-fns';
 import { useInventory, useSales, useCustomers, useProductBatches, useCredit } from '@/contexts/GlobalProviders';
 import { useCurrency } from '@/hooks/useCurrency';
 import { useApp } from '@/contexts/AppContext';
@@ -25,16 +26,53 @@ interface VariantDraft {
   expanded: boolean;
 }
 
-function fefoDeduct(batches: ProductBatch[], needed: number): { id: string; quantity: number }[] {
+type BatchCostAllocation = {
+  batchId: string;
+  quantity: number;
+  purchaseRate: number;
+};
+
+function isBatchSellable(batch: ProductBatch): boolean {
+  if (batch.quantity <= 0) return false;
+  if (!batch.expiryDate) return true;
+
+  try {
+    const expiry = startOfDay(parseISO(batch.expiryDate));
+    return !isBefore(expiry, startOfDay(new Date()));
+  } catch {
+    return true;
+  }
+}
+
+function getSellableBatches(batches: ProductBatch[]): ProductBatch[] {
+  return [...batches]
+    .filter(isBatchSellable)
+    .sort((a, b) => {
+      if (!a.expiryDate && !b.expiryDate) return 0;
+      if (!a.expiryDate) return 1;
+      if (!b.expiryDate) return -1;
+      return a.expiryDate.localeCompare(b.expiryDate);
+    });
+}
+
+function getSellableBatchQuantity(batches: ProductBatch[]) {
+  return getSellableBatches(batches).reduce((sum, batch) => sum + batch.quantity, 0);
+}
+
+function allocateSellableBatches(batches: ProductBatch[], needed: number): { allocations: BatchCostAllocation[]; totalAllocated: number } {
+  const eligible = getSellableBatches(batches);
+  const allocations: BatchCostAllocation[] = [];
   let remaining = needed;
-  const updates: { id: string; quantity: number }[] = [];
-  for (const batch of batches) {
+
+  for (const batch of eligible) {
     if (remaining <= 0) break;
     const deduction = Math.min(batch.quantity, remaining);
-    updates.push({ id: batch.id, quantity: batch.quantity - deduction });
+    if (deduction <= 0) continue;
+    allocations.push({ batchId: batch.id, quantity: deduction, purchaseRate: batch.purchaseRate });
     remaining -= deduction;
   }
-  return updates;
+
+  return { allocations, totalAllocated: needed - remaining };
 }
 
 export default function SalesPos() {
@@ -196,11 +234,18 @@ export default function SalesPos() {
       return;
     }
 
+    const productBatches = batchesByProduct.get(product.id) ?? [];
+    const sellableQuantity = productBatches.length > 0 ? getSellableBatchQuantity(productBatches) : product.quantity;
+    if (sellableQuantity <= 0) {
+      toast.error(`Only ${sellableQuantity} ${product.unit} in stock`);
+      return;
+    }
+
     setCart(cur => {
       const existing = cur.find(i => cartLineKey(i) === cartLineKey({ productId: product.id }));
       if (existing) {
-        if (existing.quantity >= product.quantity) {
-          toast.error(`Only ${product.quantity} ${product.unit} in stock`);
+        if (existing.quantity >= sellableQuantity) {
+          toast.error(`Only ${sellableQuantity} ${product.unit} in stock`);
           return cur;
         }
         return cur.map(i =>
@@ -209,15 +254,17 @@ export default function SalesPos() {
             : i
         );
       }
+
       return [...cur, {
         productId: product.id,
         productName: product.name,
         quantity: 1,
         sellingRate: product.sellingRate,
-        maxQuantity: product.quantity,
+        maxQuantity: sellableQuantity,
         subtotal: product.sellingRate,
       }];
     });
+
     setSearchQuery('');
     closeSearch();
     toast.success(`Added ${product.name}`, { duration: 1200 });
@@ -230,27 +277,31 @@ export default function SalesPos() {
     const variant = product.variants?.find(item => item.name === name);
     if (!variant) return;
 
-    setCart(current => {
-      const thisLineKey = cartLineKey({ productId: product.id, variantName: name });
-      const existing = current.find(item => cartLineKey(item) === thisLineKey);
-      const otherSelected = current
-        .filter(item => cartLineKey(item) !== thisLineKey && item.productId === product.id)
-        .reduce((sum, item) => sum + item.quantity, 0);
-      const maxAllowed = Math.max(0, Math.min(variant.quantity, product.quantity - otherSelected));
-      const quantity = Math.max(0, Math.min(maxAllowed, Math.floor(Number.isFinite(requestedQuantity) ? requestedQuantity : 0)));
-      const withoutVariant = current.filter(item => cartLineKey(item) !== thisLineKey);
+    const productBatches = batchesByProduct.get(product.id) ?? [];
+    const sellableQuantity = productBatches.length > 0 ? getSellableBatchQuantity(productBatches) : product.quantity;
+    const otherSelected = cart
+      .filter(item => item.productId === product.id && item.variantName !== name)
+      .reduce((sum, item) => sum + item.quantity, 0);
+    const maxAllowed = Math.max(0, Math.min(variant.quantity, sellableQuantity - otherSelected));
+    const quantity = Math.max(0, Math.min(maxAllowed, Math.floor(Number.isFinite(requestedQuantity) ? requestedQuantity : 0)));
+    const withoutVariant = cart.filter(item => cartLineKey(item) !== cartLineKey({ productId: product.id, variantName: name }));
 
-      if (quantity === 0) return withoutVariant;
-      const nextItem: CartItem = {
-        productId: product.id,
-        productName: product.name,
-        variantName: name,
-        quantity,
-        sellingRate: product.sellingRate,
-        maxQuantity: variant.quantity,
-        subtotal: quantity * product.sellingRate,
-      };
-      if (!existing) return [...withoutVariant, nextItem];
+    if (quantity === 0) {
+      setCart(withoutVariant);
+      return;
+    }
+
+    const nextItem: CartItem = {
+      productId: product.id,
+      productName: product.name,
+      variantName: name,
+      quantity,
+      sellingRate: product.sellingRate,
+      maxQuantity: maxAllowed,
+      subtotal: quantity * product.sellingRate,
+    };
+
+    setCart(prev => {
       return [...withoutVariant, nextItem];
     });
   };
@@ -339,6 +390,7 @@ export default function SalesPos() {
 
   const handleCheckout = async () => {
     if (cart.length === 0) return;
+
     const requestedByProduct = new Map<string, number>();
     const requestedByVariant = new Map<string, number>();
     for (const item of cart) {
@@ -348,21 +400,63 @@ export default function SalesPos() {
         requestedByVariant.set(key, (requestedByVariant.get(key) ?? 0) + item.quantity);
       }
     }
-    const stockErrors = [...requestedByProduct.entries()].map(([productId, requestedQuantity]) => {
+
+    const productAllocationsByProduct = new Map<string, BatchCostAllocation[]>();
+    const batchDeductionsByProduct = new Map<string, Map<string, number>>();
+    const stockErrors: string[] = [];
+
+    for (const [productId, requestedQuantity] of requestedByProduct) {
       const p = inventoryById.get(productId);
-      if (!p) return `${productId} no longer exists`;
-      if (p.quantity < requestedQuantity) {
-        return `${p.name} (available: ${p.quantity}, needed: ${requestedQuantity})`;
+      if (!p) {
+        stockErrors.push(`${productId} no longer exists`);
+        continue;
       }
+
+      const productBatches = batchesByProduct.get(productId) ?? [];
+      const sellableBatches = getSellableBatches(productBatches);
+      const totalSellable = sellableBatches.reduce((sum, batch) => sum + batch.quantity, 0);
+
+      if (productBatches.length > 0 || p.hasExpiry) {
+        if (requestedQuantity > totalSellable) {
+          stockErrors.push(`${p.name} (sellable stock: ${totalSellable}, needed: ${requestedQuantity})`);
+          continue;
+        }
+
+        const { allocations, totalAllocated } = allocateSellableBatches(productBatches, requestedQuantity);
+        if (totalAllocated < requestedQuantity) {
+          stockErrors.push(`${p.name} (sellable stock: ${totalSellable}, needed: ${requestedQuantity})`);
+          continue;
+        }
+
+        productAllocationsByProduct.set(productId, allocations);
+
+        const batchDeductions = new Map<string, number>();
+        for (const allocation of allocations) {
+          batchDeductions.set(
+            allocation.batchId,
+            (batchDeductions.get(allocation.batchId) ?? 0) + allocation.quantity,
+          );
+        }
+        batchDeductionsByProduct.set(productId, batchDeductions);
+      } else {
+        if (p.quantity < requestedQuantity) {
+          stockErrors.push(`${p.name} (available: ${p.quantity}, needed: ${requestedQuantity})`);
+        }
+      }
+
       for (const variant of p.variants ?? []) {
         const requestedVariant = requestedByVariant.get(`${p.id}::${variant.name}`) ?? 0;
         if (requestedVariant > variant.quantity) {
-          return `${p.name} · ${variant.name} (available: ${variant.quantity}, needed: ${requestedVariant})`;
+          stockErrors.push(`${p.name} · ${variant.name} (available: ${variant.quantity}, needed: ${requestedVariant})`);
         }
       }
-      return null;
-    }).filter(Boolean);
-    if (stockErrors.length > 0) { toast.error(`Insufficient stock: ${stockErrors.join('; ')}`); return; }
+    }
+
+    if (stockErrors.length > 0) {
+      toast.error(`Insufficient stock: ${stockErrors.join('; ')}`);
+      return;
+    }
+
     const paidNow = paidAmount === '' ? (paymentMethod === 'credit' ? 0 : grandTotal) : Number(paidAmount);
     if (paidNow < 0 || paidNow > grandTotal) {
       toast.error(`Paid amount cannot be more than the total (${format(grandTotal)})`);
@@ -382,21 +476,75 @@ export default function SalesPos() {
       toast.error('Credit must have an unpaid balance');
       return;
     }
+
     try {
+      const remainingProductAllocations = new Map<string, BatchCostAllocation[]>(
+        [...productAllocationsByProduct.entries()].map(([productId, allocations]) => [productId, [...allocations]]),
+      );
+
+      const saleItems = cart.map(item => {
+        const productQueue = remainingProductAllocations.get(item.productId) ?? [];
+        if (productQueue.length === 0) {
+          return {
+            productId: item.productId,
+            productName: item.productName,
+            variantName: item.variantName,
+            quantity: item.quantity,
+            sellingRate: item.sellingRate,
+            subtotal: item.subtotal,
+          };
+        }
+
+        let remaining = item.quantity;
+        const itemAllocations: BatchCostAllocation[] = [];
+        const nextQueue: BatchCostAllocation[] = [];
+
+        for (const allocation of productQueue) {
+          if (remaining <= 0) {
+            nextQueue.push(allocation);
+            continue;
+          }
+
+          const take = Math.min(remaining, allocation.quantity);
+          itemAllocations.push({
+            batchId: allocation.batchId,
+            quantity: take,
+            purchaseRate: allocation.purchaseRate,
+          });
+          remaining -= take;
+
+          if (allocation.quantity - take > 0) {
+            nextQueue.push({
+              ...allocation,
+              quantity: allocation.quantity - take,
+            });
+          }
+        }
+
+        if (remaining > 0) {
+          throw new Error(`Unable to allocate batch cost for ${item.productName}`);
+        }
+
+        remainingProductAllocations.set(item.productId, nextQueue);
+
+        return {
+          productId: item.productId,
+          productName: item.productName,
+          variantName: item.variantName,
+          quantity: item.quantity,
+          sellingRate: item.sellingRate,
+          subtotal: item.subtotal,
+          costAllocations: itemAllocations,
+        };
+      });
+
       const saleRecord: Omit<SaleInvoice, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt' | 'version'> = {
         customerId: customerId || null,
         customerName: customerId
           ? (customerMap.get(customerId)?.name ?? null)
           : null,
         date: new Date().toISOString(),
-        items: cart.map(i => ({
-          productId: i.productId,
-          productName: i.productName,
-          variantName: i.variantName,
-          quantity: i.quantity,
-          sellingRate: i.sellingRate,
-          subtotal: i.subtotal,
-        })),
+        items: saleItems,
         discount, tax: taxAmount, grandTotal,
         paidAmount: paidNow,
         paymentMethod, notes: '',
@@ -419,13 +567,20 @@ export default function SalesPos() {
           payments: [],
         });
       }
+
       for (const [productId, requestedQuantity] of requestedByProduct) {
         const p = inventoryById.get(productId);
         if (!p) continue;
-        const pb = batchesByProduct.get(productId) ?? [];
-        if (pb.length > 0) {
-          for (const b of fefoDeduct(pb, requestedQuantity)) updateBatch(b.id, { quantity: b.quantity });
+
+        const productBatches = batchesByProduct.get(productId) ?? [];
+        const productBatchDeductions = batchDeductionsByProduct.get(productId) ?? new Map<string, number>();
+
+        for (const [batchId, deductionQuantity] of productBatchDeductions) {
+          const match = productBatches.find(batch => batch.id === batchId);
+          if (!match) continue;
+          updateBatch(batchId, { quantity: Math.max(0, match.quantity - deductionQuantity) });
         }
+
         const updatedVariants = p.variants?.map(variant => ({
           ...variant,
           quantity: Math.max(0, variant.quantity - (requestedByVariant.get(`${p.id}::${variant.name}`) ?? 0)),
@@ -435,6 +590,7 @@ export default function SalesPos() {
           ...(p.hasVariants && updatedVariants ? { variants: updatedVariants } : {}),
         });
       }
+
       toast.success(paymentMethod === 'credit'
         ? `Sale saved • ${format(dueAmount)} added to credit`
         : 'Sale completed!');

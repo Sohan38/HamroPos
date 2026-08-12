@@ -16,7 +16,7 @@ import {
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend } from 'recharts';
 import { useApp } from '@/contexts/AppContext';
 import { useFeature } from '@/hooks/useFeature';
-import { buildFinancialMetrics } from '@/lib/financialMetrics';
+import { buildFinancialMetrics, getSaleItemCOGS } from '@/lib/financialMetrics';
 import { cn } from '@/lib/utils';
 
 export default function Dashboard() {
@@ -142,6 +142,15 @@ export default function Dashboard() {
 
   // 7-day chart data
   const chartData = useMemo(() => {
+    const purchaseHistoryByProduct = new Map<string, Array<{ date: string; purchaseRate: number }>>();
+    for (const purchase of purchases) {
+      for (const item of purchase.items) {
+        const history = purchaseHistoryByProduct.get(item.productId) ?? [];
+        history.push({ date: purchase.date, purchaseRate: item.purchaseRate });
+        purchaseHistoryByProduct.set(item.productId, history);
+      }
+    }
+
     const salesByDate = new Map<string, { revenue: number; cogs: number }>();
     const expensesByDate = new Map<string, number>();
 
@@ -151,12 +160,14 @@ export default function Dashboard() {
       existing.revenue += sale.grandTotal;
       for (const item of sale.items) {
         const product = inventoryMap.get(item.productId);
-        existing.cogs += (product?.purchaseRate ?? 0) * item.quantity;
+        const history = purchaseHistoryByProduct.get(item.productId) ?? [];
+        existing.cogs += getSaleItemCOGS(item, sale.date, product, history);
       }
       salesByDate.set(dateKey, existing);
     }
 
     for (const expense of expenses) {
+      if (expense.sourcePurchaseId) continue;
       const dateKey = expense.date.split('T')[0] ?? expense.date;
       expensesByDate.set(dateKey, (expensesByDate.get(dateKey) ?? 0) + expense.amount);
     }

@@ -144,7 +144,9 @@ export default function Reports() {
       const date = subDays(new Date(), i);
       const dateStr = formatDate(startOfDay(date), 'yyyy-MM-dd');
       const dayRevenue = filteredSales.filter(s => s.date.startsWith(dateStr)).reduce((s, x) => s + x.grandTotal, 0);
-      const dayExpenses = filteredExpenses.filter(e => e.date.startsWith(dateStr)).reduce((s, e) => s + e.amount, 0);
+      const dayExpenses = filteredExpenses
+        .filter(e => !e.sourcePurchaseId && e.date.startsWith(dateStr))
+        .reduce((s, e) => s + e.amount, 0);
       data.push({ date: formatDate(date, 'd MMM'), Revenue: dayRevenue, Expenses: dayExpenses });
     }
     return data;
