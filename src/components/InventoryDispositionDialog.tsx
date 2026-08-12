@@ -98,7 +98,20 @@ export function InventoryDispositionDialog({ product, open, onOpenChange, onCrea
         isExpiredBatch ? reasons : reasons.filter(item => item !== 'expired') as DispositionReason[]
     ) : reasons;
     const batchPurchaseRate = selectedBatch?.purchaseRate;
-    const purchaseRateToShow = batchPurchaseRate ?? product.purchaseRate ?? 0;
+    const selectedSupplierCost = !selectedBatch && selectedSupplierId
+        ? product.supplierStocks?.find((stock) => stock.supplierId === selectedSupplierId)?.cost
+        : undefined;
+    const selectedInvoiceItem = selectedPurchaseInvoice
+        ? selectedPurchaseInvoice.items.find((item) => item.productId === product.id && (!selectedBatch || item.batchId === selectedBatch.id))
+        : undefined;
+    const selectedInvoicePurchaseRate = !selectedBatch ? selectedInvoiceItem?.purchaseRate : undefined;
+    const purchaseRateToShow = batchPurchaseRate ?? selectedInvoicePurchaseRate ?? selectedSupplierCost ?? product.purchaseRate ?? 0;
+
+    useEffect(() => {
+        if (!selectedBatch) {
+            setUnitCost(String(purchaseRateToShow));
+        }
+    }, [purchaseRateToShow, selectedBatch]);
 
     useEffect(() => {
         if (!open) return;
@@ -185,8 +198,10 @@ export function InventoryDispositionDialog({ product, open, onOpenChange, onCrea
         : undefined;
     const supplierAvailable = selectedSupplierStock ?? product.quantity;
     const batchAvailable = selectedBatch?.quantity ?? supplierAvailable;
-    const isAvailable = batchAvailable > 0;
-    const canSubmit = isAvailable && quantityValue > 0 && quantityValue <= batchAvailable && (!product.hasExpiry || !!selectedBatchId) && (!product.supplierIds || product.supplierIds.length === 0 || !!selectedSupplierId);
+    const invoiceAvailable = selectedInvoiceItem?.quantity;
+    const quantityAvailable = invoiceAvailable !== undefined ? Math.min(invoiceAvailable, batchAvailable) : batchAvailable;
+    const isAvailable = quantityAvailable > 0;
+    const canSubmit = isAvailable && quantityValue > 0 && quantityValue <= quantityAvailable && (!product.hasExpiry || !!selectedBatchId) && (!product.supplierIds || product.supplierIds.length === 0 || !!selectedSupplierId);
 
     const showSettlementFields = resolution === 'supplier_credit' || resolution === 'supplier_refund';
     const showReplacementFields = resolution === 'supplier_replacement';
@@ -330,7 +345,7 @@ export function InventoryDispositionDialog({ product, open, onOpenChange, onCrea
                                 id="disposition-quantity"
                                 type="number"
                                 min={1}
-                                max={batchAvailable}
+                                max={quantityAvailable}
                                 value={quantity}
                                 onChange={(event) => {
                                     const raw = Number(event.target.value);
@@ -338,12 +353,12 @@ export function InventoryDispositionDialog({ product, open, onOpenChange, onCrea
                                         setQuantity('');
                                         return;
                                     }
-                                    setQuantity(String(Math.max(1, Math.min(raw, batchAvailable))));
+                                    setQuantity(String(Math.max(1, Math.min(raw, quantityAvailable))));
                                 }}
                                 placeholder="Enter quantity"
                             />
                             <p className="text-xs text-muted-foreground mt-1">
-                                Available: {batchAvailable} {product.unit}
+                                Available: {quantityAvailable} {product.unit}
                             </p>
                         </div>
                         <div>
@@ -356,7 +371,7 @@ export function InventoryDispositionDialog({ product, open, onOpenChange, onCrea
                                 value={unitCost}
                                 onChange={(event) => setUnitCost(event.target.value)}
                                 placeholder={String(purchaseRateToShow)}
-                                readOnly={!!selectedBatch}
+                                readOnly={true}
                             />
                             <p className="text-xs text-muted-foreground mt-1">
                                 Batch rate: {purchaseRateToShow.toFixed(2)}
