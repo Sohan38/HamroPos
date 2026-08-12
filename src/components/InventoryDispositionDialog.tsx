@@ -200,6 +200,14 @@ export function InventoryDispositionDialog({ product, open, onOpenChange, onCrea
     const batchAvailable = selectedBatch?.quantity ?? supplierAvailable;
     const invoiceAvailable = selectedInvoiceItem?.quantity;
     const quantityAvailable = invoiceAvailable !== undefined ? Math.min(invoiceAvailable, batchAvailable) : batchAvailable;
+
+    useEffect(() => {
+        const currentQty = Number(quantity || 0);
+        if (currentQty > quantityAvailable) {
+            setQuantity(quantityAvailable > 0 ? String(quantityAvailable) : '');
+        }
+    }, [quantityAvailable, quantity]);
+
     const isAvailable = quantityAvailable > 0;
     const canSubmit = isAvailable && quantityValue > 0 && quantityValue <= quantityAvailable && (!product.hasExpiry || !!selectedBatchId) && (!product.supplierIds || product.supplierIds.length === 0 || !!selectedSupplierId);
 
