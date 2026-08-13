@@ -135,7 +135,7 @@ export class LocalStorageProvider implements IStorageProvider {
     };
 
     const allKeys = [
-      'inventory', 'settings', 'suppliers', 'customers', 'sales',
+      'inventory', 'locations', 'settings', 'suppliers', 'customers', 'sales',
       'purchases', 'expenses', 'hotelRooms', 'productBatches',
       'hotelBills', 'restaurantBills', 'cashBook', 'credit', 'dispositions'
     ];
@@ -200,7 +200,7 @@ export class LocalStorageProvider implements IStorageProvider {
 
       // 4. Validate collections structure and populate missing ones with defaults
       const allKeys = [
-        'inventory', 'settings', 'suppliers', 'customers', 'sales',
+        'inventory', 'locations', 'settings', 'suppliers', 'customers', 'sales',
         'purchases', 'expenses', 'hotelRooms', 'productBatches',
         'hotelBills', 'restaurantBills', 'cashBook', 'credit', 'dispositions'
       ];
@@ -280,6 +280,36 @@ export class LocalStorageProvider implements IStorageProvider {
     clearSeedFlag();
   }
 
+  private ensureDefaultLocation(): void {
+    const raw = localStorage.getItem(`${this.KEY_PREFIX}locations`);
+    const rows = raw ? JSON.parse(raw) : [];
+    const list = Array.isArray(rows) ? rows : [];
+    const existing = list.find((location: any) => location.isDefault || location.id === 'loc-default');
+
+    if (existing) {
+      if (!existing.isDefault) {
+        existing.isDefault = true;
+        localStorage.setItem(`${this.KEY_PREFIX}locations`, JSON.stringify(list));
+      }
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const defaultLocation = {
+      id: 'loc-default',
+      name: 'Main Location',
+      code: 'MAIN',
+      isDefault: true,
+      notes: 'Default location for pre-existing inventory data',
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+      version: 1,
+    };
+
+    localStorage.setItem(`${this.KEY_PREFIX}locations`, JSON.stringify([...list, defaultLocation]));
+  }
+
   async getSettings(): Promise<any> {
     const defaultFeatures = {
       inventory: {
@@ -317,6 +347,7 @@ export class LocalStorageProvider implements IStorageProvider {
       currencySymbol: 'Rs.',
       taxRate: 13,
       lowStockThreshold: 10,
+      defaultLocationId: 'loc-default',
       theme: 'system',
       language: 'en',
       features: defaultFeatures
@@ -326,18 +357,24 @@ export class LocalStorageProvider implements IStorageProvider {
       const raw = localStorage.getItem(`${this.KEY_PREFIX}settings`);
       if (raw) {
         const parsed = JSON.parse(raw);
-        // Ensure features key is deeply merged or exists
         const mergedFeatures = { ...defaultFeatures, ...parsed.features };
-        return { ...defaultSettings, ...parsed, features: mergedFeatures };
+        const merged = { ...defaultSettings, ...parsed, features: mergedFeatures };
+        if (!merged.defaultLocationId) {
+          merged.defaultLocationId = 'loc-default';
+        }
+        return merged;
       }
     } catch {
       // Ignore
     }
+    this.ensureDefaultLocation();
     return defaultSettings;
   }
 
   async saveSettings(settings: any): Promise<void> {
-    localStorage.setItem(`${this.KEY_PREFIX}settings`, JSON.stringify(settings));
+    const normalized = settings && typeof settings === 'object' ? settings : {};
+    if (!normalized.defaultLocationId) normalized.defaultLocationId = 'loc-default';
+    localStorage.setItem(`${this.KEY_PREFIX}settings`, JSON.stringify(normalized));
   }
 }
 

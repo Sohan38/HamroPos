@@ -47,6 +47,7 @@ const defaultSettings: AppSettings = {
   currencySymbol: 'Rs',
   taxRate: 13,
   lowStockThreshold: 10,
+  defaultLocationId: 'loc-default',
   theme: 'system',
   language: 'en',
   features: defaultFeatures,

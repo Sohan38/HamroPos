@@ -10,6 +10,7 @@ import { IStorageProvider } from './IStorageProvider';
  */
 const COLLECTION_KEYS = [
   'inventory',
+  'locations',
   'suppliers',
   'customers',
   'sales',
@@ -248,6 +249,7 @@ export class DexieProvider implements IStorageProvider {
       currencySymbol: 'Rs.',
       taxRate: 13,
       lowStockThreshold: 10,
+      defaultLocationId: 'loc-default',
       theme: 'system',
       language: 'en',
       features: {
@@ -265,21 +267,59 @@ export class DexieProvider implements IStorageProvider {
     };
   }
 
+  private async ensureDefaultLocation(): Promise<void> {
+    try {
+      const rows = await this.get<any>('locations');
+      const defaultLocation = rows.find((location) => location.isDefault || location.id === 'loc-default');
+
+      if (defaultLocation) {
+        if (!defaultLocation.isDefault) {
+          defaultLocation.isDefault = true;
+          await this.save('locations', defaultLocation);
+        }
+        return;
+      }
+
+      const createdAt = new Date().toISOString();
+      const defaultLocationRecord = {
+        id: 'loc-default',
+        name: 'Main Location',
+        code: 'MAIN',
+        isDefault: true,
+        notes: 'Default location for pre-existing inventory data',
+        createdAt,
+        updatedAt: createdAt,
+        deletedAt: null,
+        version: 1,
+      };
+
+      await this.save('locations', defaultLocationRecord as any);
+    } catch (error) {
+      console.error('[DexieProvider] ensureDefaultLocation failed:', error);
+    }
+  }
+
   async getSettings(): Promise<any> {
     try {
       const row = await db.settings.get('settings');
       if (row?.value && typeof row.value === 'object') {
         const defaults = this.defaultSettings;
-        return {
+        const settings = {
           ...defaults,
           ...row.value,
           features: { ...defaults.features, ...row.value.features },
         };
+        if (!settings.defaultLocationId) {
+          settings.defaultLocationId = defaults.defaultLocationId;
+        }
+        return settings;
       }
     } catch (error) {
       console.error('[DexieProvider] getSettings failed:', error);
     }
-    return this.defaultSettings;
+    const settings = { ...this.defaultSettings };
+    await this.ensureDefaultLocation();
+    return settings;
   }
 
   async saveSettings(settings: any): Promise<void> {
@@ -293,6 +333,8 @@ export class DexieProvider implements IStorageProvider {
   // ── Bulk Operations ───────────────────────────────────────────────────────────
 
   async exportAll(): Promise<string> {
+    await this.ensureDefaultLocation();
+
     const backup: Record<string, any> = {
       schemaVersion: this.SCHEMA_VERSION,
       appVersion: '1.0.0',
@@ -360,6 +402,10 @@ export class DexieProvider implements IStorageProvider {
         if (rows.length > 0) {
           await this.table(key).bulkPut(rows);
         }
+      }
+
+      if (!collections['sohan_locations'] || !Array.isArray(collections['sohan_locations']) || collections['sohan_locations'].length === 0) {
+        await this.ensureDefaultLocation();
       }
 
       if (collections['sohan_settings']) {

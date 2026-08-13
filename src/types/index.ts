@@ -9,6 +9,13 @@ export interface StorageRecord {
   deviceId?: string;
 }
 
+export interface Location extends StorageRecord {
+  name: string;
+  code?: string;
+  isDefault?: boolean;
+  notes?: string;
+}
+
 export type ProductUnit = 'pcs' | 'packet' | 'box' | 'bottle' | 'kg' | 'gram' | 'litre' | 'ml' | 'plate' | 'cup' | 'glass' | 'meter' | 'roll' | 'dozen' | 'custom';
 
 export interface Product extends StorageRecord {
@@ -336,6 +343,7 @@ export interface AppSettings {
   currencySymbol: string;
   taxRate: number;
   lowStockThreshold: number;
+  defaultLocationId?: string;
   theme: 'light' | 'dark' | 'system';
   language: string;
   features: FeatureConfig;
