@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useStorageProvider } from '@/storage/StorageContext';
 import { FeatureConfig } from '@/types';
 import LicenseCard from './License';
+import { LocationsTab } from './Locations';
 import { useLicense } from '@/license/LicenseContext';
 import { Save, Upload, Download, AlertTriangle, Monitor, Moon, Sun, Trash2, Database, Building, Globe, Key, Settings as SettingsIcon, Lock } from 'lucide-react';
 import { toast } from 'sonner';
@@ -23,7 +24,7 @@ export default function Settings() {
   const [activeTab, setActiveTab] = useState(() => {
     if (typeof window !== 'undefined') {
       const tab = new URLSearchParams(window.location.search).get('tab');
-      if (tab && ['profile', 'preferences', 'license', 'data'].includes(tab)) {
+      if (tab && ['profile', 'preferences', 'locations', 'license', 'data'].includes(tab)) {
         return tab;
       }
     }
@@ -214,6 +215,9 @@ export default function Settings() {
             <TabsTrigger value="preferences" className="flex-1 min-w-22.5 sm:min-w-0 flex items-center justify-center gap-1.5 text-xs py-2 px-3">
               <Globe className="h-3.5 w-3.5" /> Preferences
             </TabsTrigger>
+            <TabsTrigger value="locations" className="flex-1 min-w-24 sm:min-w-0 flex items-center justify-center gap-1.5 text-xs py-2 px-3">
+              <Building className="h-3.5 w-3.5" /> Locations
+            </TabsTrigger>
             <TabsTrigger value="license" className="flex-1 min-w-20 sm:min-w-0 flex items-center justify-center gap-1.5 text-xs py-2 px-3">
               <Key className="h-3.5 w-3.5" /> Activation
             </TabsTrigger>
@@ -355,12 +359,17 @@ export default function Settings() {
           </Card>
         </TabsContent>
 
-        {/* Tab 3: Activation */}
+        {/* Tab 3: Locations */}
+        <TabsContent value="locations" className="outline-none">
+          <LocationsTab />
+        </TabsContent>
+
+        {/* Tab 4: Activation */}
         <TabsContent value="license" className="outline-none">
           <LicenseCard />
         </TabsContent>
 
-        {/* Tab 4: Database Operations */}
+        {/* Tab 5: Database Operations */}
         <TabsContent value="data" className="outline-none space-y-4">
           <Card className="border-orange-200 dark:border-orange-950/40">
             <CardHeader className="p-4 sm:p-6">

@@ -13,6 +13,7 @@ export interface Location extends StorageRecord {
   name: string;
   code?: string;
   isDefault?: boolean;
+  status?: 'active' | 'inactive';
   notes?: string;
 }
 
