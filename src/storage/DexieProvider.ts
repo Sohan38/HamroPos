@@ -82,6 +82,9 @@ export class DexieProvider implements IStorageProvider {
   /** Write-through memory cache — same zero-latency read pattern as before */
   private readonly memCache = new Map<string, StorageRecord[]>();
 
+  private defaultLocationInitPromise: Promise<void> | null = null;
+  private defaultBatchAllocationsInitPromise: Promise<void> | null = null;
+
   private notifyStorageChanged(key?: string) {
     if (typeof window === 'undefined') return;
     window.dispatchEvent(new CustomEvent('sohan-storage-changed', { detail: { key } }));
@@ -255,76 +258,97 @@ export class DexieProvider implements IStorageProvider {
   }
 
   private async ensureDefaultLocation(): Promise<void> {
-    try {
-      const rows = await this.get<any>('locations');
-      const defaultLocation = rows.find((location) => location.isDefault || location.id === 'loc-default');
-
-      if (defaultLocation) {
-        if (!defaultLocation.isDefault) {
-          defaultLocation.isDefault = true;
-          await this.save('locations', defaultLocation);
-        }
-        return;
-      }
-
-      const createdAt = new Date().toISOString();
-      const defaultLocationRecord = {
-        id: 'loc-default',
-        name: 'Main Location',
-        code: 'MAIN',
-        isDefault: true,
-        notes: 'Default location for pre-existing inventory data',
-        createdAt,
-        updatedAt: createdAt,
-        deletedAt: null,
-        version: 1,
-      };
-
-      await this.save('locations', defaultLocationRecord as any);
-    } catch (error) {
-      console.error('[DexieProvider] ensureDefaultLocation failed:', error);
+    if (this.defaultLocationInitPromise) {
+      return this.defaultLocationInitPromise;
     }
-  }
 
-  private async ensureDefaultBatchAllocations(): Promise<void> {
-    try {
-      const defaultLocation = (await this.get<any>('locations')).find((location) => location.isDefault || location.id === 'loc-default');
-      if (!defaultLocation) {
-        await this.ensureDefaultLocation();
-        return;
-      }
+    this.defaultLocationInitPromise = (async () => {
+      try {
+        const rows = (await this.table('locations').toArray()) as any[];
+        const defaultLocation = rows.find((location: any) => location.isDefault || location.id === 'loc-default');
 
-      const allocations = await this.get<any>('productBatchLocations');
-      const batches = await this.get<any>('productBatches');
-      const used = new Set(allocations.filter((item) => item.batchId).map((item) => `${item.batchId}::${item.locationId}`));
-
-      for (const batch of batches) {
-        if (batch.deletedAt) continue;
-        const allocationKey = `${batch.id}::${defaultLocation.id}`;
-        if (used.has(allocationKey)) continue;
-
-        const hasAnyAllocationForBatch = allocations.some((item) => item.batchId === batch.id);
-        if (hasAnyAllocationForBatch) continue;
+        if (defaultLocation) {
+          if (!defaultLocation.isDefault) {
+            defaultLocation.isDefault = true;
+            await this.save('locations', defaultLocation);
+          }
+          return;
+        }
 
         const createdAt = new Date().toISOString();
-        const defaultAllocation = {
-          id: `pbl-${batch.id}`,
-          batchId: batch.id,
-          locationId: defaultLocation.id,
-          quantity: Number(batch.quantity ?? 0),
-          dateReceived: batch.createdAt ?? createdAt,
+        const defaultLocationRecord = {
+          id: 'loc-default',
+          name: 'Main Location',
+          code: 'MAIN',
+          isDefault: true,
+          notes: 'Default location for pre-existing inventory data',
           createdAt,
           updatedAt: createdAt,
           deletedAt: null,
           version: 1,
         };
 
-        await this.save('productBatchLocations', defaultAllocation as any);
-        used.add(allocationKey);
+        await this.save('locations', defaultLocationRecord as any);
+      } catch (error) {
+        console.error('[DexieProvider] ensureDefaultLocation failed:', error);
+      } finally {
+        this.defaultLocationInitPromise = null;
       }
-    } catch (error) {
-      console.error('[DexieProvider] ensureDefaultBatchAllocations failed:', error);
+    })();
+
+    return this.defaultLocationInitPromise;
+  }
+
+  private async ensureDefaultBatchAllocations(): Promise<void> {
+    if (this.defaultBatchAllocationsInitPromise) {
+      return this.defaultBatchAllocationsInitPromise;
     }
+
+    this.defaultBatchAllocationsInitPromise = (async () => {
+      try {
+        const locations = (await this.table('locations').toArray()) as any[];
+        const defaultLocation = locations.find((location: any) => location.isDefault || location.id === 'loc-default');
+        if (!defaultLocation) {
+          await this.ensureDefaultLocation();
+          return;
+        }
+
+        const allocations = (await this.table('productBatchLocations').toArray()) as any[];
+        const batches = (await this.table('productBatches').toArray()) as any[];
+        const used = new Set(allocations.filter((item: any) => item.batchId).map((item: any) => `${item.batchId}::${item.locationId}`));
+
+        for (const batch of batches) {
+          if (batch.deletedAt) continue;
+          const allocationKey = `${batch.id}::${defaultLocation.id}`;
+          if (used.has(allocationKey)) continue;
+
+          const hasAnyAllocationForBatch = allocations.some((item: any) => item.batchId === batch.id);
+          if (hasAnyAllocationForBatch) continue;
+
+          const createdAt = new Date().toISOString();
+          const defaultAllocation = {
+            id: `pbl-${batch.id}`,
+            batchId: batch.id,
+            locationId: defaultLocation.id,
+            quantity: Number(batch.quantity ?? 0),
+            dateReceived: batch.createdAt ?? createdAt,
+            createdAt,
+            updatedAt: createdAt,
+            deletedAt: null,
+            version: 1,
+          };
+
+          await this.save('productBatchLocations', defaultAllocation as any);
+          used.add(allocationKey);
+        }
+      } catch (error) {
+        console.error('[DexieProvider] ensureDefaultBatchAllocations failed:', error);
+      } finally {
+        this.defaultBatchAllocationsInitPromise = null;
+      }
+    })();
+
+    return this.defaultBatchAllocationsInitPromise;
   }
 
   async get<T extends StorageRecord>(key: string): Promise<T[]> {
