@@ -59,7 +59,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const storage = useStorageProvider();
 
   const [settings, setSettingsState] = useState<AppSettings>(defaultSettings);
-  
+
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
 
   useEffect(() => {

@@ -56,6 +56,13 @@ export interface ProductBatch extends StorageRecord {
 
 }
 
+export interface ProductBatchLocation extends StorageRecord {
+  batchId: string;
+  locationId: string;
+  quantity: number;
+  dateReceived?: string | null;
+}
+
 export type BatchFormData = Omit<
   ProductBatch,
   "id" | "createdAt" | "updatedAt" | "deletedAt" | "version"

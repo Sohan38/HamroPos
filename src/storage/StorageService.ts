@@ -127,6 +127,9 @@ export class LocalStorageProvider implements IStorageProvider {
   }
 
   async exportAll(): Promise<string> {
+    this.ensureDefaultLocation();
+    this.ensureDefaultBatchAllocations();
+
     const backup = {
       schemaVersion: this.SCHEMA_VERSION,
       appVersion: '1.0.0',
@@ -136,7 +139,7 @@ export class LocalStorageProvider implements IStorageProvider {
 
     const allKeys = [
       'inventory', 'locations', 'settings', 'suppliers', 'customers', 'sales',
-      'purchases', 'expenses', 'hotelRooms', 'productBatches',
+      'purchases', 'expenses', 'hotelRooms', 'productBatches', 'productBatchLocations',
       'hotelBills', 'restaurantBills', 'cashBook', 'credit', 'dispositions'
     ];
 
@@ -308,6 +311,49 @@ export class LocalStorageProvider implements IStorageProvider {
     };
 
     localStorage.setItem(`${this.KEY_PREFIX}locations`, JSON.stringify([...list, defaultLocation]));
+  }
+
+  private ensureDefaultBatchAllocations(): void {
+    const locationRows = JSON.parse(localStorage.getItem(`${this.KEY_PREFIX}locations`) || '[]');
+    const defaultLocation = Array.isArray(locationRows)
+      ? locationRows.find((location: any) => location.isDefault || location.id === 'loc-default')
+      : null;
+
+    if (!defaultLocation) {
+      this.ensureDefaultLocation();
+      return;
+    }
+
+    const allocationRows = JSON.parse(localStorage.getItem(`${this.KEY_PREFIX}productBatchLocations`) || '[]');
+    const allocations = Array.isArray(allocationRows) ? allocationRows : [];
+    const batches = JSON.parse(localStorage.getItem(`${this.KEY_PREFIX}productBatches`) || '[]');
+    const batchList = Array.isArray(batches) ? batches : [];
+    const used = new Set(allocations.filter((item: any) => item.batchId).map((item: any) => `${item.batchId}::${item.locationId}`));
+
+    for (const batch of batchList) {
+      if (batch.deletedAt) continue;
+      const key = `${batch.id}::${defaultLocation.id}`;
+      if (used.has(key)) continue;
+
+      const hasAny = allocations.some((item: any) => item.batchId === batch.id);
+      if (hasAny) continue;
+
+      const createdAt = new Date().toISOString();
+      allocations.push({
+        id: `pbl-${batch.id}`,
+        batchId: batch.id,
+        locationId: defaultLocation.id,
+        quantity: Number(batch.quantity ?? 0),
+        dateReceived: batch.createdAt ?? createdAt,
+        createdAt,
+        updatedAt: createdAt,
+        deletedAt: null,
+        version: 1,
+      });
+      used.add(key);
+    }
+
+    localStorage.setItem(`${this.KEY_PREFIX}productBatchLocations`, JSON.stringify(allocations));
   }
 
   async getSettings(): Promise<any> {

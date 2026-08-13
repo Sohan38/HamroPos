@@ -1,10 +1,11 @@
 import React from 'react';
-import { Product, ProductBatch, Supplier, Customer, PurchaseInvoice, SaleInvoice, HotelRoom, HotelBill, RestaurantBill, Expense, CashBookEntry, Credit, InventoryDisposition, Location } from '../types';
+import { Product, ProductBatch, ProductBatchLocation, Supplier, Customer, PurchaseInvoice, SaleInvoice, HotelRoom, HotelBill, RestaurantBill, Expense, CashBookEntry, Credit, InventoryDisposition, Location } from '../types';
 import { createStorageContext } from './createStorageContext';
 
 export const { Provider: InventoryProvider, useStorage: useInventory } = createStorageContext<Product>('inventory');
 export const { Provider: LocationsProvider, useStorage: useLocations } = createStorageContext<Location>('locations');
 export const { Provider: ProductBatchesProvider, useStorage: useProductBatches } = createStorageContext<ProductBatch>('productBatches');
+export const { Provider: ProductBatchLocationsProvider, useStorage: useProductBatchLocations } = createStorageContext<ProductBatchLocation>('productBatchLocations');
 export const { Provider: SuppliersProvider, useStorage: useSuppliers } = createStorageContext<Supplier>('suppliers');
 export const { Provider: CustomersProvider, useStorage: useCustomers } = createStorageContext<Customer>('customers');
 export const { Provider: PurchasesProvider, useStorage: usePurchases } = createStorageContext<PurchaseInvoice>('purchases');
@@ -22,29 +23,31 @@ export function GlobalProviders({ children }: { children: React.ReactNode }) {
     <InventoryProvider>
       <LocationsProvider>
         <ProductBatchesProvider>
-          <SuppliersProvider>
-            <CustomersProvider>
-              <PurchasesProvider>
-                <SalesProvider>
-                  <DispositionsProvider>
-                    <HotelRoomsProvider>
-                      <HotelBillsProvider>
-                        <RestaurantBillsProvider>
-                          <ExpensesProvider>
-                            <CashBookProvider>
-                              <CreditProvider>
-                                {children}
-                              </CreditProvider>
-                            </CashBookProvider>
-                          </ExpensesProvider>
-                        </RestaurantBillsProvider>
-                      </HotelBillsProvider>
-                    </HotelRoomsProvider>
-                  </DispositionsProvider>
-                </SalesProvider>
-              </PurchasesProvider>
-            </CustomersProvider>
-          </SuppliersProvider>
+          <ProductBatchLocationsProvider>
+            <SuppliersProvider>
+              <CustomersProvider>
+                <PurchasesProvider>
+                  <SalesProvider>
+                    <DispositionsProvider>
+                      <HotelRoomsProvider>
+                        <HotelBillsProvider>
+                          <RestaurantBillsProvider>
+                            <ExpensesProvider>
+                              <CashBookProvider>
+                                <CreditProvider>
+                                  {children}
+                                </CreditProvider>
+                              </CashBookProvider>
+                            </ExpensesProvider>
+                          </RestaurantBillsProvider>
+                        </HotelBillsProvider>
+                      </HotelRoomsProvider>
+                    </DispositionsProvider>
+                  </SalesProvider>
+                </PurchasesProvider>
+              </CustomersProvider>
+            </SuppliersProvider>
+          </ProductBatchLocationsProvider>
         </ProductBatchesProvider>
       </LocationsProvider>
     </InventoryProvider>

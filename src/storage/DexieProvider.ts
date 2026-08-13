@@ -18,6 +18,7 @@ const COLLECTION_KEYS = [
   'expenses',
   'hotelRooms',
   'productBatches',
+  'productBatchLocations',
   'hotelBills',
   'restaurantBills',
   'cashBook',
@@ -91,20 +92,6 @@ export class DexieProvider implements IStorageProvider {
   }
 
   // ── Collection CRUD ─────────────────────────────────────────────────────────
-
-  async get<T extends StorageRecord>(key: string): Promise<T[]> {
-    if (this.memCache.has(key)) {
-      return this.memCache.get(key) as T[];
-    }
-    try {
-      const rows = await this.table(key).toArray();
-      this.memCache.set(key, rows);
-      return rows as T[];
-    } catch (error) {
-      console.error(`[DexieProvider] get("${key}") failed:`, error);
-      return [];
-    }
-  }
 
   async set<T extends StorageRecord>(key: string, data: T[]): Promise<void> {
     this.memCache.set(key, data as StorageRecord[]);
@@ -299,6 +286,64 @@ export class DexieProvider implements IStorageProvider {
     }
   }
 
+  private async ensureDefaultBatchAllocations(): Promise<void> {
+    try {
+      const defaultLocation = (await this.get<any>('locations')).find((location) => location.isDefault || location.id === 'loc-default');
+      if (!defaultLocation) {
+        await this.ensureDefaultLocation();
+        return;
+      }
+
+      const allocations = await this.get<any>('productBatchLocations');
+      const batches = await this.get<any>('productBatches');
+      const used = new Set(allocations.filter((item) => item.batchId).map((item) => `${item.batchId}::${item.locationId}`));
+
+      for (const batch of batches) {
+        if (batch.deletedAt) continue;
+        const allocationKey = `${batch.id}::${defaultLocation.id}`;
+        if (used.has(allocationKey)) continue;
+
+        const hasAnyAllocationForBatch = allocations.some((item) => item.batchId === batch.id);
+        if (hasAnyAllocationForBatch) continue;
+
+        const createdAt = new Date().toISOString();
+        const defaultAllocation = {
+          id: `pbl-${batch.id}`,
+          batchId: batch.id,
+          locationId: defaultLocation.id,
+          quantity: Number(batch.quantity ?? 0),
+          dateReceived: batch.createdAt ?? createdAt,
+          createdAt,
+          updatedAt: createdAt,
+          deletedAt: null,
+          version: 1,
+        };
+
+        await this.save('productBatchLocations', defaultAllocation as any);
+        used.add(allocationKey);
+      }
+    } catch (error) {
+      console.error('[DexieProvider] ensureDefaultBatchAllocations failed:', error);
+    }
+  }
+
+  async get<T extends StorageRecord>(key: string): Promise<T[]> {
+    if (key === 'productBatchLocations') {
+      await this.ensureDefaultBatchAllocations();
+    }
+    if (this.memCache.has(key)) {
+      return this.memCache.get(key) as T[];
+    }
+    try {
+      const rows = await this.table(key).toArray();
+      this.memCache.set(key, rows);
+      return rows as T[];
+    } catch (error) {
+      console.error(`[DexieProvider] get("${key}") failed:`, error);
+      return [];
+    }
+  }
+
   async getSettings(): Promise<any> {
     try {
       const row = await db.settings.get('settings');
@@ -334,6 +379,7 @@ export class DexieProvider implements IStorageProvider {
 
   async exportAll(): Promise<string> {
     await this.ensureDefaultLocation();
+    await this.ensureDefaultBatchAllocations();
 
     const backup: Record<string, any> = {
       schemaVersion: this.SCHEMA_VERSION,
@@ -407,6 +453,7 @@ export class DexieProvider implements IStorageProvider {
       if (!collections['sohan_locations'] || !Array.isArray(collections['sohan_locations']) || collections['sohan_locations'].length === 0) {
         await this.ensureDefaultLocation();
       }
+      await this.ensureDefaultBatchAllocations();
 
       if (collections['sohan_settings']) {
         await this.saveSettings(collections['sohan_settings']);
