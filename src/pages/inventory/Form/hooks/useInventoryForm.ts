@@ -77,10 +77,14 @@ export function useInventoryForm(
             ...existingProduct,
             supplierIds: existingProduct.supplierIds ?? (existingProduct.supplierId ? [existingProduct.supplierId] : []),
             supplierStocks: existingProduct.supplierStocks?.length
-                ? existingProduct.supplierStocks
+                ? existingProduct.supplierStocks.map((stock: any) => ({
+                    ...stock,
+                    locationId: stock.locationId || 'loc-default',
+                }))
                 : existingProduct.supplierId
                     ? [{
                         supplierId: existingProduct.supplierId,
+                        locationId: 'loc-default',
                         cost: existingProduct.purchaseRate || 0,
                         stock: existingProduct.quantity || 0,
                         supplierSku: '',
@@ -98,7 +102,7 @@ export function useInventoryForm(
             name: '', barcode: '', category: '', brand: '',
             supplierIds: supplierIdFromQuery ? [supplierIdFromQuery] : [],
             supplierStocks: supplierIdFromQuery
-                ? [{ supplierId: supplierIdFromQuery, cost: 0, stock: 0, supplierSku: '', reorderLevel: undefined, notes: '' }]
+                ? [{ supplierId: supplierIdFromQuery, locationId: 'loc-default', cost: 0, stock: 0, supplierSku: '', reorderLevel: undefined, notes: '' }]
                 : [],
             unit: 'pcs',
             quantity: 0,
@@ -136,7 +140,7 @@ export function useInventoryForm(
                 const rate = Number(form.getValues('purchaseRate') ?? 0);
                 const newStocks = [
                     ...stocks,
-                    { supplierId: supplierIdFromQuery, cost: rate > 0 ? rate : 0, stock: 0, supplierSku: '', reorderLevel: undefined, notes: '' }
+                    { supplierId: supplierIdFromQuery, locationId: 'loc-default', cost: rate > 0 ? rate : 0, stock: 0, supplierSku: '', reorderLevel: undefined, notes: '' }
                 ];
                 form.setValue('supplierIds', [...currentIds, supplierIdFromQuery], { shouldDirty: true });
                 form.setValue('supplierStocks', newStocks, { shouldDirty: true });

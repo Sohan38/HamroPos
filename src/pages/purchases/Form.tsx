@@ -144,7 +144,7 @@ export default function PurchaseForm() {
     if (existingIndex >= 0) {
       updateItem(existingIndex, 'quantity', Number(items[existingIndex].quantity) + 1);
     } else {
-      const supplierCost = product.supplierStocks?.find(record => record.supplierId === supplierId)?.cost;
+      const supplierCost = product.supplierStocks?.find(record => record.supplierId === supplierId && (record.locationId || 'loc-default') === 'loc-default')?.cost;
       const purchaseRate = supplierCost ?? product.purchaseRate ?? 0;
       const defaultVariantName = product.hasVariants && product.variants?.length
         ? product.variants[0]?.name ?? ''

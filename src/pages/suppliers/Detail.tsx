@@ -40,7 +40,7 @@ export default function SupplierDetail() {
 
         // Per-product stock info from supplierStocks
         const productStockDetails = supplierProducts.map(product => {
-            const record = product.supplierStocks?.find(ss => ss.supplierId === id);
+            const record = product.supplierStocks?.find(ss => ss.supplierId === id && (ss.locationId || 'loc-default') === 'loc-default');
             const isMultiSupProduct = (product.supplierIds?.length ?? 0) >= 2;
             // For multi-supplier products use per-supplier stock; for single-supplier always use product.quantity
             const stock = isMultiSupProduct && record ? record.stock : product.quantity;

@@ -49,25 +49,41 @@ function getSupplierIds(product: Product) {
     ));
 }
 
-function ensureSupplierRecords(product: Product, supplierId: string, legacyPrimaryStock = product.quantity) {
+function normalizeSupplierLocationId(locationId?: string | null) {
+    const candidate = (locationId ?? 'loc-default')?.trim();
+    return candidate || 'loc-default';
+}
+
+function getSupplierStockKey(supplierId: string, locationId?: string | null) {
+    return `${supplierId}::${normalizeSupplierLocationId(locationId)}`;
+}
+
+function ensureSupplierRecords(product: Product, supplierId: string, locationId?: string | null, legacyPrimaryStock = product.quantity) {
     const ids = getSupplierIds(product);
     const supplierIds = ids.includes(supplierId) ? ids : [...ids, supplierId];
+    const normalizedLocationId = normalizeSupplierLocationId(locationId);
     const existing = product.supplierStocks ?? [];
-    const records = [...existing];
+    const records = [...existing].map((record) => ({
+        ...record,
+        locationId: record.locationId || 'loc-default',
+    }));
 
     // Older products predate per-supplier stock. Preserve their current stock
     // against their primary supplier before adding a second supplier.
     if (records.length === 0 && ids[0]) {
         records.push({
             supplierId: ids[0],
+            locationId: normalizedLocationId,
             cost: product.purchaseRate,
             stock: legacyPrimaryStock,
         });
     }
 
     for (const id of supplierIds) {
-        if (!records.some(record => record.supplierId === id)) {
-            records.push({ supplierId: id, cost: product.purchaseRate, stock: 0 });
+        const key = getSupplierStockKey(id, normalizedLocationId);
+        const hasRecord = records.some(record => record.supplierId === id && (record.locationId || 'loc-default') === normalizedLocationId);
+        if (!hasRecord) {
+            records.push({ supplierId: id, locationId: normalizedLocationId, cost: product.purchaseRate, stock: 0 });
         }
     }
 
@@ -123,8 +139,8 @@ function revertPurchase(
 
         product.quantity -= item.quantity;
         updateVariantQuantity(product, item.variantName, -item.quantity);
-        const supplierState = ensureSupplierRecords(product, purchase.supplierId);
-        const supplierRecord = supplierState.records.find(record => record.supplierId === purchase.supplierId);
+        const supplierState = ensureSupplierRecords(product, purchase.supplierId, 'loc-default');
+        const supplierRecord = supplierState.records.find(record => record.supplierId === purchase.supplierId && (record.locationId || 'loc-default') === 'loc-default');
         if (supplierRecord) {
             if (supplierRecord.stock < item.quantity) {
                 throw new Error(`Cannot reverse ${purchase.invoiceNumber || 'this purchase'}: supplier stock for ${product.name} is lower than the received quantity.`);
@@ -161,10 +177,10 @@ function applyPurchase(
         if (!product) throw new Error(`Product "${item.productName}" no longer exists.`);
 
         const previousQuantity = product.quantity;
-        const supplierState = ensureSupplierRecords(product, purchase.supplierId, previousQuantity);
+        const supplierState = ensureSupplierRecords(product, purchase.supplierId, 'loc-default', previousQuantity);
         product.quantity += item.quantity;
         updateVariantQuantity(product, item.variantName, item.quantity);
-        const supplierRecord = supplierState.records.find(record => record.supplierId === purchase.supplierId);
+        const supplierRecord = supplierState.records.find(record => record.supplierId === purchase.supplierId && (record.locationId || 'loc-default') === 'loc-default');
         if (!supplierRecord) throw new Error(`Supplier stock could not be initialized for ${product.name}.`);
         supplierRecord.stock += item.quantity;
         supplierRecord.cost = item.purchaseRate;

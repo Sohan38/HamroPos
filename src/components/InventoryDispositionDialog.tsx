@@ -99,7 +99,7 @@ export function InventoryDispositionDialog({ product, open, onOpenChange, onCrea
     ) : reasons;
     const batchPurchaseRate = selectedBatch?.purchaseRate;
     const selectedSupplierCost = !selectedBatch && selectedSupplierId
-        ? product.supplierStocks?.find((stock) => stock.supplierId === selectedSupplierId)?.cost
+        ? product.supplierStocks?.find((stock) => stock.supplierId === selectedSupplierId && (stock.locationId || 'loc-default') === 'loc-default')?.cost
         : undefined;
     const selectedInvoiceItem = selectedPurchaseInvoice
         ? selectedPurchaseInvoice.items.find((item) => item.productId === product.id && (!selectedBatch || item.batchId === selectedBatch.id))
@@ -194,7 +194,7 @@ export function InventoryDispositionDialog({ product, open, onOpenChange, onCrea
 
     const quantityValue = Number(quantity || 0);
     const selectedSupplierStock = selectedSupplierId
-        ? product.supplierStocks?.find((stock) => stock.supplierId === selectedSupplierId)?.stock
+        ? product.supplierStocks?.find((stock) => stock.supplierId === selectedSupplierId && (stock.locationId || 'loc-default') === 'loc-default')?.stock
         : undefined;
     const supplierAvailable = selectedSupplierStock ?? product.quantity;
     const batchAvailable = selectedBatch?.quantity ?? supplierAvailable;

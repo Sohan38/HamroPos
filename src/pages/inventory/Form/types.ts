@@ -28,6 +28,7 @@ export const productSchema = z.object({
 
   supplierStocks: z.array(z.object({
     supplierId: z.string(),
+    locationId: z.string().default('loc-default'),
     supplierSku: z.string().optional(),
     cost: z.coerce.number().min(0).default(0),
     stock: z.coerce.number().min(0).default(0),

@@ -249,6 +249,7 @@ export default function InventoryForm() {
               ...currentStocks,
               {
                 supplierId: newSupplierId,
+                locationId: 'loc-default',
                 cost: 0,
                 stock: 0,
                 supplierSku: '',

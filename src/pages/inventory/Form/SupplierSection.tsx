@@ -33,12 +33,14 @@ export const SupplierSection = React.memo(({ form, isNew, suppliers, existingPur
     const currentPurchaseRate = Number(form.getValues('purchaseRate') ?? 0);
     const isFirst = next.length === 1;
     const globalStock = isFirst ? (form.getValues('quantity') ?? 0) : 0;
+    const defaultLocationId = 'loc-default';
 
-    if (!currentStocks.find((ss: any) => ss.supplierId === sid)) {
+    if (!currentStocks.some((ss: any) => ss.supplierId === sid && (ss.locationId || defaultLocationId) === defaultLocationId)) {
       form.setValue('supplierStocks', [
         ...currentStocks,
         {
           supplierId: sid,
+          locationId: defaultLocationId,
           cost: currentPurchaseRate > 0 ? currentPurchaseRate : 0,
           stock: globalStock,
           supplierSku: '',
@@ -53,13 +55,13 @@ export const SupplierSection = React.memo(({ form, isNew, suppliers, existingPur
     const next = selectedSupplierIds.filter(s => s !== sid);
     form.setValue('supplierIds', next, { shouldDirty: true });
     const currentStocks: any[] = form.getValues('supplierStocks') ?? [];
-    form.setValue('supplierStocks', currentStocks.filter((ss: any) => ss.supplierId !== sid), { shouldDirty: true });
+    form.setValue('supplierStocks', currentStocks.filter((ss: any) => !(ss.supplierId === sid && (ss.locationId || 'loc-default') === 'loc-default')), { shouldDirty: true });
   }, [selectedSupplierIds, form]);
 
   const updateSupplierStock = useCallback((supplierId: string, field: string, value: string | number | undefined) => {
     const currentStocks: any[] = form.getValues('supplierStocks') ?? [];
     form.setValue('supplierStocks', currentStocks.map((ss: any) =>
-      ss.supplierId === supplierId ? { ...ss, [field]: value } : ss
+      ss.supplierId === supplierId && (ss.locationId || 'loc-default') === 'loc-default' ? { ...ss, [field]: value } : ss
     ), { shouldDirty: true });
   }, [form]);
 
@@ -140,8 +142,8 @@ export const SupplierSection = React.memo(({ form, isNew, suppliers, existingPur
               {selectedSupplierIds.map((sid, idx) => {
                 const supplier = suppliers.find(s => s.id === sid);
                 if (!supplier) return null;
-                const stockEntry = supplierStocks.find((ss: any) => ss.supplierId === sid)
-                  ?? { supplierId: sid, cost: 0, stock: 0, supplierSku: '', reorderLevel: undefined };
+                const stockEntry = supplierStocks.find((ss: any) => ss.supplierId === sid && (ss.locationId || 'loc-default') === 'loc-default')
+                  ?? { supplierId: sid, locationId: 'loc-default', cost: 0, stock: 0, supplierSku: '', reorderLevel: undefined };
 
                 return (
                   <div key={sid} className="rounded-2xl border bg-card shadow-sm overflow-hidden">

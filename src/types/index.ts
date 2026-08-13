@@ -71,9 +71,10 @@ export type BatchFormData = Omit<
 /** Per-supplier stock and cost data for a product */
 export interface SupplierProductRecord {
   supplierId: string;
+  locationId: string;       // effective identity for supplier stock in a product record
   supplierSku?: string;     // supplier's own SKU for this product
   cost: number;             // supplier-specific purchase cost
-  stock: number;            // stock from this supplier
+  stock: number;            // stock from this supplier at this location
   reorderLevel?: number;    // trigger a restock alert at this level
   lastPurchaseDate?: string;
   notes?: string;

@@ -92,7 +92,7 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
       return batch ? batch.quantity : 0;
     }
     if (isMultiSupplier) {
-      const entry = product.supplierStocks?.find(ss => ss.supplierId === selectedSupplierId);
+      const entry = product.supplierStocks?.find(ss => ss.supplierId === selectedSupplierId && (ss.locationId || 'loc-default') === 'loc-default');
       return entry ? entry.stock : 0;
     }
     return product.quantity;
@@ -190,13 +190,14 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
     } else if (isMultiSupplier) {
       const currentStocks = product.supplierStocks || [];
       const updatedStocks = product.supplierIds?.map(sid => {
-        const existing = currentStocks.find(ss => ss.supplierId === sid);
+        const existing = currentStocks.find(ss => ss.supplierId === sid && (ss.locationId || 'loc-default') === 'loc-default');
         if (existing) {
-          return sid === selectedSupplierId ? { ...existing, stock: newQty } : existing;
+          return sid === selectedSupplierId ? { ...existing, stock: newQty, locationId: existing.locationId || 'loc-default' } : existing;
         } else {
           const stockVal = sid === selectedSupplierId ? newQty : 0;
           return {
             supplierId: sid,
+            locationId: 'loc-default',
             cost: product.purchaseRate || 0,
             stock: stockVal,
             supplierSku: '',
@@ -215,7 +216,7 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
       toast.success(`Updated stock for supplier "${supplier?.name}": ${diff > 0 ? `+${diff}` : diff} → ${newQty} ${product.unit}. ${finalReason}`);
       if (diff > 0) {
         // find the record we updated to get the cost
-        const updatedRecord = updatedStocks.find(ss => ss.supplierId === selectedSupplierId);
+        const updatedRecord = updatedStocks.find(ss => ss.supplierId === selectedSupplierId && (ss.locationId || 'loc-default') === 'loc-default');
         try {
           await createPurchaseForStockIncrease(storage, {
             productId: product.id,
