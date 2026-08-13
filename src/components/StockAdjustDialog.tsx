@@ -9,7 +9,7 @@ import { Plus, Minus, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { Product } from '@/types';
 import { useBackModal } from '@/contexts/NavigationContext';
-import { useInventory, useProductBatches, useSuppliers } from '@/contexts/GlobalProviders';
+import { useInventory, useProductBatches, useSuppliers, useLocations } from '@/contexts/GlobalProviders';
 import { useStorageProvider } from '@/storage/StorageContext';
 import { createPurchaseForStockIncrease } from '@/services/purchaseHelpers';
 import { rankSearch } from '@/utils/search/rank';
@@ -27,6 +27,7 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
   const { update: updateProduct } = useInventory();
   const { items: allBatches, update: updateBatch } = useProductBatches();
   const { items: suppliers } = useSuppliers();
+  const { items: locations } = useLocations();
 
   const [mode, setMode] = useState<'add' | 'remove' | 'set'>('add');
   const [amount, setAmount] = useState('');
@@ -35,6 +36,7 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
   const [selectedBatchId, setSelectedBatchId] = useState('');
   const [selectedVariantName, setSelectedVariantName] = useState('');
   const [selectedSupplierId, setSelectedSupplierId] = useState('');
+  const [selectedLocationId, setSelectedLocationId] = useState('loc-default');
   const [filterQuery, setFilterQuery] = useState('');
 
   const amountInputRef = useRef<HTMLInputElement>(null);
@@ -69,7 +71,10 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
 
     setSelectedBatchId(productBatches[0]?.id || '');
     setSelectedVariantName(product.variants?.[0]?.name || '');
-    setSelectedSupplierId(isMultiSupplier ? '' : (product.supplierIds?.[0] || ''));
+    const preferredSupplier = isMultiSupplier ? '' : (product.supplierIds?.[0] || '');
+    setSelectedSupplierId(preferredSupplier);
+    const preferredLocation = product.supplierStocks?.find(ss => ss.supplierId === preferredSupplier)?.locationId || 'loc-default';
+    setSelectedLocationId(preferredLocation);
     setFilterQuery('');
     setAmount('');
     setReason('');
@@ -92,7 +97,7 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
       return batch ? batch.quantity : 0;
     }
     if (isMultiSupplier) {
-      const entry = product.supplierStocks?.find(ss => ss.supplierId === selectedSupplierId && (ss.locationId || 'loc-default') === 'loc-default');
+      const entry = product.supplierStocks?.find(ss => ss.supplierId === selectedSupplierId && (ss.locationId || 'loc-default') === (selectedLocationId || 'loc-default'));
       return entry ? entry.stock : 0;
     }
     return product.quantity;
@@ -112,6 +117,7 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
 
   // Validation logic
   const isInvalid = !amount || numericAmount < 0 || (mode === 'remove' && numericAmount > currentQty) || (isMultiSupplier && !selectedSupplierId);
+  const locationOptions = locations.length > 0 ? locations : [{ id: 'loc-default', name: 'Main Location' }];
 
   const storage = useStorageProvider();
 
@@ -189,21 +195,22 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
       }
     } else if (isMultiSupplier) {
       const currentStocks = product.supplierStocks || [];
+      const currentLocation = selectedLocationId || 'loc-default';
       const updatedStocks = product.supplierIds?.map(sid => {
-        const existing = currentStocks.find(ss => ss.supplierId === sid && (ss.locationId || 'loc-default') === 'loc-default');
+        const existing = currentStocks.find(ss => ss.supplierId === sid && (ss.locationId || 'loc-default') === currentLocation);
         if (existing) {
-          return sid === selectedSupplierId ? { ...existing, stock: newQty, locationId: existing.locationId || 'loc-default' } : existing;
-        } else {
-          const stockVal = sid === selectedSupplierId ? newQty : 0;
-          return {
-            supplierId: sid,
-            locationId: 'loc-default',
-            cost: product.purchaseRate || 0,
-            stock: stockVal,
-            supplierSku: '',
-            reorderLevel: undefined
-          };
+          return sid === selectedSupplierId ? { ...existing, stock: newQty, locationId: currentLocation } : existing;
         }
+
+        const stockVal = sid === selectedSupplierId ? newQty : 0;
+        return {
+          supplierId: sid,
+          locationId: currentLocation,
+          cost: product.purchaseRate || 0,
+          stock: stockVal,
+          supplierSku: '',
+          reorderLevel: undefined
+        };
       }) || [];
 
       const newTotalQty = updatedStocks.reduce((sum, ss) => sum + (ss.stock || 0), 0);
@@ -213,10 +220,10 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
         quantity: newTotalQty
       });
       const supplier = suppliers.find(s => s.id === selectedSupplierId);
-      toast.success(`Updated stock for supplier "${supplier?.name}": ${diff > 0 ? `+${diff}` : diff} → ${newQty} ${product.unit}. ${finalReason}`);
+      const locationName = locationOptions.find(loc => loc.id === currentLocation)?.name ?? 'Main Location';
+      toast.success(`Updated stock for supplier "${supplier?.name}" at ${locationName}: ${diff > 0 ? `+${diff}` : diff} → ${newQty} ${product.unit}. ${finalReason}`);
       if (diff > 0) {
-        // find the record we updated to get the cost
-        const updatedRecord = updatedStocks.find(ss => ss.supplierId === selectedSupplierId && (ss.locationId || 'loc-default') === 'loc-default');
+        const updatedRecord = updatedStocks.find(ss => ss.supplierId === selectedSupplierId && (ss.locationId || 'loc-default') === currentLocation);
         try {
           await createPurchaseForStockIncrease(storage, {
             productId: product.id,
@@ -339,6 +346,20 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
             {/* Multi-supplier search & selection list */}
             {isMultiSupplier && (
               <div className="space-y-2">
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Location</Label>
+                  <Select value={selectedLocationId} onValueChange={setSelectedLocationId}>
+                    <SelectTrigger className="w-full bg-card">
+                      <SelectValue placeholder="Select location" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {locationOptions.map((location: any) => (
+                        <SelectItem key={location.id} value={location.id}>{location.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Select Supplier *</Label>
                 {selectedSupplierId ? (
                   (() => {
@@ -389,6 +410,8 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
                           type="button"
                           onClick={() => {
                             setSelectedSupplierId(s.id);
+                            const supplierLocation = product.supplierStocks?.find(ss => ss.supplierId === s.id)?.locationId || 'loc-default';
+                            setSelectedLocationId(supplierLocation);
                             setFilterQuery('');
                           }}
                           className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border bg-muted/50 border-border text-foreground hover:border-primary/50 hover:bg-primary/5 transition-all select-none"

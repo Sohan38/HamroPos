@@ -10,6 +10,8 @@ import { Plus, X, Truck, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SupplierSearchList } from '@/components/SupplierSearchList';
 import { generateSupplierInvoiceNumber } from '@/utils/numbering';
+import { useLocations } from '@/contexts/GlobalProviders';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface SupplierSectionProps extends SectionProps {
   isNew: boolean;
@@ -21,7 +23,9 @@ interface SupplierSectionProps extends SectionProps {
 export const SupplierSection = React.memo(({ form, isNew, suppliers, existingPurchases = [], onSupplierNew }: SupplierSectionProps) => {
   const selectedSupplierIds: string[] = useWatch({ control: form.control, name: 'supplierIds' }) ?? [];
   const supplierStocks: any[] = useWatch({ control: form.control, name: 'supplierStocks' }) ?? [];
+  const { items: locations } = useLocations();
   const isMultiSupplier = selectedSupplierIds.length >= 2;
+  const locationOptions = locations.length > 0 ? locations : [{ id: 'loc-default', name: 'Main Location' }];
 
   // ─── Mutations ──────────────────────────────────────────────────────────────
 
@@ -58,10 +62,18 @@ export const SupplierSection = React.memo(({ form, isNew, suppliers, existingPur
     form.setValue('supplierStocks', currentStocks.filter((ss: any) => !(ss.supplierId === sid && (ss.locationId || 'loc-default') === 'loc-default')), { shouldDirty: true });
   }, [selectedSupplierIds, form]);
 
-  const updateSupplierStock = useCallback((supplierId: string, field: string, value: string | number | undefined) => {
+  const updateSupplierStock = useCallback((supplierId: string, field: string, value: string | number | undefined, currentLocationId = 'loc-default') => {
     const currentStocks: any[] = form.getValues('supplierStocks') ?? [];
+    if (field === 'locationId') {
+      const currentRecord = currentStocks.find((ss: any) => ss.supplierId === supplierId && (ss.locationId || 'loc-default') === currentLocationId)
+        ?? { supplierId, locationId: currentLocationId, cost: 0, stock: 0, supplierSku: '', reorderLevel: undefined, notes: '' };
+      const nextStocks = currentStocks.filter((ss: any) => !(ss.supplierId === supplierId && (ss.locationId || 'loc-default') === currentLocationId));
+      form.setValue('supplierStocks', [...nextStocks, { ...currentRecord, supplierId, locationId: String(value) }], { shouldDirty: true });
+      return;
+    }
+
     form.setValue('supplierStocks', currentStocks.map((ss: any) =>
-      ss.supplierId === supplierId && (ss.locationId || 'loc-default') === 'loc-default' ? { ...ss, [field]: value } : ss
+      ss.supplierId === supplierId && (ss.locationId || 'loc-default') === currentLocationId ? { ...ss, [field]: value } : ss
     ), { shouldDirty: true });
   }, [form]);
 
@@ -167,6 +179,23 @@ export const SupplierSection = React.memo(({ form, isNew, suppliers, existingPur
 
                     {/* Fields */}
                     <div className="p-3 space-y-3">
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Location</Label>
+                        <Select
+                          value={stockEntry.locationId || 'loc-default'}
+                          onValueChange={(nextLocationId) => updateSupplierStock(sid, 'locationId', nextLocationId, stockEntry.locationId || 'loc-default')}
+                        >
+                          <SelectTrigger className="h-10 text-sm">
+                            <SelectValue placeholder="Location" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {locationOptions.map((location: any) => (
+                              <SelectItem key={location.id} value={location.id}>{location.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
                       <div className="grid grid-cols-2 gap-2.5">
                         <div className="space-y-1.5">
                           <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
