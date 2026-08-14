@@ -101,12 +101,21 @@ export default function Dashboard() {
 
     const productSales: Record<string, { name: string; qty: number; revenue: number }> = {};
     for (const sale of sales) {
+      const saleSubtotal = sale.items.reduce((sum, item) => sum + item.subtotal, 0);
+      const discountedSaleSubtotal = saleSubtotal > 0 ? Math.max(0, saleSubtotal - sale.discount) : saleSubtotal;
+
       for (const item of sale.items) {
         if (!productSales[item.productId]) {
           productSales[item.productId] = { name: item.productName, qty: 0, revenue: 0 };
         }
         productSales[item.productId].qty += item.quantity;
-        productSales[item.productId].revenue += item.subtotal;
+
+        if (saleSubtotal <= 0 || sale.discount <= 0) {
+          productSales[item.productId].revenue += item.subtotal;
+        } else {
+          const itemShare = saleSubtotal > 0 ? item.subtotal / saleSubtotal : 0;
+          productSales[item.productId].revenue += item.subtotal - (itemShare * sale.discount);
+        }
       }
     }
     const bestSellers = Object.values(productSales)

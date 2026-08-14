@@ -23,6 +23,19 @@ function getProductCost(product: Product | undefined) {
     return product?.purchaseRate ?? 0;
 }
 
+function getSaleNetRevenue(sale: SaleInvoice) {
+    return Math.max(0, toNumber(sale.grandTotal) - toNumber(sale.tax));
+}
+
+function getDiscountAdjustedItemRevenue(itemSubtotal: number, saleSubtotal: number, saleDiscount: number) {
+    if (saleSubtotal <= 0 || saleDiscount <= 0) {
+        return itemSubtotal;
+    }
+
+    const discountRatio = Math.min(1, saleDiscount / saleSubtotal);
+    return Math.max(0, itemSubtotal * (1 - discountRatio));
+}
+
 export function getSaleItemCOGS(
     item: SaleItem,
     saleDate: string,
@@ -76,7 +89,7 @@ export function buildFinancialMetrics(params: {
         }
     }
 
-    const salesRevenue = salesInScope.reduce((sum, sale) => sum + toNumber(sale.grandTotal), 0);
+    const salesRevenue = salesInScope.reduce((sum, sale) => sum + getSaleNetRevenue(sale), 0);
     const collected = salesInScope.reduce((sum, sale) => sum + toNumber(sale.paidAmount), 0);
     const creditCreated = salesInScope.reduce((sum, sale) => sum + Math.max(0, toNumber(sale.grandTotal) - toNumber(sale.paidAmount)), 0);
 
@@ -84,18 +97,21 @@ export function buildFinancialMetrics(params: {
     const topProductsMap: Record<string, { name: string; qty: number; revenue: number; profit: number }> = {};
 
     for (const sale of salesInScope) {
+        const saleSubtotal = sale.items.reduce((sum, item) => sum + toNumber(item.subtotal), 0);
+
         for (const item of sale.items) {
             const product = productMap.get(item.productId);
             const history = purchaseHistoryByProduct.get(item.productId) ?? [];
             const itemCOGS = getSaleItemCOGS(item, sale.date, product, history);
-            const itemProfit = item.subtotal - itemCOGS;
+            const itemRevenue = getDiscountAdjustedItemRevenue(toNumber(item.subtotal), saleSubtotal, toNumber(sale.discount));
+            const itemProfit = itemRevenue - itemCOGS;
             cogs += itemCOGS;
 
             if (!topProductsMap[item.productId]) {
                 topProductsMap[item.productId] = { name: item.productName, qty: 0, revenue: 0, profit: 0 };
             }
             topProductsMap[item.productId].qty += item.quantity;
-            topProductsMap[item.productId].revenue += item.subtotal;
+            topProductsMap[item.productId].revenue += itemRevenue;
             topProductsMap[item.productId].profit += itemProfit;
         }
     }

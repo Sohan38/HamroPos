@@ -143,7 +143,9 @@ export default function Reports() {
     for (let i = days - 1; i >= 0; i--) {
       const date = subDays(new Date(), i);
       const dateStr = formatDate(startOfDay(date), 'yyyy-MM-dd');
-      const dayRevenue = filteredSales.filter(s => s.date.startsWith(dateStr)).reduce((s, x) => s + x.grandTotal, 0);
+      const dayRevenue = filteredSales
+        .filter(s => s.date.startsWith(dateStr))
+        .reduce((s, x) => s + Math.max(0, x.grandTotal - x.tax), 0);
       const dayExpenses = filteredExpenses
         .filter(e => !e.sourcePurchaseId && e.date.startsWith(dateStr))
         .reduce((s, e) => s + e.amount, 0);
