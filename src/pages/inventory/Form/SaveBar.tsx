@@ -7,11 +7,12 @@ import { cn } from '@/lib/utils';
 
 interface SaveBarProps {
   onBack: () => void;
+  onSave: () => void;
   isSaving?: boolean;
   form: UseFormReturn<ProductFormValues>;
 }
 
-export const SaveBar = React.memo(({ onBack, isSaving = false, form }: SaveBarProps) => {
+export const SaveBar = React.memo(({ onBack, onSave, isSaving = false, form }: SaveBarProps) => {
   const { formState: { errors, isSubmitted } } = form;
   const errorCount = isSubmitted ? Object.keys(errors).length : 0;
 
@@ -47,7 +48,8 @@ export const SaveBar = React.memo(({ onBack, isSaving = false, form }: SaveBarPr
           </Button>
 
           <Button
-            type="submit"
+            type="button"
+            onClick={onSave}
             className={cn(
               'flex-2 h-11 rounded-2xl font-semibold text-sm md:flex-initial md:min-w-35',
               'bg-primary hover:bg-primary/90 transition-all',

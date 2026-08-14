@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
 import { Form } from '@/components/ui/form';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -12,6 +12,7 @@ import { useInventoryFormSteps } from './Form/hooks/useInventoryFormSteps';
 import { useInventoryFooter } from './Form/hooks/useInventoryFooter';
 import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
 import { useConfirm } from '@/contexts/ConfirmContext';
+import { InventoryConfirmDialog } from './Form/InventoryConfirmDialog';
 
 export default function InventoryForm() {
   const goBack = useSmartBack('/inventory');
@@ -69,6 +70,8 @@ export default function InventoryForm() {
   } = useInventoryForm(supplierIdFromQuery, returnTo);
 
   const [activeStep, setActiveStep] = useState(0);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   useEffect(() => {
@@ -141,6 +144,22 @@ export default function InventoryForm() {
     setActiveStep(prev => prev + 1);
   }, [activeStep, stepsWithReview, form]);
 
+  // Intercept save: validate last step then open confirm dialog
+  const handleSave = useCallback(async () => {
+    const lastStep = stepsWithReview[stepsWithReview.length - 1];
+    if (lastStep?.fields && lastStep.fields.length > 0) {
+      await form.trigger(lastStep.fields as any);
+    }
+    const isValid = await form.trigger();
+    if (!isValid) return;
+    setConfirmOpen(true);
+  }, [form, stepsWithReview]);
+
+  // Called when user confirms in the dialog — triggers native form submit
+  const handleConfirmSave = useCallback(() => {
+    formRef.current?.requestSubmit();
+  }, []);
+
   // Footer (desktop/mobile aware)
   const footer = useInventoryFooter(
     activeStep,
@@ -150,7 +169,8 @@ export default function InventoryForm() {
     stepErrorsWithUI,
     form,
     isMobile,
-    handleNext
+    handleNext,
+    handleSave
   );
   const confirm = useConfirm();
 
@@ -223,7 +243,7 @@ export default function InventoryForm() {
       )}
 
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)}>
+        <form ref={formRef} onSubmit={form.handleSubmit(onSubmit)}>
           <StepFormContainer
             steps={stepsWithReview}
             activeStep={activeStep}
@@ -234,6 +254,20 @@ export default function InventoryForm() {
           />
         </form>
       </Form>
+
+      {/* Confirm-before-save dialog */}
+      <InventoryConfirmDialog
+        open={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        onConfirm={handleConfirmSave}
+        form={form}
+        suppliers={suppliers}
+        localBatches={localBatches}
+        hasExpiry={hasExpiry}
+        hasVariants={hasVariants}
+        averagePurchaseRate={averagePurchaseRate}
+        isSaving={form.formState.isSubmitting}
+      />
 
       {/* Batch dialog */}
       <BatchFormDialog

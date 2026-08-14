@@ -13,17 +13,18 @@ export function useInventoryFooter(
     stepErrorsWithUI: boolean[],
     form: UseFormReturn<ProductFormValues>,
     isMobile: boolean,
-    onNext?: () => void
+    onNext?: () => void,
+    onSave?: () => void,
 ) {
     const anyStepHasErrors = stepErrorsWithUI.some(Boolean);
 
     if (isMobile) {
         if (activeStep !== totalSteps - 1) return null;
-        return anyStepHasErrors ? null : <SaveBar onBack={goBack} form={form} />;
+        return anyStepHasErrors ? null : <SaveBar onBack={goBack} onSave={onSave ?? (() => {})} form={form} />;
     }
 
     if (activeStep === totalSteps - 1 && !anyStepHasErrors) {
-        return <SaveBar onBack={goBack} form={form} />;
+        return <SaveBar onBack={goBack} onSave={onSave ?? (() => {})} form={form} />;
     }
 
     return (
