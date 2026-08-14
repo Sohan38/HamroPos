@@ -1,15 +1,53 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useParams } from 'wouter';
 import { useExpenses } from '@/contexts/GlobalProviders';
 import { useSmartBack } from '@/contexts/NavigationContext';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Save, Trash2 } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  ArrowLeft,
+  Banknote,
+  Droplets,
+  FileText,
+  Fuel,
+  Landmark,
+  Package,
+  Plus,
+  Save,
+  ShoppingCart,
+  Tag,
+  Trash2,
+  Utensils,
+  Wifi,
+  Wrench,
+  Zap,
+} from 'lucide-react';
 import { toast } from 'sonner';
+import { PaymentMethodPicker, SettlePaymentMethod } from '@/components/PaymentMethodPicker';
 
-const CATEGORIES = ['salary', 'electricity', 'water', 'internet', 'food', 'fuel', 'maintenance', 'tax', 'purchase', 'miscellaneous'];
+// Predefined categories with icons
+const CATEGORY_OPTIONS = [
+  { value: 'salary', label: 'Salary', icon: Banknote },
+  { value: 'electricity', label: 'Electricity', icon: Zap },
+  { value: 'water', label: 'Water', icon: Droplets },
+  { value: 'internet', label: 'Internet', icon: Wifi },
+  { value: 'food', label: 'Food', icon: Utensils },
+  { value: 'fuel', label: 'Fuel', icon: Fuel },
+  { value: 'maintenance', label: 'Maintenance', icon: Wrench },
+  { value: 'tax', label: 'Tax', icon: Landmark },
+  { value: 'purchase', label: 'Purchase', icon: ShoppingCart },
+  { value: 'miscellaneous', label: 'Misc', icon: Package },
+];
+
+interface ExpenseFormData {
+  amount: string;
+  category: string; // can be predefined or 'other'
+  description: string;
+  paymentMethod: SettlePaymentMethod;
+  notes: string;
+}
 
 export default function ExpenseForm() {
   const goBack = useSmartBack('/expenses');
@@ -18,57 +56,83 @@ export default function ExpenseForm() {
   const { add, update, items, remove } = useExpenses();
 
   const isNew = !id || id === 'new';
-  const existing = isNew ? null : items.find(e => e.id === id) ?? null;
+  const existing = useMemo(
+    () => (isNew ? null : items.find(e => e.id === id) ?? null),
+    [isNew, items, id]
+  );
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<ExpenseFormData>({
     amount: '',
     category: 'miscellaneous',
     description: '',
-    paymentMethod: 'cash'
+    paymentMethod: 'cash',
+    notes: '',
   });
+  const [customCategory, setCustomCategory] = useState('');
+  const [showCustomCategory, setShowCustomCategory] = useState(false);
 
+  // Load existing expense data for editing
   useEffect(() => {
     if (existing) {
+      const isPredefined = CATEGORY_OPTIONS.some(c => c.value === existing.category);
       setFormData({
         amount: String(existing.amount ?? ''),
-        category: existing.category ?? 'miscellaneous',
+        category: isPredefined ? existing.category : 'other',
         description: existing.description ?? '',
-        paymentMethod: existing.paymentMethod ?? 'cash',
+        paymentMethod: (existing.paymentMethod as SettlePaymentMethod) ?? 'cash',
+        notes: existing.notes ?? '',
       });
+      if (!isPredefined) {
+        setCustomCategory(existing.category);
+        setShowCustomCategory(true);
+      } else {
+        setCustomCategory('');
+        setShowCustomCategory(false);
+      }
     }
   }, [existing]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const amountNum = Number(formData.amount);
-    if (!formData.category || !formData.amount || Number.isNaN(amountNum) || amountNum <= 0) {
-      toast.error('Please enter a positive amount and category');
+
+    // Determine final category
+    let finalCategory = formData.category;
+    if (formData.category === 'other') {
+      finalCategory = customCategory.trim();
+      if (!finalCategory) {
+        toast.error('Please enter a custom category');
+        return;
+      }
+    }
+
+    if (!formData.amount || Number.isNaN(amountNum) || amountNum <= 0) {
+      toast.error('Please enter a positive amount');
       return;
     }
 
-    if (isNew) {
-      await add({
-        date: new Date().toISOString(),
-        category: formData.category as any,
-        description: formData.description,
-        amount: Number(formData.amount),
-        paymentMethod: formData.paymentMethod as any,
-        notes: ''
-      });
-      toast.success('Expense recorded');
-    } else if (existing) {
-      await update(existing.id, {
-        date: existing.date,
-        category: formData.category as any,
-        description: formData.description,
-        amount: Number(formData.amount),
-        paymentMethod: formData.paymentMethod as any,
-        notes: existing.notes ?? ''
-      } as any);
-      toast.success('Expense updated');
-    }
+    const payload = {
+      date: existing?.date ?? new Date().toISOString(),
+      category: finalCategory,
+      description: formData.description,
+      amount: amountNum,
+      paymentMethod: formData.paymentMethod,
+      notes: formData.notes,
+    };
 
-    setLocation('/expenses');
+    try {
+      if (isNew) {
+        await add(payload as any);
+        toast.success('Expense recorded');
+      } else if (existing) {
+        update(existing.id, payload as any);
+        toast.success('Expense updated');
+      }
+      setLocation('/expenses');
+    } catch (error) {
+      toast.error('Failed to save expense');
+      console.error(error);
+    }
   };
 
   const handleDelete = async () => {
@@ -79,46 +143,102 @@ export default function ExpenseForm() {
     setLocation('/expenses');
   };
 
+  const handleCategorySelect = (categoryValue: string) => {
+    setFormData(prev => ({ ...prev, category: categoryValue }));
+    setShowCustomCategory(categoryValue === 'other');
+  };
+
   return (
-    <div className="p-4 md:p-6 space-y-6 max-w-2xl mx-auto pb-24 md:pb-6">
-      <div className="flex items-center gap-4 mb-6">
+    <div className="p-4 md:p-6 max-w-2xl mx-auto pb-24 md:pb-6 space-y-5">
+      {/* Header */}
+      <div className="flex items-center gap-3">
         <Button variant="ghost" size="icon" onClick={goBack}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
-        <h1 className="text-2xl font-bold">{isNew ? 'Add Expense' : 'Edit Expense'}</h1>
+        <h1 className="text-2xl font-bold">
+          {isNew ? 'Add Expense' : 'Edit Expense'}
+        </h1>
       </div>
 
       <form onSubmit={handleSubmit}>
         <Card>
-          <CardContent className="p-6 space-y-4">
+          <CardContent className="p-6 space-y-6">
+            {/* Amount */}
             <div className="space-y-2">
-              <label className="text-sm font-medium">Amount *</label>
+              <label className="text-sm font-medium flex items-center gap-2">
+                <Banknote className="h-4 w-4 text-muted-foreground" />
+                Amount *
+              </label>
               <Input
                 type="number"
-                className="text-xl h-12"
+                className="text-2xl h-14 font-semibold"
+                placeholder="0.00"
                 value={formData.amount}
                 onChange={e => setFormData({ ...formData, amount: e.target.value })}
                 required
                 autoFocus
+                min="0"
+                step="0.01"
               />
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Category *</label>
-              <Select value={formData.category} onValueChange={v => setFormData({ ...formData, category: v })}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {CATEGORIES.map(c => (
-                    <SelectItem key={c} value={c} className="capitalize">{c}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            {/* Category */}
+            <div className="space-y-3">
+              <label className="text-sm font-medium flex items-center gap-2">
+                <Tag className="h-4 w-4 text-muted-foreground" />
+                Category *
+              </label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {CATEGORY_OPTIONS.map(({ value, label, icon: Icon }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => handleCategorySelect(value)}
+                    className={`
+                      flex items-center gap-2 rounded-lg border px-3 py-2 text-sm
+                      transition-colors
+                      ${formData.category === value
+                        ? 'bg-primary text-primary-foreground border-primary'
+                        : 'bg-background hover:bg-muted border-border'}
+                    `}
+                  >
+                    <Icon className="h-4 w-4 shrink-0" />
+                    <span className="truncate">{label}</span>
+                  </button>
+                ))}
+                {/* Custom category option */}
+                <button
+                  type="button"
+                  onClick={() => handleCategorySelect('other')}
+                  className={`
+                    flex items-center gap-2 rounded-lg border px-3 py-2 text-sm
+                    transition-colors
+                    ${formData.category === 'other'
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'bg-background hover:bg-muted border-border'}
+                  `}
+                >
+                  <Plus className="h-4 w-4 shrink-0" />
+                  <span>Other</span>
+                </button>
+              </div>
+
+              {showCustomCategory && (
+                <Input
+                  value={customCategory}
+                  onChange={e => setCustomCategory(e.target.value)}
+                  placeholder="Enter custom category"
+                  className="mt-2"
+                />
+              )}
             </div>
 
+            {/* Description */}
             <div className="space-y-2">
-              <label className="text-sm font-medium">Description</label>
+              <label className="text-sm font-medium flex items-center gap-2">
+                <FileText className="h-4 w-4 text-muted-foreground" />
+                Description
+              </label>
               <Input
                 value={formData.description}
                 onChange={e => setFormData({ ...formData, description: e.target.value })}
@@ -126,30 +246,43 @@ export default function ExpenseForm() {
               />
             </div>
 
+            {/* Payment Method - using PaymentMethodPicker */}
+            <PaymentMethodPicker
+              label="Payment method"
+              selectedMethod={formData.paymentMethod}
+              onSelect={method => setFormData(prev => ({ ...prev, paymentMethod: method }))}
+              methods={['cash', 'qr', 'card', 'bank']}
+            />
+
+            {/* Notes */}
             <div className="space-y-2">
-              <label className="text-sm font-medium">Payment Method</label>
-              <Select value={formData.paymentMethod} onValueChange={v => setFormData({ ...formData, paymentMethod: v })}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="cash">Cash</SelectItem>
-                  <SelectItem value="qr">QR / Digital</SelectItem>
-                  <SelectItem value="bank">Bank Transfer</SelectItem>
-                  <SelectItem value="card">Card</SelectItem>
-                </SelectContent>
-              </Select>
+              <label className="text-sm font-medium flex items-center gap-2">
+                <FileText className="h-4 w-4 text-muted-foreground" />
+                Notes
+              </label>
+              <Textarea
+                value={formData.notes}
+                onChange={e => setFormData({ ...formData, notes: e.target.value })}
+                placeholder="Optional notes…"
+                rows={3}
+              />
             </div>
 
-            <div className="pt-4 flex justify-between items-center">
+            {/* Actions */}
+            <div className="flex items-center justify-between pt-2">
               {!isNew && (
-                <Button variant="destructive" size="sm" onClick={handleDelete}>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleDelete}
+                  type="button"
+                >
                   <Trash2 className="mr-2 h-4 w-4" /> Delete
                 </Button>
               )}
-              <div className="flex-1" />
-              <Button type="submit" size="lg" className="w-full md:w-auto">
-                <Save className="mr-2 h-5 w-5" /> {isNew ? 'Record Expense' : 'Save changes'}
+              <Button type="submit" size="lg" className="ml-auto w-full md:w-auto">
+                <Save className="mr-2 h-5 w-5" />
+                {isNew ? 'Record Expense' : 'Save Changes'}
               </Button>
             </div>
           </CardContent>

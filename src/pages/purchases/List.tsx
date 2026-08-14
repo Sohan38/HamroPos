@@ -12,11 +12,8 @@ import {
   Plus,
   Truck,
   Calendar,
-  Package,
   X,
   ChevronDown,
-  ClipboardList,
-  Coins,
   Receipt,
   TrendingUp,
 } from 'lucide-react';
@@ -24,10 +21,10 @@ import {
   format as formatDate,
   parseISO,
   subDays,
-  startOfWeek,
   startOfMonth,
 } from 'date-fns';
 import { rankSearch } from '@/utils/search/rank';
+import { DateGroupedList } from '@/components/DateGroupedList';
 
 type PurchaseStatusFilter = 'all' | 'received' | 'draft' | 'cancelled';
 type PaymentStatusFilter = 'all' | 'paid' | 'partial' | 'unpaid';
@@ -63,6 +60,17 @@ function getPaymentState(invoice: any): 'paid' | 'partial' | 'unpaid' {
   if (invoice.paymentStatus) return invoice.paymentStatus;
   if (invoice.paidAmount && invoice.paidAmount > 0) return 'partial';
   return 'unpaid';
+}
+
+// Helper to format time from ISO date string
+function formatInvoiceTime(dateStr: string): string {
+  try {
+    const date = parseISO(dateStr);
+    if (isNaN(date.getTime())) return '';
+    return formatDate(date, 'h:mm a');
+  } catch {
+    return '';
+  }
 }
 
 // Chip component (shared pattern)
@@ -143,13 +151,12 @@ export default function PurchaseList() {
 
   // Process purchases: enrich → date filter → status filter → payment filter → search → sort
   const processedPurchases = useMemo(() => {
-    // 1. Enrich with supplier and search text
     const enriched = purchases.map((invoice) => {
       const supplier = suppliers.find((c) => c.id === invoice.supplierId);
       const supplierName = supplier?.name ?? invoice.supplierName ?? 'Unknown';
       return {
         ...invoice,
-        name: supplierName, // required for rankSearch
+        name: supplierName,
         supplierName,
         searchText: [
           invoice.invoiceNumber,
@@ -163,7 +170,6 @@ export default function PurchaseList() {
 
     let filtered = enriched;
 
-    // 2. Date filter
     const { from, to } = dateRange;
     if (from || to) {
       filtered = filtered.filter((invoice) => {
@@ -174,22 +180,18 @@ export default function PurchaseList() {
       });
     }
 
-    // 3. Purchase status filter
     if (statusFilter !== 'all') {
       filtered = filtered.filter((invoice) => (invoice.status ?? 'received') === statusFilter);
     }
 
-    // 4. Payment status filter
     if (paymentFilter !== 'all') {
       filtered = filtered.filter((invoice) => getPaymentState(invoice) === paymentFilter);
     }
 
-    // 5. Search
     if (debouncedQuery.trim()) {
       filtered = rankSearch(filtered, debouncedQuery, filtered.length);
     }
 
-    // 6. Sort by latest date / createdAt
     return filtered.sort((a, b) => {
       const dateCompare = (b.date ?? '').localeCompare(a.date ?? '');
       if (dateCompare !== 0) return dateCompare;
@@ -449,23 +451,29 @@ export default function PurchaseList() {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-5">
-          <div className="space-y-2">
-            {visiblePurchases.map((invoice, index) => {
+        <div className="space-y-6">
+          <DateGroupedList
+            items={visiblePurchases}
+            getDate={(invoice) => invoice.date}
+            getId={(invoice) => invoice.id}
+            getAmount={(invoice) => invoice.grandTotal}
+            formatTotal={(total: number) => format(total)}
+            itemLabel="invoice"
+            renderItem={(invoice) => {
               const supplier = suppliers.find((c) => c.id === invoice.supplierId);
               const status = invoice.status ?? 'received';
               const paymentState = getPaymentState(invoice);
+              const time = formatInvoiceTime(invoice.date);
 
               const paymentBadgeClass =
                 paymentState === 'paid'
-                  ? 'bg-emerald-100 text-emerald-700'
+                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400'
                   : paymentState === 'partial'
-                    ? 'bg-sky-100 text-sky-700'
-                    : 'bg-amber-100 text-amber-700';
+                    ? 'bg-sky-100 text-sky-700 dark:bg-sky-950/30 dark:text-sky-400'
+                    : 'bg-amber-100 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400';
 
               return (
                 <div
-                  key={invoice.id}
                   role="button"
                   tabIndex={0}
                   onClick={() => setLocation(`/purchases/${invoice.id}`)}
@@ -477,14 +485,9 @@ export default function PurchaseList() {
                     transition-all duration-100 select-none
                   "
                 >
-                  {/* Serial number */}
-                  <div className="text-xs text-muted-foreground tabular-nums w-5 sm:w-6 text-center shrink-0 font-medium">
-                    {index + 1}
-                  </div>
-
                   {/* Icon */}
-                  <div className="h-9 w-9 sm:h-10 sm:w-10 rounded-full bg-green-100 text-green-600 flex items-center justify-center shrink-0">
-                    <Truck className="h-4 w-4 sm:h-5 sm:w-5" />
+                  <div className="h-9 w-9 sm:h-10 sm:w-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 border border-primary/10">
+                    <Truck className="h-4 w-4 sm:h-5 sm:w-5 text-primary/80" />
                   </div>
 
                   {/* Main info */}
@@ -501,24 +504,19 @@ export default function PurchaseList() {
                               ? 'destructive'
                               : 'outline'
                         }
-                        className="uppercase text-[10px] tracking-wide"
+                        className="uppercase text-[9px] tracking-wider px-1.5 py-0 rounded-md font-bold"
                       >
                         {status}
                       </Badge>
                     </div>
 
                     <p className="text-xs text-muted-foreground truncate mt-0.5">
-                      {supplier?.name ?? invoice.supplierName ?? 'Unknown supplier'} ·{' '}
+                      {supplier?.name ?? invoice.supplierName ?? 'Unknown supplier'} &middot;{' '}
                       {invoice.items.length} item{invoice.items.length !== 1 ? 's' : ''}
                     </p>
 
                     <div className="flex items-center gap-2 mt-1 flex-wrap">
-                      <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
-                        <Calendar className="h-3 w-3" />
-                        {formatDate(parseISO(invoice.date), 'dd MMM yyyy')}
-                      </span>
-                      <span className="text-muted-foreground/40 text-xs">·</span>
-                      <Badge variant="outline" className={`capitalize text-[10px] px-1.5 py-0 h-4 ${paymentBadgeClass}`}>
+                      <Badge variant="outline" className={`capitalize text-[9px] px-1.5 py-0 h-4 border-none ${paymentBadgeClass}`}>
                         {paymentState}
                       </Badge>
                     </div>
@@ -526,19 +524,24 @@ export default function PurchaseList() {
 
                   {/* Amount + arrow */}
                   <div className="flex items-center gap-2 shrink-0">
-                    <div className="text-right">
-                      <p className="font-bold tabular-nums text-sm text-green-600">
+                    <div className="flex flex-col items-end">
+                      <p className="font-bold tabular-nums text-sm text-green-600 dark:text-green-500">
                         {format(invoice.grandTotal)}
                       </p>
+                      {time && (
+                        <p className="text-[10px] text-muted-foreground tabular-nums mt-0.5">
+                          {time}
+                        </p>
+                      )}
                     </div>
                     <div className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
-                      <ChevronDown className="h-4 w-4" />
+                      <ChevronDown className="h-4 w-4 -rotate-90" />
                     </div>
                   </div>
                 </div>
               );
-            })}
-          </div>
+            }}
+          />
 
           {/* Load more */}
           {hasMore && (

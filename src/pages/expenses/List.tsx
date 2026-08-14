@@ -17,9 +17,17 @@ import {
   ClipboardList,
   Info,
 } from 'lucide-react';
-import { format as formatDate, parseISO, startOfDay, endOfDay, subDays, startOfMonth } from 'date-fns';
+import {
+  format as formatDate,
+  parseISO,
+  startOfDay,
+  endOfDay,
+  subDays,
+  startOfMonth,
+} from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { rankSearch } from '@/utils/search/rank';
+import { DateGroupedList } from '@/components/DateGroupedList';
 
 type DatePreset = 'all' | 'today' | 'yesterday' | '7days' | 'month' | 'custom';
 type ExpenseTypeFilter = 'manual' | 'auto' | 'all';
@@ -40,6 +48,17 @@ const TYPE_FILTERS: Array<{ id: ExpenseTypeFilter; label: string }> = [
   { id: 'auto', label: 'Auto' },
   { id: 'all', label: 'All' },
 ];
+
+// Helper to format time from ISO date string
+function formatExpenseTime(dateStr: string): string {
+  try {
+    const date = parseISO(dateStr);
+    if (isNaN(date.getTime())) return '';
+    return formatDate(date, 'h:mm a');
+  } catch {
+    return '';
+  }
+}
 
 // Chip component (shared pattern)
 interface ChipProps {
@@ -271,6 +290,7 @@ export default function ExpenseList() {
           </>
         )}
       </div>
+
       {/* Search */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
@@ -291,8 +311,6 @@ export default function ExpenseList() {
           </button>
         )}
       </div>
-
-
 
       {/* Custom Date Dialog */}
       <Dialog open={customOpen} onOpenChange={setCustomOpen}>
@@ -479,12 +497,18 @@ export default function ExpenseList() {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-5">
-          <div className="space-y-2">
-            {visibleExpenses.map((expense, index) => {
+        <div className="space-y-6">
+          <DateGroupedList
+            items={visibleExpenses}
+            getDate={(expense) => expense.date}
+            getId={(expense) => expense.id}
+            getAmount={(expense) => expense.amount}
+            formatTotal={(total) => format(total)}
+            itemLabel="expense"
+            renderItem={(expense) => {
+              const time = formatExpenseTime(expense.date);
               return (
                 <div
-                  key={expense.id}
                   role="button"
                   tabIndex={0}
                   onClick={() => setLocation(`/expenses/${expense.id}`)}
@@ -497,11 +521,6 @@ export default function ExpenseList() {
                     ${expense.sourcePurchaseId ? 'border-l-4 border-l-muted-foreground/20' : ''}
                   `}
                 >
-                  {/* Serial number */}
-                  <div className="text-xs text-muted-foreground tabular-nums w-5 sm:w-6 text-center shrink-0 font-medium">
-                    {index + 1}
-                  </div>
-
                   {/* Icon */}
                   <div className="h-9 w-9 sm:h-10 sm:w-10 rounded-full bg-red-100 text-red-600 flex items-center justify-center shrink-0">
                     <Receipt className="h-4 w-4 sm:h-5 sm:w-5" />
@@ -531,12 +550,17 @@ export default function ExpenseList() {
                     </div>
                   </div>
 
-                  {/* Amount */}
+                  {/* Amount + time + arrow */}
                   <div className="flex items-center gap-2 shrink-0">
-                    <div className="text-right">
+                    <div className="flex flex-col items-end">
                       <p className="font-bold tabular-nums text-sm text-red-600">
                         {format(expense.amount)}
                       </p>
+                      {time && (
+                        <p className="text-[10px] text-muted-foreground tabular-nums mt-0.5">
+                          {time}
+                        </p>
+                      )}
                     </div>
                     <div className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
                       <ChevronDown className="h-4 w-4" />
@@ -544,8 +568,8 @@ export default function ExpenseList() {
                   </div>
                 </div>
               );
-            })}
-          </div>
+            }}
+          />
 
           {/* Load more */}
           {hasMore && (
