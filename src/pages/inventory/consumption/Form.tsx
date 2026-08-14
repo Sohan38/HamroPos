@@ -7,9 +7,11 @@ import {
     useInventory,
     useLocations,
     useProductBatches,
+    useProductBatchLocations,
     useInventoryLocationStocks,
     useConsumptions,
     useInventoryMovements,
+    useSuppliers,
 } from '@/contexts/GlobalProviders';
 import { ConsumptionItemInput, ConsumptionService } from '@/services/consumptionService';
 import { getLocationStockForProduct } from '@/lib/locationStock';
@@ -30,6 +32,7 @@ interface LineItem {
     productId: string;
     quantity: number;
     batchId?: string;
+    supplierId?: string;
     key: string; // unique key for form state
 }
 
@@ -46,6 +49,8 @@ export function ConsumptionForm() {
     const { items: consumptions, add: addConsumption } = useConsumptions();
     const { add: addMovement } = useInventoryMovements();
     const { update: updateProductBatches } = useProductBatches();
+    const { items: suppliers } = useSuppliers();
+    const { items: batchLocations } = useProductBatchLocations();
 
     // Form state
     const [selectedLocationId, setSelectedLocationId] = useState<string>('');
@@ -71,7 +76,7 @@ export function ConsumptionForm() {
         );
     }
 
-    // Get consumable products at selected location
+    // Get consumable products
     const consumableProducts = useMemo(() => {
         return products.filter(p => {
             // Include products where consumable is explicitly true, OR undefined (legacy products before Phase 1)
@@ -81,34 +86,115 @@ export function ConsumptionForm() {
         });
     }, [products]);
 
-    // Get products available at selected location
+    // Get products available at selected location (with stock amounts)
+    // Follows the same pattern as MoveStock's productsAtSource
     const productsAtLocation = useMemo(() => {
         if (!selectedLocationId) return [];
-        return consumableProducts.filter(p => {
-            const quantityAtLocation = getLocationStockForProduct(p, selectedLocationId, locationStocks);
-            const hasLegacyGlobalStock = p.quantity > 0;
-            return quantityAtLocation > 0 || hasLegacyGlobalStock;
-        });
+
+        const productStockMap = new Map<string, number>();
+
+        // Check InventoryLocationStock records first
+        for (const stock of locationStocks) {
+            if (stock.locationId === selectedLocationId && Number(stock.quantity ?? 0) > 0) {
+                const product = consumableProducts.find(p => p.id === stock.productId);
+                if (product) {
+                    productStockMap.set(product.id, Number(stock.quantity ?? 0));
+                }
+            }
+        }
+
+        // Also check getLocationStockForProduct fallback (supplierStocks legacy)
+        for (const product of consumableProducts) {
+            if (!productStockMap.has(product.id)) {
+                const stock = getLocationStockForProduct(product, selectedLocationId, locationStocks);
+                if (stock > 0) {
+                    productStockMap.set(product.id, stock);
+                }
+            }
+        }
+
+        return Array.from(productStockMap.entries())
+            .map(([id, stock]) => {
+                const product = consumableProducts.find(p => p.id === id);
+                return product ? { product, stock } : null;
+            })
+            .filter((item): item is { product: typeof products[0]; stock: number } => item !== null);
     }, [consumableProducts, selectedLocationId, locationStocks]);
 
-    // Get batches for a product
-    const getBatchesForProduct = (productId: string): Array<{ id: string; number: string; available: number }> => {
+    // Get suppliers for a specific product
+    const getSuppliersForProduct = (productId: string) => {
+        const product = products.find(p => p.id === productId);
+        if (!product) return [];
+        const ids = product.supplierIds?.length ? product.supplierIds : product.supplierId ? [product.supplierId] : [];
+        return suppliers.filter(s => ids.includes(s.id));
+    };
+
+    // Get batches for a product at the selected location, FEFO sorted
+    const getBatchesForProduct = (productId: string, supplierId?: string): Array<{ id: string; number: string; available: number; purchaseRate: number }> => {
         return batches
-            .filter(b => b.productId === productId && b.quantity > 0)
-            .map(b => ({
-                id: b.id,
-                number: b.batchNumber || `Batch ${b.id.slice(0, 8)}`,
-                available: b.quantity,
-            }))
+            .filter(b => {
+                if (b.productId !== productId || b.quantity <= 0) return false;
+                // Filter by supplier if selected
+                if (supplierId && b.supplierId !== supplierId) return false;
+                return true;
+            })
+            .map(b => {
+                // Check batch quantity at the selected location via batchLocations
+                const locationAlloc = batchLocations.find(
+                    bl => bl.batchId === b.id && bl.locationId === selectedLocationId
+                );
+                const quantityAtLocation = locationAlloc?.quantity ?? b.quantity;
+                return {
+                    id: b.id,
+                    number: b.batchNumber || `Batch ${b.id.slice(0, 8)}`,
+                    available: quantityAtLocation,
+                    purchaseRate: b.purchaseRate ?? 0,
+                    expiryDate: b.expiryDate,
+                };
+            })
+            .filter(b => b.available > 0)
             .sort((a, b) => {
                 // Sort by expiry date (FEFO)
-                const aBatch = batches.find(x => x.id === a.id);
-                const bBatch = batches.find(x => x.id === b.id);
-                if (!aBatch || !bBatch) return 0;
-                const aExpiry = aBatch.expiryDate ? new Date(aBatch.expiryDate).getTime() : Infinity;
-                const bExpiry = bBatch.expiryDate ? new Date(bBatch.expiryDate).getTime() : Infinity;
+                const aExpiry = a.expiryDate ? new Date(a.expiryDate).getTime() : Infinity;
+                const bExpiry = b.expiryDate ? new Date(b.expiryDate).getTime() : Infinity;
                 return aExpiry - bExpiry;
-            });
+            })
+            .map(({ expiryDate, ...rest }) => rest);
+    };
+
+    // Get available stock for a line item (considering batch/supplier selection)
+    const getAvailableForItem = (item: LineItem): number => {
+        if (!item.productId || !selectedLocationId) return 0;
+
+        if (item.batchId) {
+            // Specific batch selected — show that batch's available quantity
+            const batchData = getBatchesForProduct(item.productId, item.supplierId)
+                .find(b => b.id === item.batchId);
+            return batchData?.available ?? 0;
+        }
+
+        // No batch selected — show total stock at location
+        const entry = productsAtLocation.find(p => p.product.id === item.productId);
+        return entry?.stock ?? 0;
+    };
+
+    // Get unit cost for a line item (batch rate or product fallback)
+    const getUnitCostForItem = (item: LineItem): number => {
+        if (!item.productId) return 0;
+        const product = products.find(p => p.id === item.productId);
+        if (!product) return 0;
+
+        if (item.batchId) {
+            const batch = batches.find(b => b.id === item.batchId);
+            return batch?.purchaseRate ?? product.purchaseRate ?? 0;
+        }
+
+        // FEFO: use earliest-expiry batch's cost, or product.purchaseRate fallback
+        const productBatches = getBatchesForProduct(item.productId, item.supplierId);
+        if (productBatches.length > 0) {
+            return productBatches[0].purchaseRate ?? product.purchaseRate ?? 0;
+        }
+        return product.purchaseRate ?? 0;
     };
 
     // Get product details
@@ -149,29 +235,12 @@ export function ConsumptionForm() {
 
         for (const item of lineItems) {
             if (!item.productId || item.quantity <= 0) continue;
-            const product = products.find(p => p.id === item.productId);
-            if (!product) continue;
-
             totalItems += item.quantity;
-
-            // Find batch for cost calculation
-            let unitCost = 0;
-            if (item.batchId) {
-                const batch = batches.find(b => b.id === item.batchId);
-                unitCost = batch?.purchaseRate ?? 0;
-            } else {
-                // Use first available batch's cost
-                const productBatches = batches.filter(b => b.productId === item.productId && b.quantity > 0);
-                if (productBatches.length > 0) {
-                    unitCost = productBatches[0].purchaseRate;
-                }
-            }
-
-            totalCost += item.quantity * unitCost;
+            totalCost += item.quantity * getUnitCostForItem(item);
         }
 
         return { totalItems, totalCost };
-    }, [lineItems, products, batches]);
+    }, [lineItems, products, batches, selectedLocationId, batchLocations]);
 
     // Submit consumption
     const handleSubmit = async () => {
@@ -193,6 +262,16 @@ export function ConsumptionForm() {
             if (validItems.length === 0) {
                 toast.error('Please add valid consumption items');
                 return;
+            }
+
+            // Validate quantities
+            for (const item of validItems) {
+                const available = getAvailableForItem(item);
+                if (item.quantity > available) {
+                    const name = getProductName(item.productId);
+                    toast.error(`${name}: quantity (${item.quantity}) exceeds available stock (${available})`);
+                    return;
+                }
             }
 
             setIsSubmitting(true);
@@ -282,7 +361,11 @@ export function ConsumptionForm() {
                         <CardDescription>Where is the consumption occurring?</CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <Select value={selectedLocationId} onValueChange={setSelectedLocationId}>
+                        <Select value={selectedLocationId} onValueChange={(v) => {
+                            setSelectedLocationId(v);
+                            // Reset line items when location changes
+                            setLineItems([]);
+                        }}>
                             <SelectTrigger>
                                 <SelectValue placeholder="Select location" />
                             </SelectTrigger>
@@ -320,117 +403,148 @@ export function ConsumptionForm() {
                                     <p>No items added yet. Click "Add Item" to begin.</p>
                                 </div>
                             ) : (
-                                lineItems.map((item, idx) => (
-                                    <div key={item.key} className="border rounded-lg p-4 space-y-4 bg-muted/30">
-                                        <div className="flex items-start justify-between">
-                                            <span className="text-sm font-medium text-muted-foreground">
-                                                Item {idx + 1}
-                                            </span>
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                onClick={() => removeLineItem(item.key)}
-                                            >
-                                                <Trash2 className="h-4 w-4 text-destructive" />
-                                            </Button>
-                                        </div>
+                                lineItems.map((item, idx) => {
+                                    const productSuppliers = item.productId ? getSuppliersForProduct(item.productId) : [];
+                                    const hasMultipleSuppliers = productSuppliers.length > 1;
+                                    const availableBatches = item.productId ? getBatchesForProduct(item.productId, item.supplierId) : [];
+                                    const availableStock = getAvailableForItem(item);
+                                    const unitCost = getUnitCostForItem(item);
+                                    const productEntry = productsAtLocation.find(p => p.product.id === item.productId);
 
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    return (
+                                        <div key={item.key} className="border rounded-lg p-4 space-y-4 bg-muted/30">
+                                            <div className="flex items-start justify-between">
+                                                <span className="text-sm font-medium text-muted-foreground">
+                                                    Item {idx + 1}
+                                                </span>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    onClick={() => removeLineItem(item.key)}
+                                                >
+                                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                                </Button>
+                                            </div>
+
                                             {/* Product Select */}
                                             <div>
                                                 <label className="text-sm font-medium mb-2 block">Product</label>
                                                 <Select
                                                     value={item.productId}
                                                     onValueChange={productId =>
-                                                        updateLineItem(item.key, { productId, batchId: undefined })
+                                                        updateLineItem(item.key, { productId, batchId: undefined, supplierId: undefined, quantity: 0 })
                                                     }
                                                 >
                                                     <SelectTrigger>
                                                         <SelectValue placeholder="Select product" />
                                                     </SelectTrigger>
                                                     <SelectContent>
-                                                        {productsAtLocation.map(product => (
+                                                        {productsAtLocation.map(({ product, stock }) => (
                                                             <SelectItem key={product.id} value={product.id}>
-                                                                {product.name}
+                                                                {product.name} — {stock} {product.unit || 'units'} available
                                                             </SelectItem>
                                                         ))}
                                                     </SelectContent>
                                                 </Select>
                                             </div>
 
-                                            {/* Quantity Input */}
-                                            <div>
-                                                <label className="text-sm font-medium mb-2 block">Quantity</label>
-                                                <Input
-                                                    type="number"
-                                                    min="0"
-                                                    step="1"
-                                                    value={item.quantity || ''}
-                                                    onChange={e =>
-                                                        updateLineItem(item.key, {
-                                                            quantity: Math.max(0, parseFloat(e.target.value) || 0),
-                                                        })
-                                                    }
-                                                    placeholder="0"
-                                                />
-                                            </div>
-
-                                            {/* Batch Select */}
-                                            {item.productId && (
+                                            {/* Supplier Select (only if product has multiple suppliers) */}
+                                            {item.productId && hasMultipleSuppliers && (
                                                 <div>
-                                                    <label className="text-sm font-medium mb-2 block">Batch (Optional)</label>
+                                                    <label className="text-sm font-medium mb-2 block">
+                                                        Supplier <span className="text-destructive">*</span>
+                                                    </label>
                                                     <Select
-                                                        value={item.batchId || ''}
-                                                        onValueChange={batchId =>
-                                                            updateLineItem(item.key, {
-                                                                batchId: batchId || undefined,
-                                                            })
+                                                        value={item.supplierId || ''}
+                                                        onValueChange={supplierId =>
+                                                            updateLineItem(item.key, { supplierId: supplierId || undefined, batchId: undefined })
                                                         }
                                                     >
                                                         <SelectTrigger>
-                                                            <SelectValue placeholder="Auto-select" />
+                                                            <SelectValue placeholder="Select supplier" />
                                                         </SelectTrigger>
                                                         <SelectContent>
-                                                            <SelectItem value="">Auto-select (FEFO)</SelectItem>
-                                                            {getBatchesForProduct(item.productId).map(batch => (
-                                                                <SelectItem key={batch.id} value={batch.id}>
-                                                                    {batch.number} ({batch.available} available)
+                                                            {productSuppliers.map(supplier => (
+                                                                <SelectItem key={supplier.id} value={supplier.id}>
+                                                                    {supplier.name}
                                                                 </SelectItem>
                                                             ))}
                                                         </SelectContent>
                                                     </Select>
                                                 </div>
                                             )}
-                                        </div>
 
-                                        {/* Cost Preview */}
-                                        {item.productId && item.quantity > 0 && (
-                                            <div className="bg-primary/10 rounded px-3 py-2 text-sm">
-                                                {(() => {
-                                                    let unitCost = 0;
-                                                    if (item.batchId) {
-                                                        const batch = batches.find(b => b.id === item.batchId);
-                                                        unitCost = batch?.purchaseRate ?? 0;
-                                                    } else {
-                                                        const productBatches = batches.filter(
-                                                            b => b.productId === item.productId && b.quantity > 0
-                                                        );
-                                                        if (productBatches.length > 0) {
-                                                            unitCost = productBatches[0].purchaseRate;
-                                                        }
-                                                    }
-                                                    const totalCost = item.quantity * unitCost;
-                                                    return (
-                                                        <div className="flex justify-between items-center">
-                                                            <span>Cost: ₹{unitCost.toFixed(2)}/unit</span>
-                                                            <span className="font-bold">Subtotal: ₹{totalCost.toFixed(2)}</span>
-                                                        </div>
-                                                    );
-                                                })()}
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                {/* Batch Select */}
+                                                {item.productId && (
+                                                    <div>
+                                                        <label className="text-sm font-medium mb-2 block">Batch</label>
+                                                        <Select
+                                                            value={item.batchId || '_auto'}
+                                                            onValueChange={batchId =>
+                                                                updateLineItem(item.key, {
+                                                                    batchId: batchId === '_auto' ? undefined : batchId,
+                                                                })
+                                                            }
+                                                        >
+                                                            <SelectTrigger>
+                                                                <SelectValue placeholder="Auto-select (FEFO)" />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="_auto">Auto-select (FEFO)</SelectItem>
+                                                                {availableBatches.map(batch => (
+                                                                    <SelectItem key={batch.id} value={batch.id}>
+                                                                        {batch.number} — {batch.available} available
+                                                                    </SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                )}
+
+                                                {/* Quantity Input */}
+                                                <div>
+                                                    <label className="text-sm font-medium mb-2 block">
+                                                        Quantity
+                                                        {item.productId && (
+                                                            <span className="text-muted-foreground font-normal ml-1">
+                                                                (max: {availableStock})
+                                                            </span>
+                                                        )}
+                                                    </label>
+                                                    <Input
+                                                        type="number"
+                                                        min="0"
+                                                        max={availableStock}
+                                                        step="1"
+                                                        value={item.quantity || ''}
+                                                        onChange={e => {
+                                                            const val = Math.max(0, parseFloat(e.target.value) || 0);
+                                                            const clamped = Math.min(val, availableStock);
+                                                            updateLineItem(item.key, { quantity: clamped });
+                                                        }}
+                                                        placeholder="0"
+                                                    />
+                                                    {item.quantity > 0 && item.quantity > availableStock && (
+                                                        <p className="text-xs text-destructive mt-1">
+                                                            Exceeds available stock ({availableStock})
+                                                        </p>
+                                                    )}
+                                                </div>
                                             </div>
-                                        )}
-                                    </div>
-                                ))
+
+                                            {/* Cost Preview */}
+                                            {item.productId && item.quantity > 0 && (
+                                                <div className="bg-primary/10 rounded px-3 py-2 text-sm">
+                                                    <div className="flex justify-between items-center">
+                                                        <span>Cost: ₹{unitCost.toFixed(2)}/unit</span>
+                                                        <span className="font-bold">Subtotal: ₹{(item.quantity * unitCost).toFixed(2)}</span>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })
                             )}
                         </CardContent>
                     </Card>

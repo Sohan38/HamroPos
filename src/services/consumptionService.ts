@@ -305,7 +305,7 @@ export class ConsumptionService {
         const reversalMovements: InventoryMovement[] = [];
 
         for (const item of transaction.items) {
-            const product = products.find(p => p.id === item.productId && p.deletedAt === null);
+            const product = products.find(p => p.id === item.productId && !p.deletedAt);
             if (!product) {
                 throw new Error(`Product ${item.productName} could not be found for reversal.`);
             }
@@ -319,7 +319,7 @@ export class ConsumptionService {
 
             if (item.batchId) {
                 const batch = batches.find(
-                    b => b.id === item.batchId && b.productId === product.id && b.deletedAt === null
+                    b => b.id === item.batchId && b.productId === product.id && !b.deletedAt
                 );
 
                 if (!batch) {
@@ -335,7 +335,7 @@ export class ConsumptionService {
             }
 
             const stockRecord = locationStocks.find(
-                ls => ls.productId === product.id && ls.locationId === transaction.locationId && ls.deletedAt === null
+                ls => ls.productId === product.id && ls.locationId === transaction.locationId && !ls.deletedAt
             );
 
             if (stockRecord) {
