@@ -142,7 +142,7 @@ export default function LicenseCard() {
         {/* State Banners */}
         {state.status === 'trial' && state.trial && (
           <div className="rounded-lg bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/50 p-4 flex gap-3 items-start">
-            <HelpCircle className="h-5 w-5 text-blue-500 mt-0.5 flex-shrink-0" />
+            <HelpCircle className="h-5 w-5 text-blue-500 mt-0.5 shrink-0" />
             <div>
               <h4 className="font-semibold text-sm text-blue-800 dark:text-blue-300">Free Trial Active</h4>
               <p className="text-xs text-blue-700 dark:text-blue-400 mt-0.5">
@@ -154,7 +154,7 @@ export default function LicenseCard() {
 
         {(state.status === 'expired' || state.status === 'trial_expired' || state.status === 'suspended') && (
           <div className="rounded-lg bg-red-50/50 dark:bg-red-950/20 border border-red-100 dark:border-red-900/50 p-4 flex gap-3 items-start">
-            <ShieldAlert className="h-5 w-5 text-red-500 mt-0.5 flex-shrink-0" />
+            <ShieldAlert className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />
             <div>
               <h4 className="font-semibold text-sm text-red-800 dark:text-red-300">Activation Required</h4>
               <p className="text-xs text-red-700 dark:text-red-400 mt-0.5">
@@ -239,7 +239,7 @@ export default function LicenseCard() {
               </p>
               {activationError && (
                 <div className="mt-2 flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/5 p-3">
-                  <AlertCircle className="h-4 w-4 text-destructive mt-0.5 flex-shrink-0" />
+                  <AlertCircle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-destructive leading-snug">
                       Activation Failed
@@ -276,15 +276,14 @@ export default function LicenseCard() {
             {ALL_MODULES.map((modId) => {
               const isEnabled = state.isUsable && (state.status === 'trial' || (state.license?.enabledModules.includes(modId) ?? false));
               const displayInfo = MODULE_DISPLAY_NAMES[modId] || { name: modId, description: '' };
-              
+
               return (
                 <div
                   key={modId}
-                  className={`flex flex-col gap-1.5 px-3 py-2 rounded-md text-xs border transition-colors ${
-                    isEnabled
-                      ? 'bg-emerald-500/5 border-emerald-500/20'
-                      : 'bg-muted/40 border-border'
-                  }`}
+                  className={`flex flex-col gap-1.5 px-3 py-2 rounded-md text-xs border transition-colors ${isEnabled
+                    ? 'bg-emerald-500/5 border-emerald-500/20'
+                    : 'bg-muted/40 border-border'
+                    }`}
                   title={displayInfo.description}
                 >
                   <div className="flex items-center justify-between gap-2">
