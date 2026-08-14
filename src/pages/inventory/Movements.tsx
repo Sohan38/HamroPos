@@ -65,19 +65,34 @@ export default function InventoryMovementsPage() {
             </div>
 
             <Card>
-                <CardHeader className="flex flex-row items-center justify-between gap-3">
+                <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                     <CardTitle className="flex items-center gap-2 text-base"><Activity className="h-4 w-4" /> Movement history</CardTitle>
-                    <Select value={selectedLocationId} onValueChange={setSelectedLocationId}>
-                        <SelectTrigger className="w-[220px]">
-                            <SelectValue placeholder="All locations" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">All locations</SelectItem>
-                            {locations.map((location) => (
-                                <SelectItem key={location.id} value={location.id}>{location.name}</SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
+                    <div className="flex gap-2 w-full sm:w-auto flex-wrap sm:flex-nowrap">
+                        <Select value={selectedLocationId} onValueChange={setSelectedLocationId}>
+                            <SelectTrigger className="w-full sm:w-45">
+                                <SelectValue placeholder="All locations" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">All locations</SelectItem>
+                                {locations.map((location) => (
+                                    <SelectItem key={location.id} value={location.id}>{location.name}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <Select value={selectedMovementType} onValueChange={setSelectedMovementType}>
+                            <SelectTrigger className="w-full sm:w-45">
+                                <SelectValue placeholder="All types" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">All types</SelectItem>
+                                <SelectItem value="transfer">Transfers</SelectItem>
+                                <SelectItem value="purchase">Purchases</SelectItem>
+                                <SelectItem value="sale">Sales</SelectItem>
+                                <SelectItem value="adjustment">Adjustments</SelectItem>
+                                <SelectItem value="disposition">Dispositions</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
                 </CardHeader>
                 <CardContent className="space-y-3">
                     {filteredMovements.length === 0 ? (

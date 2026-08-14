@@ -19,7 +19,7 @@ export default function MoveStockPage() {
     const { items: locationStocks, update: updateLocationStock, add: addLocationStock } = useInventoryLocationStocks();
     const { items: movements, add: addMovement } = useInventoryMovements();
     const { items: batches } = useProductBatches();
-    const { items: batchLocations } = useProductBatchLocations();
+    const { items: batchLocations, update: updateBatchLocation, add: addBatchLocation } = useProductBatchLocations();
 
     // Form state
     const [sourceLocationId, setSourceLocationId] = useState('');
@@ -126,6 +126,16 @@ export default function MoveStockPage() {
             const qty = Number(quantity);
             const now = new Date().toISOString();
 
+            // Get batch info if moving a specific batch
+            let selectedBatch = null;
+            let supplierId = null;
+            if (batchId) {
+                selectedBatch = batches.find((b) => b.id === batchId);
+                if (selectedBatch) {
+                    supplierId = selectedBatch.supplierId;
+                }
+            }
+
             // 1. Get or create location stock records for source and destination
             let sourceStock = locationStocks.find(
                 (s) => s.productId === productId && s.locationId === sourceLocationId,
@@ -156,7 +166,40 @@ export default function MoveStockPage() {
                 });
             }
 
-            // 3. Create movement record
+            // 3. Update batch location allocation if a batch was moved
+            if (selectedBatch && batchId) {
+                const sourceBatchAllocation = batchLocations.find(
+                    (bl) => bl.batchId === batchId && bl.locationId === sourceLocationId,
+                );
+                const destBatchAllocation = batchLocations.find(
+                    (bl) => bl.batchId === batchId && bl.locationId === destinationLocationId,
+                );
+
+                // Reduce batch quantity at source
+                if (sourceBatchAllocation) {
+                    await updateBatchLocation(sourceBatchAllocation.id, {
+                        quantity: Math.max(0, Number(sourceBatchAllocation.quantity ?? 0) - qty),
+                    });
+                }
+
+                // Increase batch quantity at destination (or create new allocation)
+                if (destBatchAllocation) {
+                    await updateBatchLocation(destBatchAllocation.id, {
+                        quantity: Number(destBatchAllocation.quantity ?? 0) + qty,
+                        dateReceived: destBatchAllocation.dateReceived || now,
+                    });
+                } else {
+                    // Create new batch location allocation for destination
+                    await addBatchLocation({
+                        batchId: batchId,
+                        locationId: destinationLocationId,
+                        quantity: qty,
+                        dateReceived: now,
+                    });
+                }
+            }
+
+            // 4. Create movement record with batch and supplier info
             await addMovement({
                 productId,
                 productName: product.name,
@@ -165,11 +208,12 @@ export default function MoveStockPage() {
                 destinationLocationId,
                 quantity: qty,
                 batchId: batchId || null,
+                supplierId: supplierId || null,
                 notes: notes || undefined,
                 status: 'completed',
             });
 
-            toast.success(`Moved ${qty} × ${product.name} from ${locations.find((l) => l.id === sourceLocationId)?.name} to ${locations.find((l) => l.id === destinationLocationId)?.name}`);
+            toast.success(`Moved ${qty} × ${product.name}${selectedBatch ? ` (${selectedBatch.batchNumber})` : ''} from ${locations.find((l) => l.id === sourceLocationId)?.name} to ${locations.find((l) => l.id === destinationLocationId)?.name}`);
 
             // Reset form
             setSourceLocationId('');

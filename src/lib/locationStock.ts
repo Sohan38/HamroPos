@@ -10,6 +10,10 @@ export function getLocationStockForProduct(
     locationId: string | null | undefined,
     locationStocks: InventoryLocationStock[] = [],
 ): number {
+    // MIGRATION CONTRACT: Legacy products without explicit locationId are treated as belonging to 'loc-default'.
+    // This preserves backward compatibility with inventory created before location support.
+    // Products must be explicitly assigned to other locations via InventoryLocationStock records.
+
     if (!product) return 0;
     const normalizedLocationId = normalizeLocationId(locationId);
     const record = locationStocks.find(
@@ -18,6 +22,7 @@ export function getLocationStockForProduct(
 
     if (record) return Number(record.quantity ?? 0);
 
+    // Fallback: check legacy supplierStocks with explicit location assignment
     const legacyLocationStock = product.supplierStocks?.reduce((sum, stock) => {
         if ((stock.locationId || 'loc-default') === normalizedLocationId) {
             return sum + Number(stock.stock ?? 0);

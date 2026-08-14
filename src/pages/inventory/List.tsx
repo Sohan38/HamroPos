@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect, useCallback } from 'react';
 import { useLocation } from 'wouter';
-import { useInventory, useSuppliers, useProductBatches } from '@/contexts/GlobalProviders';
+import { useInventory, useSuppliers, useProductBatches, useLocations, useInventoryLocationStocks, useProductBatchLocations } from '@/contexts/GlobalProviders';
+import { getLocationStockForProduct } from '@/lib/locationStock';
 import { useSort } from '@/hooks/useSort';
 import { useCurrency } from '@/hooks/useCurrency';
 import { useUndoDelete } from '@/hooks/useUndoDelete';
@@ -37,18 +38,31 @@ const PAGE_SIZE = 12;
 export default function InventoryList() {
   const isBatchesEnabled = useFeature('inventory', 'batches');
   const isExpiryEnabled = useFeature('inventory', 'expiry');
-  const [, setLocation] = useLocation();
+  const [pathname, setLocation] = useLocation();
   const { items, remove, undoRemove, hardRemove, update } = useInventory();
   const { items: suppliers } = useSuppliers();
   const { items: batches } = useProductBatches();
+  const { items: locations } = useLocations();
+  const { items: locationStocks } = useInventoryLocationStocks();
+  const { items: batchLocations } = useProductBatchLocations();
   const { format } = useCurrency();
   const showUndoToast = useUndoDelete(undoRemove);
+
+  // Extract location filter from query params
+  const locationFilterFromUrl = useMemo(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('location') ?? 'all';
+    }
+    return 'all';
+  }, [pathname]);
 
   // Filter state
   const [inputValue, setInputValue] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [stockFilter, setStockFilter] = useState<'all' | 'low' | 'out' | 'expiring' | 'expired'>('all');
+  const [locationFilter, setLocationFilter] = useState<string>(locationFilterFromUrl);
   const [adjustProduct, setAdjustProduct] = useState<Product | null>(null);
   const [displayCount, setDisplayCount] = useState(PAGE_SIZE);
 
@@ -61,12 +75,20 @@ export default function InventoryList() {
   // Reset display count when filters change
   useEffect(() => {
     setDisplayCount(PAGE_SIZE);
-  }, [debouncedQuery, categoryFilter, stockFilter]);
+  }, [debouncedQuery, categoryFilter, stockFilter, locationFilter]);
 
   const categories = useMemo(
     () => Array.from(new Set(items.map(i => i.category))).filter(Boolean).sort(),
     [items]
   );
+
+  // Location-scoped quantity helper: returns quantity at a specific location or global total
+  const getDisplayQuantity = useCallback((product: Product): number => {
+    if (locationFilter === 'all') {
+      return product.quantity;
+    }
+    return getLocationStockForProduct(product, locationFilter, locationStocks);
+  }, [locationFilter, locationStocks]);
 
   // Map productId → worst expiry status across its batches
   const expiryStatusMap = useMemo(() => {
@@ -99,10 +121,24 @@ export default function InventoryList() {
       filtered = filtered.filter(item => item.category === categoryFilter);
     }
 
+    if (locationFilter !== 'all') {
+      // Filter to products with stock at this location (includes legacy supplierStocks via getLocationStockForProduct)
+      filtered = filtered.filter(item => {
+        const qty = getLocationStockForProduct(item, locationFilter, locationStocks);
+        return qty > 0;
+      });
+    }
+
     if (stockFilter === 'low') {
-      filtered = filtered.filter(i => i.quantity <= i.minimumStock && i.quantity > 0);
+      filtered = filtered.filter(i => {
+        const displayQty = getDisplayQuantity(i);
+        return displayQty <= i.minimumStock && displayQty > 0;
+      });
     } else if (stockFilter === 'out') {
-      filtered = filtered.filter(i => i.quantity === 0);
+      filtered = filtered.filter(i => {
+        const displayQty = getDisplayQuantity(i);
+        return displayQty === 0;
+      });
     } else if (stockFilter === 'expiring') {
       filtered = filtered.filter(i => expiryStatusMap[i.id] === 'expiring');
     } else if (stockFilter === 'expired') {
@@ -114,7 +150,7 @@ export default function InventoryList() {
     }
 
     return filtered;
-  }, [items, categoryFilter, stockFilter, debouncedQuery, expiryStatusMap]);
+  }, [items, categoryFilter, stockFilter, debouncedQuery, expiryStatusMap, locationFilter, locationStocks, getDisplayQuantity]);
 
   const { sortedItems: baseSortedItems, requestSort, sortConfig } = useSort(filteredItems, { key: 'name', direction: 'asc' });
 
@@ -130,8 +166,19 @@ export default function InventoryList() {
   const hasMore = displayCount < sortedItems.length;
   const remaining = sortedItems.length - displayCount;
 
-  const lowStockCount = items.filter(i => i.quantity <= i.minimumStock && i.quantity > 0).length;
-  const outOfStockCount = items.filter(i => i.quantity === 0).length;
+  const lowStockCount = useMemo(() => {
+    return items.filter(i => {
+      const displayQty = getDisplayQuantity(i);
+      return displayQty <= i.minimumStock && displayQty > 0;
+    }).length;
+  }, [items, locationFilter, locationStocks, getDisplayQuantity]);
+
+  const outOfStockCount = useMemo(() => {
+    return items.filter(i => {
+      const displayQty = getDisplayQuantity(i);
+      return displayQty === 0;
+    }).length;
+  }, [items, locationFilter, locationStocks, getDisplayQuantity]);
   const expiredCount = Object.values(expiryStatusMap).filter(s => s === 'expired').length;
   const expiringCount = Object.values(expiryStatusMap).filter(s => s === 'expiring').length;
 
@@ -158,30 +205,57 @@ export default function InventoryList() {
 
   const loadMore = useCallback(() => setDisplayCount(c => c + PAGE_SIZE), []);
 
-  const activeFilterCount = [debouncedQuery !== '', categoryFilter !== 'all', stockFilter !== 'all'].filter(Boolean).length;
+  const activeFilterCount = [debouncedQuery !== '', categoryFilter !== 'all', stockFilter !== 'all', locationFilter !== 'all'].filter(Boolean).length;
 
   const clearFilters = useCallback(() => {
     setInputValue('');
     setCategoryFilter('all');
     setStockFilter('all');
+    setLocationFilter('all');
+    window.history.replaceState({}, '', '/inventory');
   }, []);
 
   const renderBatchChips = (productId: string) => {
     const productBatches = batchesByProduct[productId] ?? [];
-    const sortedBatches = productBatches
-      .filter(b => b.expiryDate)
-      .sort((a, b) => (a.expiryDate ?? '').localeCompare(b.expiryDate ?? ''));
+
+    // Filter batches by location if a location is selected
+    let batchesToShow = productBatches;
+    if (locationFilter !== 'all') {
+      batchesToShow = productBatches.filter(batch => {
+        const allocationAtLocation = batchLocations.find(
+          bl => bl.batchId === batch.id && bl.locationId === locationFilter
+        );
+        return allocationAtLocation && Number(allocationAtLocation.quantity ?? 0) > 0;
+      });
+    }
+
+    // Sort by expiry date (with expiryDate first, then no expiry)
+    const sortedBatches = batchesToShow.sort((a, b) => {
+      if (!a.expiryDate && !b.expiryDate) return 0;
+      if (!a.expiryDate) return 1;
+      if (!b.expiryDate) return -1;
+      return (a.expiryDate ?? '').localeCompare(b.expiryDate ?? '');
+    });
 
     if (sortedBatches.length === 0) return null;
 
     return (
       <div className="flex flex-wrap gap-1 mt-1">
-        {sortedBatches.slice(0, 2).map(b => (
-          <span key={b.id} className="text-[10px] border rounded px-1.5 py-0.5 text-muted-foreground flex items-center gap-1">
-            {b.batchNumber}
-            {b.expiryDate && <ExpiryBadge expiryDate={b.expiryDate} />}
-          </span>
-        ))}
+        {sortedBatches.slice(0, 2).map(b => {
+          const qtyAtLocation = locationFilter !== 'all'
+            ? batchLocations.find(bl => bl.batchId === b.id && bl.locationId === locationFilter)?.quantity ?? 0
+            : undefined;
+
+          return (
+            <span key={b.id} className="text-[10px] border rounded px-1.5 py-0.5 text-muted-foreground flex items-center gap-1">
+              {b.batchNumber}
+              {locationFilter !== 'all' && qtyAtLocation !== undefined && (
+                <span className="text-muted-foreground">({qtyAtLocation})</span>
+              )}
+              {b.expiryDate && <ExpiryBadge expiryDate={b.expiryDate} />}
+            </span>
+          );
+        })}
         {sortedBatches.length > 2 && (
           <span className="text-[10px] text-muted-foreground py-0.5">+{sortedBatches.length - 2} more</span>
         )}
@@ -261,6 +335,15 @@ export default function InventoryList() {
               {isExpiryEnabled && <SelectItem value="expired">Expired</SelectItem>}
             </SelectContent>
           </Select>
+          <Select value={locationFilter} onValueChange={setLocationFilter}>
+            <SelectTrigger className="w-full sm:w-40">
+              <SelectValue placeholder="Location" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Locations</SelectItem>
+              {locations.map(loc => <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
@@ -316,8 +399,9 @@ export default function InventoryList() {
         <div className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {visibleItems.map((item, index) => {
-              const isLowStock = item.quantity <= item.minimumStock && item.quantity > 0;
-              const isOutOfStock = item.quantity === 0;
+              const displayQuantity = getDisplayQuantity(item);
+              const isLowStock = displayQuantity <= item.minimumStock && displayQuantity > 0;
+              const isOutOfStock = displayQuantity === 0;
               const expiryStatus = expiryStatusMap[item.id] ?? 'none';
               const productBatches = batchesByProduct[item.id] ?? [];
               const nearestExpiry = productBatches
@@ -328,10 +412,10 @@ export default function InventoryList() {
                 <Card
                   key={item.id}
                   className={`shadow-sm hover:shadow-md transition-shadow overflow-hidden ${isOutOfStock || expiryStatus === 'expired'
-                      ? 'border-destructive/40'
-                      : isLowStock || expiryStatus === 'expiring'
-                        ? 'border-orange-300/60'
-                        : 'hover:border-primary/40'
+                    ? 'border-destructive/40'
+                    : isLowStock || expiryStatus === 'expiring'
+                      ? 'border-orange-300/60'
+                      : 'hover:border-primary/40'
                     }`}
                 >
                   <CardContent className="p-0">
@@ -384,7 +468,7 @@ export default function InventoryList() {
                         <div className="flex items-center gap-2 mt-2 flex-wrap">
                           <span className={`text-sm font-bold ${isOutOfStock ? 'text-destructive' : isLowStock ? 'text-orange-500' : 'text-foreground'
                             }`}>
-                            {item.quantity} {item.unit}
+                            {displayQuantity} {item.unit}
                           </span>
                           {isOutOfStock && <Badge variant="destructive" className="text-[10px] py-0 px-1.5">Out of Stock</Badge>}
                           {isLowStock && !isOutOfStock && (
@@ -397,7 +481,7 @@ export default function InventoryList() {
                       </div>
                     </div>
 
-                    {isBatchesEnabled && productBatches.length > 0 && renderBatchChips(item.id)}
+                    {isBatchesEnabled && renderBatchChips(item.id)}
 
                     <div className="px-4 pb-3 grid grid-cols-3 gap-2 text-center border-t bg-muted/20 pt-2">
                       <div>
@@ -418,7 +502,7 @@ export default function InventoryList() {
 
                     <div className="px-4 pb-3 flex justify-between items-center text-xs text-muted-foreground border-t pt-2">
                       <span className="truncate mr-2" title={getSupplierName(item)}>{getSupplierName(item)}</span>
-                      <span className="font-medium shrink-0">Val: {format(item.purchaseRate * item.quantity)}</span>
+                      <span className="font-medium shrink-0">Val: {format(item.purchaseRate * displayQuantity)}</span>
                     </div>
 
                     <div className="px-4 pb-3 flex gap-2">
