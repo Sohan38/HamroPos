@@ -107,6 +107,7 @@ export function useInventoryFormSteps(
                         onAddBatch={handleAddBatch}
                         onEditBatch={handleEditBatch}
                         onDeleteBatch={handleDeleteBatch}
+                        isNew={isNew}
                     />
                     <Separator className="my-0" />
                     <VariantSection
@@ -166,6 +167,7 @@ export function useInventoryFormSteps(
                         averagePurchaseRate={averagePurchaseRate}
                         hasSupplier={!hasExpiry && watchedSupplierIds.length > 0}
                         isMultiSupplier={isMultiSupplier}
+                        isNew={isNew}
                     />
                     <Separator className="my-0" />
                     <StockSection

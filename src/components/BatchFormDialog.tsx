@@ -565,8 +565,8 @@ export function BatchFormDialog({
                     form.setValue('expiryMode', 'months')
                   }
                   className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${expiryMode === 'months'
-                      ? 'bg-primary text-primary-foreground border-primary'
-                      : 'border-border hover:bg-muted'
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'border-border hover:bg-muted'
                     }`}
                 >
                   <Wand2 className="h-3.5 w-3.5" />
@@ -579,8 +579,8 @@ export function BatchFormDialog({
                     form.setValue('expiryMode', 'manual')
                   }
                   className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${expiryMode === 'manual'
-                      ? 'bg-primary text-primary-foreground border-primary'
-                      : 'border-border hover:bg-muted'
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'border-border hover:bg-muted'
                     }`}
                 >
                   <CalendarDays className="h-3.5 w-3.5" />
@@ -724,6 +724,8 @@ export function BatchFormDialog({
                           )
                         }
                         className="h-9"
+                        readOnly={!isNew}
+                        disabled={!isNew}
                       />
                     </FormControl>
 

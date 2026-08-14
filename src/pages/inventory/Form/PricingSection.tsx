@@ -11,9 +11,10 @@ interface PricingSectionProps extends SectionProps {
   averagePurchaseRate: number;
   hasSupplier: boolean;
   isMultiSupplier: boolean;
+  isNew: boolean;
 }
 
-export const PricingSection = React.memo(({ form, hasExpiry, averagePurchaseRate, hasSupplier, isMultiSupplier }: PricingSectionProps) => {
+export const PricingSection = React.memo(({ form, hasExpiry, averagePurchaseRate, hasSupplier, isMultiSupplier, isNew }: PricingSectionProps) => {
   const sellingRate  = useWatch({ control: form.control, name: 'sellingRate'  }) ?? 0;
   const purchaseRate = useWatch({ control: form.control, name: 'purchaseRate' }) ?? 0;
 
@@ -83,19 +84,23 @@ export const PricingSection = React.memo(({ form, hasExpiry, averagePurchaseRate
                     {...field}
                     value={field.value === 0 ? '' : Number(field.value).toFixed(hasSupplier ? 2 : undefined)}
                     onChange={e => field.onChange(e.target.value === '' ? 0 : Number(e.target.value))}
-                    readOnly={hasSupplier}
-                    disabled={hasSupplier}
+                    readOnly={hasSupplier || !isNew}
+                    disabled={hasSupplier || !isNew}
                     className={cn(
                       'pl-11 h-11 text-base font-medium transition-colors',
-                      hasSupplier && 'bg-muted/60 text-muted-foreground cursor-not-allowed pr-9',
-                      !hasSupplier && purchaseError && 'border-destructive focus-visible:ring-destructive/30',
-                      !hasSupplier && purchaseValid && purchaseRate > 0 && 'border-green-400 focus-visible:ring-green-400/30'
+                      (hasSupplier || !isNew) && 'bg-muted/60 text-muted-foreground cursor-not-allowed pr-9',
+                      !(hasSupplier || !isNew) && purchaseError && 'border-destructive focus-visible:ring-destructive/30',
+                      !(hasSupplier || !isNew) && purchaseValid && purchaseRate > 0 && 'border-green-400 focus-visible:ring-green-400/30'
                     )}
                   />
-                  {hasSupplier && <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/50 pointer-events-none" />}
+                  {(hasSupplier || !isNew) && <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/50 pointer-events-none" />}
                 </div>
               </FormControl>
-              {hasSupplier ? (
+              {!isNew ? (
+                <p className="text-[10px] text-muted-foreground leading-snug mt-1">
+                  Purchase cost is locked during edits. Create a purchase transaction to record new rates.
+                </p>
+              ) : hasSupplier ? (
                 <p className="text-[10px] text-muted-foreground leading-snug mt-1">
                   {isMultiSupplier ? 'Weighted avg. from suppliers' : 'Set in Suppliers section below'}
                 </p>

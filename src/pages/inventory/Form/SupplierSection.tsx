@@ -109,13 +109,14 @@ export const SupplierSection = React.memo(({ form, isNew, suppliers, existingPur
             <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{selectedSupplierIds.length}</Badge>
           )}
         </div>
-        <Button
+        {isNew && (<Button
           type="button" variant="ghost" size="sm"
           className="h-8 text-xs gap-1.5 text-primary rounded-xl hover:bg-primary/10"
           onClick={() => onSupplierNew()}
         >
           <Plus className="h-3.5 w-3.5" /> New Supplier
         </Button>
+        )}
       </div>
 
       {suppliers.length === 0 ? (
@@ -129,7 +130,7 @@ export const SupplierSection = React.memo(({ form, isNew, suppliers, existingPur
         </div>
       ) : (
         <>
-          <SupplierSearchList
+          {isNew && (<SupplierSearchList
             suppliers={suppliers}
             selectedSupplierIds={selectedSupplierIds}
             onSelect={addSupplier}
@@ -139,6 +140,7 @@ export const SupplierSection = React.memo(({ form, isNew, suppliers, existingPur
             label="Suppliers"
             maxVisible={8}
           />
+          )}
 
           {/* ── Multi-supplier info ───────────────────────────────────────── */}
           {isMultiSupplier && (
@@ -168,13 +170,14 @@ export const SupplierSection = React.memo(({ form, isNew, suppliers, existingPur
                       {isMultiSupplier && idx === 0 && (
                         <Badge variant="outline" className="text-[9px] px-2 py-0 rounded-full border-primary/30 text-primary">Primary</Badge>
                       )}
-                      <button
+                      {isNew && (<button
                         type="button"
                         className="h-6 w-6 rounded-full flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
                         onClick={() => removeSupplier(sid)}
                       >
                         <X className="h-3.5 w-3.5" />
                       </button>
+                      )}
                     </div>
 
                     {/* Fields */}
@@ -223,6 +226,8 @@ export const SupplierSection = React.memo(({ form, isNew, suppliers, existingPur
                             value={stockEntry.cost === 0 ? '' : stockEntry.cost}
                             onChange={e => updateSupplierStock(sid, 'cost', e.target.value === '' ? 0 : Number(e.target.value))}
                             className="h-10 text-sm font-medium"
+                            readOnly={!isNew}
+                            disabled={!isNew}
                           />
                         </div>
                       </div>

@@ -7,6 +7,7 @@ import { FlaskConical, Info, Plus, Pencil, Trash2 } from 'lucide-react';
 import { SectionProps } from './types';
 import { ProductBatch } from '@/types';
 import { ExpiryBadge, getBatchStatus } from '@/components/BatchFormDialog';
+import { cn } from '@/lib/utils';
 
 interface BatchSectionProps extends SectionProps {
   isExpiryEnabled: boolean;
@@ -17,6 +18,7 @@ interface BatchSectionProps extends SectionProps {
   onAddBatch: () => void;
   onEditBatch: (batch: ProductBatch) => void;
   onDeleteBatch: (id: string) => void;
+  isNew: boolean;
 }
 
 export const BatchSection = React.memo(({
@@ -29,6 +31,7 @@ export const BatchSection = React.memo(({
   onAddBatch,
   onEditBatch,
   onDeleteBatch,
+  isNew,
 }: BatchSectionProps) => {
   if (!isExpiryEnabled || !isBatchesEnabled) return null;
 
@@ -42,8 +45,8 @@ export const BatchSection = React.memo(({
       <FormField control={form.control} name="hasExpiry" render={({ field }) => (
         <div
           className={`flex items-center justify-between gap-4 rounded-2xl border px-4 py-3 transition-colors cursor-pointer ${hasExpiry
-              ? 'border-primary/30 bg-primary/5'
-              : 'border-border bg-muted/20'
+            ? 'border-primary/30 bg-primary/5'
+            : 'border-border bg-muted/20'
             }`}
           onClick={() => {
             const next = !field.value;
@@ -85,24 +88,29 @@ export const BatchSection = React.memo(({
                   <Badge variant="secondary" className="ml-2 text-[10px] px-1.5 py-0">{sortedBatches.length}</Badge>
                 )}
               </span>
-              <Button
-                type="button"
-                size="sm"
-                className="h-8 gap-1.5 text-xs rounded-xl"
-                onClick={onAddBatch}
-              >
-                <Plus className="h-3.5 w-3.5" /> Add Batch
-              </Button>
+              {isNew && (
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-8 gap-1.5 text-xs rounded-xl"
+                  onClick={onAddBatch}
+                >
+                  <Plus className="h-3.5 w-3.5" /> Add Batch
+                </Button>
+              )}
             </div>
 
             {sortedBatches.length === 0 ? (
               <div
-                className="flex flex-col items-center justify-center py-7 border-2 border-dashed border-muted rounded-2xl bg-muted/10 cursor-pointer active:bg-muted/30 transition-colors"
-                onClick={onAddBatch}
+                className={cn(
+                  "flex flex-col items-center justify-center py-7 border-2 border-dashed border-muted rounded-2xl bg-muted/10 transition-colors",
+                  isNew && "cursor-pointer active:bg-muted/30"
+                )}
+                onClick={isNew ? onAddBatch : undefined}
               >
                 <FlaskConical className="h-8 w-8 text-muted-foreground/30 mb-2" />
                 <p className="text-sm font-medium text-muted-foreground">No batches yet</p>
-                <p className="text-xs text-muted-foreground/60 mt-0.5">Tap to add your first batch</p>
+                {isNew && <p className="text-xs text-muted-foreground/60 mt-0.5">Tap to add your first batch</p>}
               </div>
             ) : (
               <div className="space-y-2 max-h-70 overflow-y-auto pr-0.5">
@@ -124,11 +132,13 @@ export const BatchSection = React.memo(({
                         onClick={() => onEditBatch(batch)}>
                         <Pencil className="h-3.5 w-3.5" />
                       </Button>
-                      <Button type="button" variant="ghost" size="icon"
-                        className="h-8 w-8 text-destructive hover:bg-destructive/10"
-                        onClick={() => onDeleteBatch(batch.id)}>
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                      {isNew && (
+                        <Button type="button" variant="ghost" size="icon"
+                          className="h-8 w-8 text-destructive hover:bg-destructive/10"
+                          onClick={() => onDeleteBatch(batch.id)}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
                     </div>
                   </div>
                 ))}
