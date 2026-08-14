@@ -125,6 +125,22 @@ export default function InventoryForm() {
 
   const totalSteps = stepsWithReview.length;
 
+  const handleStepChange = useCallback(async (stepIdx: number) => {
+    const currentStep = stepsWithReview[activeStep];
+    if (currentStep?.fields && currentStep.fields.length > 0) {
+      await form.trigger(currentStep.fields as any);
+    }
+    setActiveStep(stepIdx);
+  }, [activeStep, stepsWithReview, form]);
+
+  const handleNext = useCallback(async () => {
+    const currentStep = stepsWithReview[activeStep];
+    if (currentStep?.fields && currentStep.fields.length > 0) {
+      await form.trigger(currentStep.fields as any);
+    }
+    setActiveStep(prev => prev + 1);
+  }, [activeStep, stepsWithReview, form]);
+
   // Footer (desktop/mobile aware)
   const footer = useInventoryFooter(
     activeStep,
@@ -133,7 +149,8 @@ export default function InventoryForm() {
     setActiveStep,
     stepErrorsWithUI,
     form,
-    isMobile
+    isMobile,
+    handleNext
   );
   const confirm = useConfirm();
 
@@ -210,7 +227,7 @@ export default function InventoryForm() {
           <StepFormContainer
             steps={stepsWithReview}
             activeStep={activeStep}
-            onStepChange={setActiveStep}
+            onStepChange={handleStepChange}
             footer={footer}
             stepErrors={stepErrorsWithUI}
             isMobile={isMobile}

@@ -12,7 +12,8 @@ export function useInventoryFooter(
     setActiveStep: (step: number) => void,
     stepErrorsWithUI: boolean[],
     form: UseFormReturn<ProductFormValues>,
-    isMobile: boolean
+    isMobile: boolean,
+    onNext?: () => void
 ) {
     const anyStepHasErrors = stepErrorsWithUI.some(Boolean);
 
@@ -38,7 +39,7 @@ export function useInventoryFooter(
                 </Button>
                 <span className="text-sm font-medium text-muted-foreground">Step {activeStep + 1} of {totalSteps}</span>
                 {activeStep < totalSteps - 1 ? (
-                    <Button type="button" onClick={() => setActiveStep(activeStep + 1)} className="h-11 rounded-2xl font-semibold">
+                    <Button type="button" onClick={onNext || (() => setActiveStep(activeStep + 1))} className="h-11 rounded-2xl font-semibold">
                         Next <ChevronRight className="ml-1.5 h-4 w-4" />
                     </Button>
                 ) : (

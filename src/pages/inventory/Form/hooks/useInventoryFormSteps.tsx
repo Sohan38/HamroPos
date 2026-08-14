@@ -72,6 +72,7 @@ export function useInventoryFormSteps(
     } = input;
 
     const watchedVariants = form.watch('variants') || [];
+    const quantity = form.watch('quantity') ?? 0;
 
     const steps = useMemo(() => {
         const result: StepDefinition[] = [];
@@ -248,6 +249,14 @@ export function useInventoryFormSteps(
                 content: (
                     <div className="p-6 md:p-8 space-y-6">
                         <NotesSection form={form} />
+                        {quantity === 0 && (
+                            <div className="flex items-start gap-3 p-4 rounded-2xl border border-amber-200 bg-amber-50/50 dark:bg-amber-950/20 text-amber-800 dark:text-amber-300 text-xs">
+                                <span className="text-sm shrink-0">ℹ️</span>
+                                <div>
+                                    <span className="font-semibold">No opening stock set</span> — the stock count for this product is currently 0. You can record purchases later.
+                                </div>
+                            </div>
+                        )}
                         <Separator className="my-0" />
                         {anyErrors ? (
                             <div className="space-y-4">
