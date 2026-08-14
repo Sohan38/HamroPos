@@ -37,6 +37,10 @@ const Dashboard = retryLazy(() => import('@/pages/Dashboard'));
 const InventoryList = retryLazy(() => import('@/pages/inventory/List'));
 const InventoryForm = retryLazy(() => import('@/pages/inventory/Form'));
 const InventoryDetail = retryLazy(() => import('@/pages/inventory/Detail'));
+const InventoryMovements = retryLazy(() => import('@/pages/inventory/Movements'));
+const LocationsList = retryLazy(() => import('@/pages/locations/List'));
+const LocationDetail = retryLazy(() => import('@/pages/locations/Detail'));
+const MoveStock = retryLazy(() => import('@/pages/locations/MoveStock'));
 const SalesPos = retryLazy(() => import('@/pages/sales/Pos'));
 const SalesList = retryLazy(() => import('@/pages/sales/List'));
 const SaleDetail = retryLazy(() => import('@/pages/sales/Detail'));
@@ -87,8 +91,14 @@ function Router() {
 
             <Route path="/inventory" component={InventoryList} />
             <Route path="/inventory/new" component={InventoryForm} />
+            <Route path="/inventory/movements" component={InventoryMovements} />
             <Route path="/inventory/:id/edit" component={InventoryForm} />
             <Route path="/inventory/:id" component={InventoryDetail} />
+
+            <Route path="/locations" component={LocationsList} />
+            <Route path="/locations/move-stock" component={MoveStock} />
+            <Route path="/locations/:id/move-from" component={MoveStock} />
+            <Route path="/locations/:id" component={LocationDetail} />
 
             <Route path="/sales" component={SalesList} />
             <Route path="/sales/new" component={SalesPos} />

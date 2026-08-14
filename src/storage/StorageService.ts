@@ -140,7 +140,7 @@ export class LocalStorageProvider implements IStorageProvider {
     const allKeys = [
       'inventory', 'locations', 'settings', 'suppliers', 'customers', 'sales',
       'purchases', 'expenses', 'hotelRooms', 'productBatches', 'productBatchLocations',
-      'hotelBills', 'restaurantBills', 'cashBook', 'credit', 'dispositions'
+      'inventoryLocationStocks', 'inventoryMovements', 'hotelBills', 'restaurantBills', 'cashBook', 'credit', 'dispositions'
     ];
 
     for (const key of allKeys) {

@@ -11,6 +11,8 @@ import { IStorageProvider } from './IStorageProvider';
 const COLLECTION_KEYS = [
   'inventory',
   'locations',
+  'inventoryLocationStocks',
+  'inventoryMovements',
   'suppliers',
   'customers',
   'sales',

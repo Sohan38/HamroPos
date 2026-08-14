@@ -64,6 +64,29 @@ export interface ProductBatchLocation extends StorageRecord {
   dateReceived?: string | null;
 }
 
+export interface InventoryLocationStock extends StorageRecord {
+  productId: string;
+  locationId: string;
+  quantity: number;
+  reservedQuantity?: number;
+  lastMovementAt?: string | null;
+  notes?: string;
+}
+
+export interface InventoryMovement extends StorageRecord {
+  productId: string;
+  productName: string;
+  movementType: 'transfer' | 'adjustment' | 'sale' | 'purchase' | 'disposition';
+  sourceLocationId?: string | null;
+  destinationLocationId?: string | null;
+  quantity: number;
+  batchId?: string | null;
+  supplierId?: string | null;
+  referenceId?: string | null;
+  notes?: string;
+  status?: 'pending' | 'completed' | 'cancelled';
+}
+
 export type BatchFormData = Omit<
   ProductBatch,
   "id" | "createdAt" | "updatedAt" | "deletedAt" | "version"
