@@ -82,7 +82,7 @@ export interface InventoryLocationStock extends StorageRecord {
 export interface InventoryMovement extends StorageRecord {
   productId: string;
   productName: string;
-  movementType: 'transfer' | 'adjustment' | 'sale' | 'purchase' | 'disposition';
+  movementType: 'transfer' | 'adjustment' | 'sale' | 'purchase' | 'disposition' | 'consumption';
   sourceLocationId?: string | null;
   destinationLocationId?: string | null;
   quantity: number;
@@ -91,6 +91,32 @@ export interface InventoryMovement extends StorageRecord {
   referenceId?: string | null;
   notes?: string;
   status?: 'pending' | 'completed' | 'cancelled';
+}
+
+/** A single consumed product item within a consumption transaction */
+export interface ConsumptionItem {
+  productId: string;
+  productName: string;
+  quantity: number;
+  unit: ProductUnit;
+  batchId?: string | null;
+  batchNumber?: string | null;
+  unitCost: number;  // cost per unit at time of consumption
+  totalCost: number; // quantity * unitCost
+}
+
+/** Transaction representing internal consumption without creating sales or production output */
+export interface ConsumptionTransaction extends StorageRecord {
+  referenceNumber: string;     // e.g., CONS-2024-001
+  date: string;                 // ISO 8601 date
+  locationId: string;           // where the consumption occurred
+  items: ConsumptionItem[];     // products consumed
+  totalCost: number;            // sum of all item costs
+  reason?: string;              // e.g., "Staff meal", "Testing", "Waste"
+  notes?: string;               // additional notes
+  status?: 'completed' | 'reversed';
+  reversalOfId?: string | null; // if this is a reversal, links to original transaction
+  reversedById?: string | null; // if reversed, links to reversal transaction
 }
 
 export type BatchFormData = Omit<

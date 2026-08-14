@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'wouter';
-import { Home, Package, ShoppingCart, Hotel, Truck, FileText, UtensilsCrossed, Receipt, Wallet, Banknote, Users, Settings, ArrowUpFromLine, ArrowLeftRight } from 'lucide-react';
+import { Home, Package, ShoppingCart, Hotel, Truck, FileText, UtensilsCrossed, Receipt, Wallet, Banknote, Users, Settings, ArrowUpFromLine, ArrowLeftRight, Utensils } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useFeature } from '@/hooks/useFeature';
@@ -8,6 +8,7 @@ export function DesktopSidebar() {
   const [location] = useLocation();
   const isHotelEnabled = useFeature('hospitality', 'hotelGrid');
   const isRestaurantEnabled = useFeature('hospitality', 'restaurantBilling');
+  const isConsumptionEnabled = useFeature('consumption', 'enabled');
 
   const NAV_GROUPS = [
     {
@@ -24,6 +25,7 @@ export function DesktopSidebar() {
       items: [
         { href: '/hotel', label: 'Hotel', icon: Hotel, show: isHotelEnabled },
         { href: '/restaurant', label: 'Restaurant', icon: UtensilsCrossed, show: isRestaurantEnabled },
+        { href: '/inventory/consumption', label: 'Consumption', icon: Utensils, show: isConsumptionEnabled },
         { href: '/dispositions', label: 'Dispositions', icon: FileText, show: true },
         { href: '/purchases', label: 'Purchases', icon: Truck, show: true },
       ]

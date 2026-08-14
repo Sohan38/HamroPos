@@ -38,6 +38,9 @@ const InventoryList = retryLazy(() => import('@/pages/inventory/List'));
 const InventoryForm = retryLazy(() => import('@/pages/inventory/Form'));
 const InventoryDetail = retryLazy(() => import('@/pages/inventory/Detail'));
 const InventoryMovements = retryLazy(() => import('@/pages/inventory/Movements'));
+const ConsumptionList = retryLazy(() => import('@/pages/inventory/consumption/List').then(m => ({ default: m.ConsumptionList })));
+const ConsumptionForm = retryLazy(() => import('@/pages/inventory/consumption/Form').then(m => ({ default: m.ConsumptionForm })));
+const ConsumptionDetail = retryLazy(() => import('@/pages/inventory/consumption/Detail').then(m => ({ default: m.ConsumptionDetail })));
 const LocationsList = retryLazy(() => import('@/pages/locations/List'));
 const LocationDetail = retryLazy(() => import('@/pages/locations/Detail'));
 const MoveStock = retryLazy(() => import('@/pages/locations/MoveStock'));
@@ -92,6 +95,9 @@ function Router() {
             <Route path="/inventory" component={InventoryList} />
             <Route path="/inventory/new" component={InventoryForm} />
             <Route path="/inventory/movements" component={InventoryMovements} />
+            <Route path="/inventory/consumption" component={ConsumptionList} />
+            <Route path="/inventory/consumption/new" component={ConsumptionForm} />
+            <Route path="/inventory/consumption/:id" component={ConsumptionDetail} />
             <Route path="/inventory/:id/edit" component={InventoryForm} />
             <Route path="/inventory/:id" component={InventoryDetail} />
 
