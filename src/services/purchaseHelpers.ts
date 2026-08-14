@@ -17,6 +17,7 @@ export type CreatePurchaseForStockOpts = {
     manufacturingDate?: string | null;
     expiryMonths?: number | null;
     expiryDate?: string | null;
+    locationId?: string | null;
 };
 
 export async function createPurchaseForStockIncrease(storage: IStorageProvider, opts: CreatePurchaseForStockOpts) {
@@ -68,6 +69,7 @@ export async function createPurchaseForStockIncrease(storage: IStorageProvider, 
         referenceNumber: undefined,
         notes: opts.notes || '',
         status: 'received' as const,
+        locationId: opts.locationId ?? undefined,
     };
 
     return createPurchase(storage, payload as any);
@@ -87,6 +89,7 @@ export type CreatePurchaseForNewItemOpts = {
     manufacturingDate?: string | null;
     expiryMonths?: number | null;
     expiryDate?: string | null;
+    locationId?: string | null;
 };
 
 async function buildPurchasePayloadsForNewItems(storage: IStorageProvider, optsList: CreatePurchaseForNewItemOpts[]) {
@@ -101,6 +104,7 @@ async function buildPurchasePayloadsForNewItems(storage: IStorageProvider, optsL
         dateIso: string;
         notes?: string | null;
         items: any[];
+        locationId?: string | null;
     }> = new Map();
 
     for (const opts of optsList) {
@@ -130,7 +134,7 @@ async function buildPurchasePayloadsForNewItems(storage: IStorageProvider, optsL
         } as any;
 
         const supplierKey = supplierId || resolvedSupplierName || 'unknown-supplier';
-        const groupingKey = `${supplierKey}::${invoiceNumber ?? ''}`;
+        const groupingKey = `${supplierKey}::${invoiceNumber ?? ''}::${opts.locationId ?? ''}`;
         const existing = grouped.get(groupingKey);
 
         if (existing) {
@@ -149,6 +153,7 @@ async function buildPurchasePayloadsForNewItems(storage: IStorageProvider, optsL
                 dateIso,
                 notes: opts.notes || undefined,
                 items: [item],
+                locationId: opts.locationId || undefined,
             });
         }
     }
@@ -174,6 +179,7 @@ async function buildPurchasePayloadsForNewItems(storage: IStorageProvider, optsL
             referenceNumber: undefined,
             notes: group.notes || '',
             status: 'received' as const,
+            locationId: group.locationId ?? undefined,
         });
     }
 

@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import {
+    InventoryLocationStock,
     Product,
     ProductBatch,
     PurchaseInvoice,
@@ -126,8 +127,11 @@ function updateVariantQuantity(product: Product, variantName: string | null | un
 function revertPurchase(
     inventory: Product[],
     batches: ProductBatch[],
+    locationStocks: InventoryLocationStock[],
+    batchLocations: any[],
     purchase: PurchaseInvoice,
 ) {
+    const targetLocationId = purchase.locationId || 'loc-default';
     purchase.items.forEach((rawItem, index) => {
         const item = normalizeItem(rawItem);
         const product = inventory.find(candidate => candidate.id === item.productId && !candidate.deletedAt);
@@ -139,8 +143,8 @@ function revertPurchase(
 
         product.quantity -= item.quantity;
         updateVariantQuantity(product, item.variantName, -item.quantity);
-        const supplierState = ensureSupplierRecords(product, purchase.supplierId, 'loc-default');
-        const supplierRecord = supplierState.records.find(record => record.supplierId === purchase.supplierId && (record.locationId || 'loc-default') === 'loc-default');
+        const supplierState = ensureSupplierRecords(product, purchase.supplierId, targetLocationId);
+        const supplierRecord = supplierState.records.find(record => record.supplierId === purchase.supplierId && (record.locationId || 'loc-default') === targetLocationId);
         if (supplierRecord) {
             if (supplierRecord.stock < item.quantity) {
                 throw new Error(`Cannot reverse ${purchase.invoiceNumber || 'this purchase'}: supplier stock for ${product.name} is lower than the received quantity.`);
@@ -151,6 +155,13 @@ function revertPurchase(
         product.supplierId = supplierState.supplierIds[0] ?? '';
         product.supplierStocks = supplierState.records;
 
+        // Revert location stock
+        const stockRecord = locationStocks.find(ls => ls.productId === product.id && ls.locationId === targetLocationId);
+        if (stockRecord) {
+            stockRecord.quantity = Math.max(0, (stockRecord.quantity ?? 0) - item.quantity);
+            stockRecord.lastMovementAt = now();
+        }
+
         const batch = getBatchForPurchase(batches, purchase, item, index);
         if (batch) {
             if (batch.quantity !== batch.initialQuantity) {
@@ -158,6 +169,10 @@ function revertPurchase(
             }
             const batchIndex = batches.findIndex(candidate => candidate.id === batch.id);
             if (batchIndex >= 0) batches.splice(batchIndex, 1);
+
+            // Revert batch location allocation
+            const batchLocIndex = batchLocations.findIndex(bl => bl.batchId === batch.id && bl.locationId === targetLocationId);
+            if (batchLocIndex >= 0) batchLocations.splice(batchLocIndex, 1);
         }
     });
 }
@@ -165,9 +180,12 @@ function revertPurchase(
 function applyPurchase(
     inventory: Product[],
     batches: ProductBatch[],
+    locationStocks: InventoryLocationStock[],
+    batchLocations: any[],
     purchase: PurchaseInvoice,
 ): PurchaseInvoice {
     const items = purchase.items.map(normalizeItem);
+    const targetLocationId = purchase.locationId || 'loc-default';
 
     items.forEach((item, index) => {
         if (item.quantity <= 0) throw new Error(`${item.productName} must have a quantity greater than zero.`);
@@ -177,10 +195,10 @@ function applyPurchase(
         if (!product) throw new Error(`Product "${item.productName}" no longer exists.`);
 
         const previousQuantity = product.quantity;
-        const supplierState = ensureSupplierRecords(product, purchase.supplierId, 'loc-default', previousQuantity);
+        const supplierState = ensureSupplierRecords(product, purchase.supplierId, targetLocationId, previousQuantity);
         product.quantity += item.quantity;
         updateVariantQuantity(product, item.variantName, item.quantity);
-        const supplierRecord = supplierState.records.find(record => record.supplierId === purchase.supplierId && (record.locationId || 'loc-default') === 'loc-default');
+        const supplierRecord = supplierState.records.find(record => record.supplierId === purchase.supplierId && (record.locationId || 'loc-default') === targetLocationId);
         if (!supplierRecord) throw new Error(`Supplier stock could not be initialized for ${product.name}.`);
         supplierRecord.stock += item.quantity;
         supplierRecord.cost = item.purchaseRate;
@@ -190,7 +208,27 @@ function applyPurchase(
         product.supplierId = supplierState.supplierIds[0] ?? '';
         product.supplierStocks = supplierState.records;
 
+        // Update InventoryLocationStock
+        let stockRecord = locationStocks.find(ls => ls.productId === product.id && ls.locationId === targetLocationId);
+        if (stockRecord) {
+            stockRecord.quantity = (stockRecord.quantity ?? 0) + item.quantity;
+            stockRecord.lastMovementAt = now();
+        } else {
+            locationStocks.push({
+                id: uuidv4(),
+                productId: product.id,
+                locationId: targetLocationId,
+                quantity: item.quantity,
+                lastMovementAt: now(),
+                createdAt: now(),
+                updatedAt: now(),
+                deletedAt: null,
+                version: 1,
+            });
+        }
+
         if (product.hasExpiry) {
+            let activeBatch: ProductBatch;
             // If the incoming item references an existing batch, merge quantities into it
             if (item.batchId) {
                 const existing = batches.find(b => b.id === item.batchId && b.productId === product.id);
@@ -201,6 +239,7 @@ function applyPurchase(
                     existing.updatedAt = now();
                     existing.notes = item.notes ?? existing.notes;
                     items[index] = { ...item, batchId: existing.id, batchNumber: existing.batchNumber };
+                    activeBatch = existing;
                 } else {
                     // referenced batch not found — fall back to creating a new batch
                     const batch: ProductBatch = {
@@ -223,6 +262,7 @@ function applyPurchase(
                     };
                     batches.push(batch);
                     items[index] = { ...item, batchId: batch.id, batchNumber: batch.batchNumber };
+                    activeBatch = batch;
                 }
             } else {
                 const batch: ProductBatch = {
@@ -245,6 +285,26 @@ function applyPurchase(
                 };
                 batches.push(batch);
                 items[index] = { ...item, batchId: batch.id, batchNumber: batch.batchNumber };
+                activeBatch = batch;
+            }
+
+            // Update ProductBatchLocation allocation
+            let batchLocRecord = batchLocations.find(bl => bl.batchId === activeBatch.id && bl.locationId === targetLocationId);
+            if (batchLocRecord) {
+                batchLocRecord.quantity = (batchLocRecord.quantity ?? 0) + item.quantity;
+                batchLocRecord.updatedAt = now();
+            } else {
+                batchLocations.push({
+                    id: `pbl-${activeBatch.id}-${targetLocationId}`,
+                    batchId: activeBatch.id,
+                    locationId: targetLocationId,
+                    quantity: item.quantity,
+                    dateReceived: purchase.date,
+                    createdAt: now(),
+                    updatedAt: now(),
+                    deletedAt: null,
+                    version: 1,
+                });
             }
         }
     });
@@ -430,6 +490,8 @@ async function persistTransition(
 ) {
     const inventory = await storage.get<Product>('inventory');
     const batches = await storage.get<ProductBatch>('productBatches');
+    const locationStocks = await storage.get<InventoryLocationStock>('inventoryLocationStocks');
+    const batchLocations = await storage.get<any>('productBatchLocations');
 
     // Determine whether this transition actually changes inventory/batches.
     // Only revert/apply stock when items, supplier, or receipt status changed.
@@ -466,16 +528,17 @@ async function persistTransition(
         const candItemsKey = itemsKey(candidate.items);
         if (prevItemsKey !== candItemsKey) inventoryChanged = true;
         if ((previous.supplierId ?? '') !== (candidate.supplierId ?? '')) inventoryChanged = true;
+        if ((previous.locationId ?? '') !== (candidate.locationId ?? '')) inventoryChanged = true;
     }
 
     let saved = candidate;
     if (inventoryChanged) {
         if (prevReceived && previous) {
-            revertPurchase(inventory, batches, previous);
+            revertPurchase(inventory, batches, locationStocks, batchLocations, previous);
         }
 
         if (candReceived) {
-            saved = applyPurchase(inventory, batches, candidate);
+            saved = applyPurchase(inventory, batches, locationStocks, batchLocations, candidate);
         }
     }
 
@@ -486,6 +549,8 @@ async function persistTransition(
 
     await storage.set('inventory', inventory);
     await storage.set('productBatches', batches);
+    await storage.set('inventoryLocationStocks', locationStocks);
+    await storage.set('productBatchLocations', batchLocations);
 
     // Reconcile auto-generated expense records tied to this purchase.
     await reconcileAutoExpenses(storage, previous, candidate);

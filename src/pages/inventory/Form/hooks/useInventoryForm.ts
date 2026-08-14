@@ -480,6 +480,7 @@ export function useInventoryForm(
                                 const batchSupplierId = batch.supplierId || resolvedSupplierIds[0] || productData.supplierId || undefined;
                                 const supplier = suppliers.find(c => c.id === batchSupplierId);
                                 const rate = Number(batch.purchaseRate ?? productData.purchaseRate ?? 0) || 0;
+                                const batchLocationId = resolvedSupplierStocks.find(ss => ss.supplierId === batchSupplierId)?.locationId || 'loc-default';
                                 purchaseRequests.push({
                                     productId: newId, quantity: qty, purchaseRate: rate, supplierId: batchSupplierId,
                                     supplierName: supplier?.name, invoiceNumber: undefined,
@@ -487,6 +488,7 @@ export function useInventoryForm(
                                     notes: batch.notes ?? 'Opening stock from product creation',
                                     batchId: batch.id, batchNumber: batch.batchNumber,
                                     manufacturingDate: batch.manufacturingDate, expiryMonths: batch.expiryMonths, expiryDate: batch.expiryDate,
+                                    locationId: batchLocationId,
                                 });
                             }
                         } else if (shouldCreateSupplierPurchases) {
@@ -501,6 +503,7 @@ export function useInventoryForm(
                                     supplierName: supplier?.name, invoiceNumber: undefined,
                                     date: `${new Date().toLocaleDateString('en-CA')}T${new Date().toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}`,
                                     notes: 'Opening stock from product creation',
+                                    locationId: entry.locationId || 'loc-default',
                                 });
                             }
                         } else {
@@ -508,11 +511,13 @@ export function useInventoryForm(
                             if (totalQty > 0) {
                                 const fallbackSupplier = resolvedSupplierIds[0] ?? undefined;
                                 const supplier = suppliers.find(c => c.id === fallbackSupplier);
+                                const fallbackLocationId = resolvedSupplierStocks[0]?.locationId || 'loc-default';
                                 purchaseRequests.push({
                                     productId: newId, quantity: totalQty, purchaseRate: productData.purchaseRate || undefined,
                                     supplierId: fallbackSupplier, supplierName: supplier?.name, invoiceNumber: undefined,
                                     date: `${new Date().toLocaleDateString('en-CA')}T${new Date().toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}`,
                                     notes: 'Opening stock from product creation',
+                                    locationId: fallbackLocationId,
                                 });
                             }
                         }
@@ -538,11 +543,13 @@ export function useInventoryForm(
                         if (totalQty > 0) {
                             try {
                                 const fallbackSupplier = resolvedSupplierIds[0] ?? undefined;
+                                const fallbackLocationId = resolvedSupplierStocks[0]?.locationId || 'loc-default';
                                 const created = await createPurchasesForNewItem(storage, [{
                                     productId: newId!, quantity: totalQty,
                                     purchaseRate: productData.purchaseRate || undefined,
                                     supplierId: fallbackSupplier,
                                     notes: 'Opening stock from product creation',
+                                    locationId: fallbackLocationId,
                                 }] as any);
                                 created.forEach(p => { if (p?.id) createdPurchaseIds.push(p.id); });
                             } catch (err) {
