@@ -157,6 +157,8 @@ function Router() {
             <Route path="/credit" component={CreditList} />
             <Route path="/credit/new" component={CreditForm} />
             <Route path="/credit/:id" component={CreditDetail} />
+            <Route path="/credit/:id/edit" component={CreditForm} />
+
 
             <Route path="/payables" component={PayablesList} />
             <Route path="/payables/:id" component={PayableDetail} />

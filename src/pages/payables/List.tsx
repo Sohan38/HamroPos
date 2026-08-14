@@ -20,6 +20,7 @@ type FilterStatus = 'all' | 'unpaid' | 'partial';
 type DatePreset = 'all' | 'today' | 'yesterday' | '7days' | 'month' | 'custom';
 
 const PAGE_SIZE = 25;
+const INVOICE_PAGE_SIZE = 5; // how many invoices to show per supplier initially
 
 const DATE_PRESETS: Array<{ id: DatePreset; label: string }> = [
   { id: 'today', label: 'Today' },
@@ -78,6 +79,7 @@ export default function PayablesList() {
   const [customDateTo, setCustomDateTo] = useState('');
   const [displayCount, setDisplayCount] = useState(PAGE_SIZE);
   const [expandedSuppliers, setExpandedSuppliers] = useState<Set<string>>(new Set());
+  const [invoicePageMap, setInvoicePageMap] = useState<Record<string, number>>({});
 
   // Debounce search
   useEffect(() => {
@@ -85,9 +87,10 @@ export default function PayablesList() {
     return () => clearTimeout(t);
   }, [inputValue]);
 
-  // Reset display count when filters change
+  // Reset display count and invoice pagination when filters change
   useEffect(() => {
     setDisplayCount(PAGE_SIZE);
+    setInvoicePageMap({});
   }, [debouncedQuery, statusFilter, datePreset, customDateFrom, customDateTo]);
 
   // Derived date range from preset (ISO prefix strings)
@@ -272,6 +275,13 @@ export default function PayablesList() {
     });
   }, []);
 
+  const loadMoreInvoices = useCallback((supplierId: string) => {
+    setInvoicePageMap(prev => ({
+      ...prev,
+      [supplierId]: (prev[supplierId] ?? INVOICE_PAGE_SIZE) + INVOICE_PAGE_SIZE,
+    }));
+  }, []);
+
   const statusConfig = {
     unpaid: {
       label: 'Unpaid',
@@ -450,6 +460,9 @@ export default function PayablesList() {
               const progressPct = summary.totalInvoiceAmount > 0
                 ? Math.min(100, (summary.totalPaid / summary.totalInvoiceAmount) * 100)
                 : 0;
+              const invoiceLimit = invoicePageMap[summary.supplierId] ?? INVOICE_PAGE_SIZE;
+              const visibleInvoices = summary.invoices.slice(0, invoiceLimit);
+              const remainingInvoices = summary.invoices.length - invoiceLimit;
 
               return (
                 <Card key={summary.supplierId} className="shadow-sm hover:shadow-md transition-shadow">
@@ -509,10 +522,10 @@ export default function PayablesList() {
                     </div>
                   </div>
 
-                  {/* Expanded invoices */}
+                  {/* Expanded invoices with pagination */}
                   {isExpanded && (
                     <div className="border-t border-border/60 divide-y">
-                      {summary.invoices.map(invoice => {
+                      {visibleInvoices.map(invoice => {
                         const paid = Number(invoice.paidAmount ?? 0);
                         const remaining = Math.max(0, Number(invoice.grandTotal ?? 0) - paid);
                         const ps = invoice.paymentStatus ?? (paid > 0 ? 'partial' : 'unpaid');
@@ -547,6 +560,23 @@ export default function PayablesList() {
                           </div>
                         );
                       })}
+
+                      {remainingInvoices > 0 && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="w-full text-xs"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            loadMoreInvoices(summary.supplierId);
+                          }}
+                        >
+                          Load {Math.min(INVOICE_PAGE_SIZE, remainingInvoices)} more invoice{remainingInvoices !== 1 ? 's' : ''}
+                          <span className="text-muted-foreground text-xs ml-1">
+                            ({remainingInvoices} remaining)
+                          </span>
+                        </Button>
+                      )}
                     </div>
                   )}
                 </Card>
@@ -554,7 +584,7 @@ export default function PayablesList() {
             })}
           </div>
 
-          {/* Load more */}
+          {/* Load more suppliers */}
           {hasMore && (
             <div className="flex flex-col items-center gap-1 pt-2">
               <Button variant="outline" className="w-full sm:w-auto gap-2" onClick={loadMore}>
@@ -565,7 +595,7 @@ export default function PayablesList() {
             </div>
           )}
 
-          {/* End of list */}
+          {/* End of suppliers */}
           {!hasMore && supplierSummaries.length > PAGE_SIZE && (
             <p className="text-center text-xs text-muted-foreground py-2">
               All {supplierSummaries.length} suppliers shown

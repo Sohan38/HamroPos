@@ -20,6 +20,7 @@ type FilterStatus = 'all' | 'pending' | 'partial' | 'paid';
 type DatePreset = 'all' | 'today' | 'yesterday' | '7days' | 'month' | 'custom';
 
 const PAGE_SIZE = 25;
+const CREDIT_PAGE_SIZE = 5; // initial credits per expanded customer
 
 const DATE_PRESETS: Array<{ id: DatePreset; label: string }> = [
   { id: 'today', label: 'Today' },
@@ -78,6 +79,7 @@ export default function CreditList() {
   const [customDateTo, setCustomDateTo] = useState('');
   const [displayCount, setDisplayCount] = useState(PAGE_SIZE);
   const [expandedCustomers, setExpandedCustomers] = useState<Set<string>>(new Set());
+  const [creditPageMap, setCreditPageMap] = useState<Record<string, number>>({});
 
   // Debounce search
   useEffect(() => {
@@ -85,9 +87,10 @@ export default function CreditList() {
     return () => clearTimeout(t);
   }, [inputValue]);
 
-  // Reset display count on filter changes
+  // Reset display count and credit pagination on filter changes
   useEffect(() => {
     setDisplayCount(PAGE_SIZE);
+    setCreditPageMap({});
   }, [debouncedQuery, statusFilter, datePreset, customDateFrom, customDateTo]);
 
   // Derived date range from preset (ISO prefix strings)
@@ -266,6 +269,13 @@ export default function CreditList() {
       else next.add(key);
       return next;
     });
+  }, []);
+
+  const loadMoreCredits = useCallback((customerKey: string) => {
+    setCreditPageMap(prev => ({
+      ...prev,
+      [customerKey]: (prev[customerKey] ?? CREDIT_PAGE_SIZE) + CREDIT_PAGE_SIZE,
+    }));
   }, []);
 
   const statusConfig = {
@@ -464,6 +474,9 @@ export default function CreditList() {
               const progressPct = summary.totalAmount > 0
                 ? Math.min(100, (summary.totalReceived / summary.totalAmount) * 100)
                 : 0;
+              const creditLimit = creditPageMap[summary.key] ?? CREDIT_PAGE_SIZE;
+              const visibleCredits = summary.credits.slice(0, creditLimit);
+              const remainingCredits = summary.credits.length - creditLimit;
 
               return (
                 <Card key={summary.key} className="shadow-sm hover:shadow-md transition-shadow">
@@ -532,10 +545,10 @@ export default function CreditList() {
                     </div>
                   </div>
 
-                  {/* Expanded individual credits */}
+                  {/* Expanded individual credits with pagination */}
                   {isExpanded && (
                     <div className="border-t border-border/60 divide-y">
-                      {summary.credits.map(credit => {
+                      {visibleCredits.map(credit => {
                         const paid = Number(credit.paidAmount ?? 0);
                         const remaining = Math.max(0, Number(credit.amount ?? 0) - paid);
                         const statusCfg = statusConfig[credit.status] ?? statusConfig.pending;
@@ -577,6 +590,23 @@ export default function CreditList() {
                           </div>
                         );
                       })}
+
+                      {remainingCredits > 0 && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="w-full text-xs"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            loadMoreCredits(summary.key);
+                          }}
+                        >
+                          Load {Math.min(CREDIT_PAGE_SIZE, remainingCredits)} more credit{remainingCredits !== 1 ? 's' : ''}
+                          <span className="text-muted-foreground text-xs ml-1">
+                            ({remainingCredits} remaining)
+                          </span>
+                        </Button>
+                      )}
                     </div>
                   )}
                 </Card>
@@ -584,7 +614,7 @@ export default function CreditList() {
             })}
           </div>
 
-          {/* Load more */}
+          {/* Load more customers */}
           {hasMore && (
             <div className="flex flex-col items-center gap-1 pt-2">
               <Button variant="outline" className="w-full sm:w-auto gap-2" onClick={loadMore}>
@@ -595,7 +625,7 @@ export default function CreditList() {
             </div>
           )}
 
-          {/* End of list */}
+          {/* End of customers */}
           {!hasMore && customerSummaries.length > PAGE_SIZE && (
             <p className="text-center text-xs text-muted-foreground py-2">
               All {customerSummaries.length} customers shown

@@ -11,7 +11,7 @@ import { PaymentMethodPicker, SettlePaymentMethod } from '@/components/PaymentMe
 import {
   ArrowLeft, User, Calendar, Banknote, CheckCircle2,
   Clock, TrendingDown, History, ChevronRight, Phone,
-  FileText, AlertCircle, ShoppingBag, CreditCard,
+  FileText, AlertCircle, ShoppingBag, CreditCard, Pencil
 } from 'lucide-react';
 import { format as formatDate, parseISO } from 'date-fns';
 import { toast } from 'sonner';
@@ -125,18 +125,40 @@ export default function CreditDetail() {
   return (
     <div className="p-4 md:p-6 space-y-5 max-w-2xl mx-auto pb-24 md:pb-8">
       {/* ── Header ── */}
+      {/* ── Header ── */}
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={goBack} aria-label="Back">
+        <Button variant="ghost" size="icon" onClick={goBack} aria-label="Back" className="shrink-0">
           <ArrowLeft className="h-5 w-5" />
         </Button>
+
         <div className="min-w-0 flex-1">
-          <h1 className="text-xl md:text-2xl font-bold truncate">{credit.customerName}</h1>
-          <p className="text-sm text-muted-foreground">{credit.description}</p>
+          <h1
+            className="text-lg md:text-xl font-bold truncate leading-tight"
+            title={credit.customerName}
+          >
+            {credit.customerName}
+          </h1>
+          <p className="text-sm text-muted-foreground truncate mt-0.5" title={credit.description}>
+            {credit.description}
+          </p>
         </div>
+
+        {/* Status badge */}
         <Badge variant="outline" className={cn('flex items-center gap-1.5 shrink-0', status.className)}>
           {status.icon}
           {status.label}
         </Badge>
+
+        {/* Edit button */}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setLocation(`/credit/${credit.id}/edit`)}
+          aria-label="Edit credit"
+          className="shrink-0"
+        >
+          <Pencil className="h-4 w-4" />
+        </Button>
       </div>
 
       {/* ── Amount summary ── */}
