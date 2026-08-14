@@ -46,7 +46,7 @@ export function ConsumptionList() {
     // Filter and search
     const filteredConsumptions = useMemo(() => {
         return consumptions
-            .filter(c => c.deletedAt === null)
+            .filter(c => !c.deletedAt)
             .filter(c => {
                 // Search filter
                 if (searchTerm) {
@@ -130,7 +130,7 @@ export function ConsumptionList() {
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="">All Locations</SelectItem>
-                                    {locations.filter(l => (l.status ?? 'active') !== 'inactive').map(location => (
+                                    {locations.filter(l => l.status !== 'inactive').map(location => (
                                         <SelectItem key={location.id} value={location.id}>
                                             {location.name}
                                         </SelectItem>

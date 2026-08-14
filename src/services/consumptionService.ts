@@ -112,12 +112,13 @@ export class ConsumptionService {
                 selectedBatch = productBatches[0];
             }
 
-            if (!selectedBatch) {
+            // ONLY throw if batches are enabled and product has expiry tracking, or if we have batches
+            if (product.hasExpiry && !selectedBatch) {
                 throw new Error(`No stock available for product ${product.name} at location ${params.locationId}`);
             }
 
             // Check available quantity
-            if (selectedBatch.quantity < input.quantity) {
+            if (selectedBatch && selectedBatch.quantity < input.quantity) {
                 throw new Error(
                     `Insufficient stock for ${product.name}. Available: ${selectedBatch.quantity} ${product.unit}, ` +
                     `Requested: ${input.quantity} ${product.unit}`
@@ -136,8 +137,8 @@ export class ConsumptionService {
                 );
             }
 
-            // Calculate cost from batch's purchase rate
-            const unitCost = selectedBatch.purchaseRate;
+            // Calculate cost from batch's purchase rate or product rate
+            const unitCost = selectedBatch ? selectedBatch.purchaseRate : (product.purchaseRate ?? 0);
             const itemTotalCost = input.quantity * unitCost;
             totalCost += itemTotalCost;
 
@@ -147,8 +148,8 @@ export class ConsumptionService {
                 productName: product.name,
                 quantity: input.quantity,
                 unit: product.unit,
-                batchId: selectedBatch.id,
-                batchNumber: selectedBatch.batchNumber,
+                batchId: selectedBatch?.id ?? null,
+                batchNumber: selectedBatch?.batchNumber ?? null,
                 unitCost,
                 totalCost: itemTotalCost,
             });
@@ -161,7 +162,7 @@ export class ConsumptionService {
                 movementType: 'consumption',
                 sourceLocationId: params.locationId,
                 quantity: input.quantity,
-                batchId: selectedBatch.id,
+                batchId: selectedBatch?.id ?? null,
                 referenceId: referenceNumber,
                 notes: params.notes,
                 status: 'completed',
@@ -172,13 +173,15 @@ export class ConsumptionService {
             });
 
             // Prepare stock updates
-            // Update batch quantity
-            const batchUpdateData: Partial<ProductBatch> = {
-                quantity: Math.max(0, selectedBatch.quantity - input.quantity),
-                updatedAt: new Date().toISOString(),
-                version: (selectedBatch.version || 0) + 1,
-            };
-            batchUpdates.set(selectedBatch.id, batchUpdateData);
+            // Update batch quantity only if batch exists
+            if (selectedBatch) {
+                const batchUpdateData: Partial<ProductBatch> = {
+                    quantity: Math.max(0, selectedBatch.quantity - input.quantity),
+                    updatedAt: new Date().toISOString(),
+                    version: (selectedBatch.version || 0) + 1,
+                };
+                batchUpdates.set(selectedBatch.id, batchUpdateData);
+            }
 
             // Update location stock only if the record exists
             // (products created before location tracking may not have location stock records)
