@@ -75,6 +75,13 @@ export const productSchema = z.object({
     .optional(),
 
   imageBase64: z.string().optional(),
+
+  // Product capabilities — what can this product be used for?
+  purchasable: z.boolean().optional(),
+  availableForPOS: z.boolean().optional(),
+  consumable: z.boolean().optional(),
+  productionOutput: z.boolean().optional(),
+  availableInMenu: z.boolean().optional(),
 });
 
 export type ProductFormValues = z.infer<typeof productSchema>;

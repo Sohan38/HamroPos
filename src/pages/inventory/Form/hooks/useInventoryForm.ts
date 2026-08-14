@@ -98,6 +98,12 @@ export function useInventoryForm(
             brand: existingProduct.brand ?? '',
             notes: existingProduct.notes ?? '',
             imageBase64: existingProduct.imageBase64 ?? '',
+            // Product capabilities — backward compat: existing products default to purchasable + POS-enabled
+            purchasable: existingProduct.purchasable ?? true,
+            availableForPOS: existingProduct.availableForPOS ?? true,
+            consumable: existingProduct.consumable ?? false,
+            productionOutput: existingProduct.productionOutput ?? false,
+            availableInMenu: existingProduct.availableInMenu ?? false,
         } : {
             name: '', barcode: '', category: '', brand: '',
             supplierIds: supplierIdFromQuery ? [supplierIdFromQuery] : [],
@@ -114,6 +120,12 @@ export function useInventoryForm(
             variants: [],
             notes: '',
             imageBase64: '',
+            // New products default to purchasable + POS-enabled, others off
+            purchasable: true,
+            availableForPOS: true,
+            consumable: false,
+            productionOutput: false,
+            availableInMenu: false,
         },
     });
 

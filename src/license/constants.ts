@@ -84,6 +84,12 @@ export const ALL_MODULES = [
   // Hospitality
   'hospitality.hotelGrid',
   'hospitality.restaurantBilling',
+
+  // Production / Transformation
+  'production.enabled',
+
+  // Consumption
+  'consumption.enabled',
 ] as const;
 
 /** Type-safe module identifier union. */

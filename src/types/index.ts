@@ -38,6 +38,12 @@ export interface Product extends StorageRecord {
   supplierStocks?: SupplierProductRecord[]; // per-supplier stock (drives total when multiple suppliers)
   notes: string;
   imageBase64?: string;
+  // Product capabilities — what can this product be used for?
+  purchasable?: boolean;     // can be received via purchase invoices (default true for backward compat)
+  availableForPOS?: boolean; // can be sold in point-of-sale (default true for backward compat)
+  consumable?: boolean;      // can be consumed internally without creating output (default false)
+  productionOutput?: boolean; // can be created as output of production (default false)
+  availableInMenu?: boolean; // can appear as customer-facing menu item (default false)
 }
 
 /** A single received batch of a product — tracks supplier, dates, and remaining qty */
@@ -363,6 +369,12 @@ export interface FeatureConfig {
   hospitality: {
     hotelGrid: boolean;
     restaurantBilling: boolean;
+  };
+  production: {
+    enabled: boolean;      // production/transformation transactions
+  };
+  consumption: {
+    enabled: boolean;      // internal consumption tracking
   };
 }
 

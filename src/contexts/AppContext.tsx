@@ -35,6 +35,12 @@ const defaultFeatures: FeatureConfig = {
     hotelGrid: true,
     restaurantBilling: true,
   },
+  production: {
+    enabled: true,
+  },
+  consumption: {
+    enabled: true,
+  },
 };
 
 const defaultSettings: AppSettings = {

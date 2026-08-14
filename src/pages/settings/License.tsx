@@ -16,8 +16,31 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import { deviceService } from '@/license/DeviceService';
-import { Key, ShieldCheck, ShieldAlert, Cpu, Calendar, Building, HelpCircle, Lock, AlertCircle, RefreshCw } from 'lucide-react';
+import { Key, ShieldCheck, ShieldAlert, Cpu, Calendar, Building, HelpCircle, Lock, AlertCircle, RefreshCw, Factory, Utensils } from 'lucide-react';
 import { toast } from 'sonner';
+
+/**
+ * Human-readable module display names and descriptions
+ */
+const MODULE_DISPLAY_NAMES: Record<string, { name: string; description: string; icon?: React.ReactNode }> = {
+  'inventory.batches': { name: 'Batch Tracking', description: 'Track product batches and manufacturing dates' },
+  'inventory.expiry': { name: 'Expiry Management', description: 'Track and enforce expiration dates' },
+  'inventory.variants': { name: 'Product Variants', description: 'Support product sizes, colors, and variations' },
+  'inventory.serialNumbers': { name: 'Serial Numbers', description: 'Track individual item serial numbers' },
+  'inventory.barcodeSupport': { name: 'Barcode Support', description: 'Barcode scanning and generation' },
+  'inventory.multiUnits': { name: 'Multi-Unit Support', description: 'Support multiple units of measure per product' },
+  'sales.returns': { name: 'Sales Returns', description: 'Process product returns and refunds' },
+  'sales.creditSales': { name: 'Credit Sales', description: 'Extended payment terms and credit management' },
+  'sales.discounts': { name: 'Discounts', description: 'Apply discounts to sales' },
+  'sales.layaway': { name: 'Layaway Orders', description: 'Hold orders for later pickup' },
+  'sales.quotations': { name: 'Quotations', description: 'Generate and manage sales quotes' },
+  'customers.loyalty': { name: 'Loyalty Program', description: 'Customer loyalty and points system' },
+  'customers.membership': { name: 'Memberships', description: 'Customer membership tiers and benefits' },
+  'hospitality.hotelGrid': { name: 'Hotel Grid', description: 'Hotel room management interface' },
+  'hospitality.restaurantBilling': { name: 'Restaurant Billing', description: 'Restaurant table and billing management' },
+  'production.enabled': { name: 'Production & Transformation', description: 'Create and track production transactions' },
+  'consumption.enabled': { name: 'Internal Consumption', description: 'Track internal consumption without sales' },
+};
 
 export default function LicenseCard() {
   const { state, activate, deactivate } = useLicense();
@@ -251,21 +274,30 @@ export default function LicenseCard() {
           </h4>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
             {ALL_MODULES.map((modId) => {
-              const [domain, flag] = modId.split('.');
               const isEnabled = state.isUsable && (state.status === 'trial' || (state.license?.enabledModules.includes(modId) ?? false));
+              const displayInfo = MODULE_DISPLAY_NAMES[modId] || { name: modId, description: '' };
+              
               return (
                 <div
                   key={modId}
-                  className={`flex items-center justify-between px-3 py-2 rounded-md text-xs border ${
+                  className={`flex flex-col gap-1.5 px-3 py-2 rounded-md text-xs border transition-colors ${
                     isEnabled
-                      ? 'bg-emerald-500/5 border-emerald-500/20 text-emerald-800 dark:text-emerald-300'
-                      : 'bg-muted/40 border-border text-muted-foreground'
+                      ? 'bg-emerald-500/5 border-emerald-500/20'
+                      : 'bg-muted/40 border-border'
                   }`}
+                  title={displayInfo.description}
                 >
-                  <span className="capitalize">{domain} &rarr; {flag.replace(/([A-Z])/g, ' $1')}</span>
-                  <Badge variant={isEnabled ? 'outline' : 'secondary'} className={isEnabled ? 'border-emerald-500/30 text-emerald-600 bg-emerald-500/5' : 'text-muted-foreground'}>
-                    {isEnabled ? 'Unlocked' : 'Locked'}
-                  </Badge>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`font-semibold ${isEnabled ? 'text-emerald-700 dark:text-emerald-300' : 'text-muted-foreground'}`}>
+                      {displayInfo.name}
+                    </span>
+                    <Badge variant={isEnabled ? 'outline' : 'secondary'} className={isEnabled ? 'border-emerald-500/30 text-emerald-600 bg-emerald-500/5' : 'text-muted-foreground'}>
+                      {isEnabled ? '✓ Unlocked' : '◯ Locked'}
+                    </Badge>
+                  </div>
+                  <p className={`text-[10px] leading-tight ${isEnabled ? 'text-emerald-600/70 dark:text-emerald-400/70' : 'text-muted-foreground/60'}`}>
+                    {displayInfo.description}
+                  </p>
                 </div>
               );
             })}

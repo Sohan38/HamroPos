@@ -10,6 +10,7 @@ import { SupplierSection } from '../SupplierSection';
 import { PricingSection } from '../PricingSection';
 import { StockSection } from '../StockSection';
 import { NotesSection } from '../NotesSection';
+import { ProductCapabilitiesSection } from '../ProductCapabilitiesSection';
 import { PurchaseCaptureSection } from '@/components/PurchaseCaptureSection';
 
 
@@ -183,6 +184,15 @@ export function useInventoryFormSteps(
                 </>
             ),
             fields: ['purchaseRate', 'sellingRate', 'quantity', 'minimumStock'],
+        });
+
+        result.push({
+            id: 'capabilities',
+            label: 'Capabilities',
+            content: (
+                <ProductCapabilitiesSection form={form} />
+            ),
+            fields: ['purchasable', 'availableForPOS', 'consumable', 'productionOutput', 'availableInMenu'],
         });
 
         result.push({
