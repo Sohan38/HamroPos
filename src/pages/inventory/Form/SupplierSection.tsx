@@ -59,7 +59,7 @@ export const SupplierSection = React.memo(({ form, isNew, suppliers, existingPur
     const next = selectedSupplierIds.filter(s => s !== sid);
     form.setValue('supplierIds', next, { shouldDirty: true });
     const currentStocks: any[] = form.getValues('supplierStocks') ?? [];
-    form.setValue('supplierStocks', currentStocks.filter((ss: any) => !(ss.supplierId === sid && (ss.locationId || 'loc-default') === 'loc-default')), { shouldDirty: true });
+    form.setValue('supplierStocks', currentStocks.filter((ss: any) => ss.supplierId !== sid), { shouldDirty: true });
   }, [selectedSupplierIds, form]);
 
   const updateSupplierStock = useCallback((supplierId: string, field: string, value: string | number | undefined, currentLocationId = 'loc-default') => {
@@ -156,8 +156,10 @@ export const SupplierSection = React.memo(({ form, isNew, suppliers, existingPur
               {selectedSupplierIds.map((sid, idx) => {
                 const supplier = suppliers.find(s => s.id === sid);
                 if (!supplier) return null;
-                const stockEntry = supplierStocks.find((ss: any) => ss.supplierId === sid && (ss.locationId || 'loc-default') === 'loc-default')
+                const stockEntry = supplierStocks.find((ss: any) => ss.supplierId === sid)
                   ?? { supplierId: sid, locationId: 'loc-default', cost: 0, stock: 0, supplierSku: '', reorderLevel: undefined };
+
+                const currentLocId = stockEntry.locationId || 'loc-default';
 
                 return (
                   <div key={sid} className="rounded-2xl border bg-card shadow-sm overflow-hidden">
@@ -185,8 +187,8 @@ export const SupplierSection = React.memo(({ form, isNew, suppliers, existingPur
                       <div className="space-y-1.5">
                         <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Location</Label>
                         <Select
-                          value={stockEntry.locationId || 'loc-default'}
-                          onValueChange={(nextLocationId) => updateSupplierStock(sid, 'locationId', nextLocationId, stockEntry.locationId || 'loc-default')}
+                          value={currentLocId}
+                          onValueChange={(nextLocationId) => updateSupplierStock(sid, 'locationId', nextLocationId, currentLocId)}
                         >
                           <SelectTrigger className="h-10 text-sm">
                             <SelectValue placeholder="Location" />
@@ -208,7 +210,7 @@ export const SupplierSection = React.memo(({ form, isNew, suppliers, existingPur
                           <Input
                             type="number" min={0} placeholder="0"
                             value={stockEntry.stock === 0 ? '' : stockEntry.stock}
-                            onChange={e => updateSupplierStock(sid, 'stock', e.target.value === '' ? 0 : Number(e.target.value))}
+                            onChange={e => updateSupplierStock(sid, 'stock', e.target.value === '' ? 0 : Number(e.target.value), currentLocId)}
                             className="h-10 text-sm font-medium"
                             readOnly={!isNew || !isMultiSupplier}
                             disabled={!isNew || !isMultiSupplier}
@@ -224,7 +226,7 @@ export const SupplierSection = React.memo(({ form, isNew, suppliers, existingPur
                           <Input
                             type="number" min={0} placeholder="0.00"
                             value={stockEntry.cost === 0 ? '' : stockEntry.cost}
-                            onChange={e => updateSupplierStock(sid, 'cost', e.target.value === '' ? 0 : Number(e.target.value))}
+                            onChange={e => updateSupplierStock(sid, 'cost', e.target.value === '' ? 0 : Number(e.target.value), currentLocId)}
                             className="h-10 text-sm font-medium"
                             readOnly={!isNew}
                             disabled={!isNew}
@@ -240,7 +242,7 @@ export const SupplierSection = React.memo(({ form, isNew, suppliers, existingPur
                           <Input
                             type="text" placeholder="Auto-generated invoice"
                             value={stockEntry.supplierSku ?? ''}
-                            onChange={e => updateSupplierStock(sid, 'supplierSku', e.target.value)}
+                            onChange={e => updateSupplierStock(sid, 'supplierSku', e.target.value, currentLocId)}
                             className="h-10 text-sm"
                           />
                         </div>
@@ -251,7 +253,7 @@ export const SupplierSection = React.memo(({ form, isNew, suppliers, existingPur
                           <Input
                             type="number" min={0} placeholder="e.g. 10"
                             value={stockEntry.reorderLevel == null ? '' : stockEntry.reorderLevel}
-                            onChange={e => updateSupplierStock(sid, 'reorderLevel', e.target.value === '' ? undefined : Number(e.target.value))}
+                            onChange={e => updateSupplierStock(sid, 'reorderLevel', e.target.value === '' ? undefined : Number(e.target.value), currentLocId)}
                             className="h-10 text-sm"
                           />
                         </div>
