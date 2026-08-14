@@ -1,16 +1,22 @@
 import React, { useMemo } from 'react';
 import { useParams } from 'wouter';
+import { toast } from 'sonner';
 import { useSmartBack } from '@/contexts/NavigationContext';
-import { useConsumptions, useLocations } from '@/contexts/GlobalProviders';
+import { useConsumptions, useLocations, useInventory, useProductBatches, useInventoryLocationStocks, useInventoryMovements } from '@/contexts/GlobalProviders';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { ConsumptionService } from '@/services/consumptionService';
 import { ArrowLeft, Calendar, MapPin, FileText } from 'lucide-react';
 
 export function ConsumptionDetail() {
     const goBack = useSmartBack('/inventory/consumption');
     const { id } = useParams<{ id: string }>();
-    const { items: consumptions } = useConsumptions();
+    const { items: consumptions, update: updateConsumption } = useConsumptions();
     const { items: locations } = useLocations();
+    const { items: products, update: updateProduct } = useInventory();
+    const { items: batches, update: updateBatch } = useProductBatches();
+    const { items: locationStocks, update: updateLocationStock } = useInventoryLocationStocks();
+    const { add: addMovement } = useInventoryMovements();
 
     const consumption = useMemo(() => {
         return consumptions.find(c => c.id === id && c.deletedAt === null);
@@ -33,6 +39,54 @@ export function ConsumptionDetail() {
     }
 
     const location = locations.find(l => l.id === consumption.locationId);
+    const isReversible = consumption.status === 'completed';
+
+    const handleReverse = async () => {
+        if (!consumption || !isReversible) return;
+
+        const confirmed = window.confirm(
+            `Reverse ${consumption.referenceNumber}? The original consumption record will remain in history and the consumed stock will be restored.`
+        );
+
+        if (!confirmed) return;
+
+        try {
+            const reversal = ConsumptionService.prepareReversal(
+                consumption,
+                products,
+                batches,
+                locationStocks
+            );
+
+            for (const [productId, productUpdates] of reversal.productUpdates) {
+                await updateProduct(productId, productUpdates);
+            }
+
+            for (const [batchId, batchUpdates] of reversal.batchUpdates) {
+                await updateBatch(batchId, batchUpdates);
+            }
+
+            for (const [stockId, stockUpdates] of reversal.stockUpdates) {
+                await updateLocationStock(stockId, stockUpdates);
+            }
+
+            for (const movement of reversal.reversalMovements) {
+                await addMovement(movement);
+            }
+
+            await updateConsumption(consumption.id, {
+                status: 'reversed',
+                updatedAt: new Date().toISOString(),
+                version: (consumption.version || 0) + 1,
+            });
+
+            toast.success(`Consumption ${consumption.referenceNumber} reversed successfully.`);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to reverse consumption';
+            toast.error(message);
+        }
+    };
+
     const formatDate = (dateStr: string) => {
         const date = new Date(dateStr);
         return date.toLocaleDateString('en-NP', {
@@ -171,6 +225,22 @@ export function ConsumptionDetail() {
                         <div>Reference ID: {consumption.id}</div>
                     </CardContent>
                 </Card>
+
+                {isReversible && (
+                    <Card className="border-amber-200 bg-amber-50/50">
+                        <CardContent className="pt-6 space-y-3">
+                            <div>
+                                <h3 className="text-lg font-semibold">Reverse Consumption</h3>
+                                <p className="text-sm text-muted-foreground mt-1">
+                                    This keeps the original record in history and restores the consumed stock.
+                                </p>
+                            </div>
+                            <Button variant="destructive" onClick={handleReverse}>
+                                Reverse Consumption
+                            </Button>
+                        </CardContent>
+                    </Card>
+                )}
 
                 {/* Back Button */}
                 <div className="flex justify-center pt-4">

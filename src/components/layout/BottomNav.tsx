@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'wouter';
-import { Home, Package, ShoppingCart, Hotel, MoreHorizontal, Settings, Users, Truck, FileText, UtensilsCrossed, Receipt, Wallet, Banknote, ArrowUpFromLine } from 'lucide-react';
+import { Home, Package, ShoppingCart, Hotel, MoreHorizontal, Settings, Users, Truck, FileText, UtensilsCrossed, Receipt, Wallet, Banknote, ArrowUpFromLine, Utensils } from 'lucide-react';
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
@@ -12,6 +12,7 @@ export function BottomNav() {
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const isHotelEnabled = useFeature('hospitality', 'hotelGrid');
   const isRestaurantEnabled = useFeature('hospitality', 'restaurantBilling');
+  const isConsumptionEnabled = useFeature('consumption', 'enabled');
 
   useBackModal(isMoreOpen, () => setIsMoreOpen(false), 'bottom-nav-more');
 
@@ -33,6 +34,7 @@ export function BottomNav() {
   const moreNavItems = [
     { href: '/purchases', label: 'Purchases', icon: Truck, show: true },
     { href: '/dispositions', label: 'Dispositions', icon: FileText, show: true },
+    { href: '/inventory/consumption', label: 'Consumption', icon: Utensils, show: isConsumptionEnabled },
     { href: '/restaurant', label: 'Restaurant', icon: UtensilsCrossed, show: isRestaurantEnabled },
     { href: '/expenses', label: 'Expenses', icon: Receipt, show: true },
     { href: '/cash-book', label: 'Cash Book', icon: Wallet, show: true },

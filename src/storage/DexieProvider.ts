@@ -13,6 +13,8 @@ const COLLECTION_KEYS = [
   'locations',
   'inventoryLocationStocks',
   'inventoryMovements',
+  'consumptions',
+  'productions',
   'suppliers',
   'customers',
   'sales',
@@ -60,7 +62,7 @@ class SohanDB extends Dexie {
       schema[key] = 'id, deletedAt, updatedAt';
     }
 
-    this.version(1).stores(schema);
+    this.version(2).stores(schema);
   }
 }
 
@@ -255,6 +257,8 @@ export class DexieProvider implements IStorageProvider {
         },
         customers: { loyalty: true, membership: true },
         hospitality: { hotelGrid: true, restaurantBilling: true },
+        production: { enabled: true },
+        consumption: { enabled: true },
       },
     };
   }
@@ -375,10 +379,21 @@ export class DexieProvider implements IStorageProvider {
       const row = await db.settings.get('settings');
       if (row?.value && typeof row.value === 'object') {
         const defaults = this.defaultSettings;
+        const featureDomains = Object.keys(defaults.features) as Array<keyof typeof defaults.features>;
+        const mergedFeatures = Object.fromEntries(
+          featureDomains.map((domain) => [
+            domain,
+            {
+              ...(defaults.features[domain] ?? {}),
+              ...((row.value.features && row.value.features[domain]) ?? {}),
+            },
+          ])
+        );
+
         const settings = {
           ...defaults,
           ...row.value,
-          features: { ...defaults.features, ...row.value.features },
+          features: mergedFeatures,
         };
         if (!settings.defaultLocationId) {
           settings.defaultLocationId = defaults.defaultLocationId;

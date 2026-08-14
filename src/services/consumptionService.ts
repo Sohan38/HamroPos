@@ -1,4 +1,5 @@
 import { ConsumptionTransaction, ConsumptionItem, Product, ProductBatch, InventoryLocationStock, InventoryMovement, ProductUnit } from '../types';
+import { getLocationStockForProduct } from '../lib/locationStock';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
@@ -29,6 +30,7 @@ export interface ConsumptionCreationResult {
     movements: InventoryMovement[];
     stockUpdates: Map<string, Partial<InventoryLocationStock>>; // key: locStock.id
     batchUpdates: Map<string, Partial<ProductBatch>>; // key: batch.id
+    productUpdates: Map<string, Partial<Product>>; // key: product.id
 }
 
 /**
@@ -72,6 +74,7 @@ export class ConsumptionService {
         const movements: InventoryMovement[] = [];
         const stockUpdates = new Map<string, Partial<InventoryLocationStock>>();
         const batchUpdates = new Map<string, Partial<ProductBatch>>();
+        const productUpdates = new Map<string, Partial<Product>>();
         let totalCost = 0;
 
         for (const input of params.items) {
@@ -81,8 +84,9 @@ export class ConsumptionService {
                 throw new Error(`Product ${input.productId} not found`);
             }
 
-            // Ensure product is consumable
-            if (!product.consumable) {
+            // Legacy products may not have the consumable flag set yet.
+            // Treat undefined as consumable for backward compatibility.
+            if (product.consumable === false) {
                 throw new Error(`Product ${product.name} is not marked as consumable`);
             }
 
@@ -120,12 +124,16 @@ export class ConsumptionService {
                 );
             }
 
-            // Get location stock for this product
+            // Get location stock for this product, including legacy supplierStock fallbacks.
             const locStock = locationStocks.find(
                 ls => ls.productId === input.productId && ls.locationId === params.locationId
             );
-            if (!locStock) {
-                throw new Error(`No stock record for product ${product.name} at location ${params.locationId}`);
+            const availableQuantity = getLocationStockForProduct(product, params.locationId, locationStocks) || product.quantity;
+            if (availableQuantity < input.quantity) {
+                throw new Error(
+                    `Insufficient stock for ${product.name}. Available: ${availableQuantity} ${product.unit}, ` +
+                    `Requested: ${input.quantity} ${product.unit}`
+                );
             }
 
             // Calculate cost from batch's purchase rate
@@ -172,14 +180,34 @@ export class ConsumptionService {
             };
             batchUpdates.set(selectedBatch.id, batchUpdateData);
 
-            // Update location stock - use actual locStock.id as key
-            const updatedLocStock: Partial<InventoryLocationStock> = {
-                quantity: Math.max(0, locStock.quantity - input.quantity),
-                lastMovementAt: new Date().toISOString(),
+            // Update location stock only if the record exists
+            // (products created before location tracking may not have location stock records)
+            if (locStock) {
+                const updatedLocStock: Partial<InventoryLocationStock> = {
+                    quantity: Math.max(0, locStock.quantity - input.quantity),
+                    lastMovementAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                    version: (locStock.version || 0) + 1,
+                };
+                stockUpdates.set(locStock.id, updatedLocStock);
+            }
+
+            // Track product quantity reduction
+            const currentProductUpdate = productUpdates.get(product.id) || {
+                quantity: product.quantity,
                 updatedAt: new Date().toISOString(),
-                version: (locStock.version || 0) + 1,
+                version: (product.version || 0) + 1,
             };
-            stockUpdates.set(locStock.id, updatedLocStock);
+            const newProductQuantity = Math.max(
+                0,
+                Number(currentProductUpdate.quantity || product.quantity) - input.quantity
+            );
+            productUpdates.set(product.id, {
+                ...currentProductUpdate,
+                quantity: newProductQuantity,
+                updatedAt: new Date().toISOString(),
+                version: (product.version || 0) + 1,
+            });
         }
 
         // Create transaction
@@ -206,6 +234,7 @@ export class ConsumptionService {
             movements,
             stockUpdates,
             batchUpdates,
+            productUpdates,
         };
     }
 
@@ -226,17 +255,14 @@ export class ConsumptionService {
             return { valid: false, error: `Product not found` };
         }
 
-        // Check consumable flag
-        if (!product.consumable) {
+        // Legacy products may not have the consumable flag set yet.
+        // Treat undefined as consumable for backward compatibility.
+        if (product.consumable === false) {
             return { valid: false, error: `${product.name} is not marked as consumable` };
         }
 
-        // Check location stock exists
-        const locStock = locationStocks.find(
-            ls => ls.productId === productId && ls.locationId === locationId
-        );
-        if (!locStock || locStock.quantity < quantity) {
-            const available = locStock?.quantity ?? 0;
+        const available = getLocationStockForProduct(product, locationId, locationStocks) || product.quantity;
+        if (available < quantity) {
             return {
                 valid: false,
                 error: `Insufficient stock. Available: ${available} ${product.unit}, Needed: ${quantity} ${product.unit}`
@@ -244,5 +270,102 @@ export class ConsumptionService {
         }
 
         return { valid: true };
+    }
+
+    static prepareReversal(
+        transaction: ConsumptionTransaction,
+        products: Product[],
+        batches: ProductBatch[],
+        locationStocks: InventoryLocationStock[]
+    ): {
+        productUpdates: Map<string, Partial<Product>>;
+        batchUpdates: Map<string, Partial<ProductBatch>>;
+        stockUpdates: Map<string, Partial<InventoryLocationStock>>;
+        reversalMovements: InventoryMovement[];
+    } {
+        if (!transaction) {
+            throw new Error('Consumption transaction not found.');
+        }
+
+        if (transaction.deletedAt) {
+            throw new Error('Consumption transaction no longer exists.');
+        }
+
+        if (transaction.status === 'reversed') {
+            throw new Error('This consumption has already been reversed.');
+        }
+
+        if (transaction.status !== 'completed') {
+            throw new Error('Only completed consumptions can be reversed.');
+        }
+
+        const productUpdates = new Map<string, Partial<Product>>();
+        const batchUpdates = new Map<string, Partial<ProductBatch>>();
+        const stockUpdates = new Map<string, Partial<InventoryLocationStock>>();
+        const reversalMovements: InventoryMovement[] = [];
+
+        for (const item of transaction.items) {
+            const product = products.find(p => p.id === item.productId && p.deletedAt === null);
+            if (!product) {
+                throw new Error(`Product ${item.productName} could not be found for reversal.`);
+            }
+
+            const currentQty = Number(product.quantity ?? 0);
+            productUpdates.set(product.id, {
+                quantity: currentQty + Number(item.quantity ?? 0),
+                updatedAt: new Date().toISOString(),
+                version: (product.version || 0) + 1,
+            });
+
+            if (item.batchId) {
+                const batch = batches.find(
+                    b => b.id === item.batchId && b.productId === product.id && b.deletedAt === null
+                );
+
+                if (!batch) {
+                    throw new Error(`Batch ${item.batchNumber || item.batchId} for ${product.name} no longer exists.`);
+                }
+
+                const restoredBatchQty = Number(batch.quantity ?? 0) + Number(item.quantity ?? 0);
+                batchUpdates.set(batch.id, {
+                    quantity: restoredBatchQty,
+                    updatedAt: new Date().toISOString(),
+                    version: (batch.version || 0) + 1,
+                });
+            }
+
+            const stockRecord = locationStocks.find(
+                ls => ls.productId === product.id && ls.locationId === transaction.locationId && ls.deletedAt === null
+            );
+
+            if (stockRecord) {
+                const restoredStockQty = Number(stockRecord.quantity ?? 0) + Number(item.quantity ?? 0);
+                stockUpdates.set(stockRecord.id, {
+                    quantity: restoredStockQty,
+                    lastMovementAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                    version: (stockRecord.version || 0) + 1,
+                });
+            }
+
+            reversalMovements.push({
+                id: uuidv4(),
+                productId: product.id,
+                productName: product.name,
+                movementType: 'adjustment',
+                sourceLocationId: transaction.locationId,
+                quantity: Number(item.quantity ?? 0),
+                batchId: item.batchId ?? null,
+                referenceId: transaction.id,
+                notes: `Reversal of consumption ${transaction.referenceNumber}`,
+                status: 'completed',
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                deletedAt: null,
+                version: 1,
+            });
+        }
+
+        return { productUpdates, batchUpdates, stockUpdates, reversalMovements };
     }
 }

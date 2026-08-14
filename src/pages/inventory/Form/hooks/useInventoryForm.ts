@@ -435,6 +435,9 @@ export function useInventoryForm(
 
             const productData = {
                 ...data,
+                // Intentionally keep new product quantity at zero until the opening purchase
+                // adds the stock once. This avoids double-counting when the purchase logic
+                // increments both product.quantity and supplier stock for the same incoming stock.
                 quantity: isNew ? 0 : calculatedStock,
                 barcode: data.barcode ?? '',
                 brand: data.brand ?? '',

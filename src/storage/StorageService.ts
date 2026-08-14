@@ -140,7 +140,8 @@ export class LocalStorageProvider implements IStorageProvider {
     const allKeys = [
       'inventory', 'locations', 'settings', 'suppliers', 'customers', 'sales',
       'purchases', 'expenses', 'hotelRooms', 'productBatches', 'productBatchLocations',
-      'inventoryLocationStocks', 'inventoryMovements', 'hotelBills', 'restaurantBills', 'cashBook', 'credit', 'dispositions'
+      'inventoryLocationStocks', 'inventoryMovements', 'consumptions', 'productions',
+      'hotelBills', 'restaurantBills', 'cashBook', 'credit', 'dispositions'
     ];
 
     for (const key of allKeys) {
@@ -204,7 +205,7 @@ export class LocalStorageProvider implements IStorageProvider {
       // 4. Validate collections structure and populate missing ones with defaults
       const allKeys = [
         'inventory', 'locations', 'settings', 'suppliers', 'customers', 'sales',
-        'purchases', 'expenses', 'hotelRooms', 'productBatches',
+        'purchases', 'expenses', 'hotelRooms', 'productBatches', 'consumptions', 'productions',
         'hotelBills', 'restaurantBills', 'cashBook', 'credit', 'dispositions'
       ];
 

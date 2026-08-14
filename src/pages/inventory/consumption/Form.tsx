@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { toast } from 'sonner';
 import { useFeature } from '@/hooks/useFeature';
@@ -12,6 +12,7 @@ import {
     useInventoryMovements,
 } from '@/contexts/GlobalProviders';
 import { ConsumptionItemInput, ConsumptionService } from '@/services/consumptionService';
+import { getLocationStockForProduct } from '@/lib/locationStock';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -38,7 +39,7 @@ export function ConsumptionForm() {
     const consumptionEnabled = useFeature('consumption', 'enabled');
 
     // Storage hooks
-    const { items: products } = useInventory();
+    const { items: products, update: updateInventory } = useInventory();
     const { items: locations } = useLocations();
     const { items: batches } = useProductBatches();
     const { items: locationStocks, update: updateInventoryLocationStocks } = useInventoryLocationStocks();
@@ -72,17 +73,21 @@ export function ConsumptionForm() {
 
     // Get consumable products at selected location
     const consumableProducts = useMemo(() => {
-        return products.filter(p => p.consumable && p.deletedAt === null);
+        return products.filter(p => {
+            // Include products where consumable is explicitly true, OR undefined (legacy products before Phase 1)
+            // Only exclude if explicitly false
+            const isConsumable = p.consumable !== false;
+            return isConsumable && p.deletedAt === null;
+        });
     }, [products]);
 
     // Get products available at selected location
     const productsAtLocation = useMemo(() => {
         if (!selectedLocationId) return [];
         return consumableProducts.filter(p => {
-            const hasStock = locationStocks.some(
-                ls => ls.productId === p.id && ls.locationId === selectedLocationId && ls.quantity > 0
-            );
-            return hasStock;
+            const quantityAtLocation = getLocationStockForProduct(p, selectedLocationId, locationStocks);
+            const hasLegacyGlobalStock = p.quantity > 0;
+            return quantityAtLocation > 0 || hasLegacyGlobalStock;
         });
     }, [consumableProducts, selectedLocationId, locationStocks]);
 
@@ -229,6 +234,11 @@ export function ConsumptionForm() {
             // STEP 4: Apply batch stock mutations
             for (const [batchId, batchUpdates] of result.batchUpdates) {
                 await updateProductBatches(batchId, batchUpdates);
+            }
+
+            // STEP 5: Apply product quantity mutations
+            for (const [productId, productUpdates] of result.productUpdates) {
+                await updateInventory(productId, productUpdates);
             }
 
             toast.success(

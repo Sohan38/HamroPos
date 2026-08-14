@@ -35,127 +35,137 @@ export const ProductCapabilitiesSection = React.memo(({ form }: SectionProps) =>
             <div className="space-y-2.5">
                 {/* Purchasable */}
                 <FormField control={form.control} name="purchasable" render={({ field }) => (
-                    <Card className={`transition-colors ${purchasable ? 'border-primary/20 bg-primary/5' : 'bg-muted/30'}`}>
-                        <CardContent className="p-3.5 flex items-center justify-between gap-3">
-                            <div className="flex items-center gap-3 flex-1">
-                                <Box className="h-4 w-4 text-muted-foreground shrink-0" />
-                                <div className="min-w-0">
-                                    <FormLabel className="text-sm font-semibold cursor-pointer mb-0">
-                                        Purchasable
-                                    </FormLabel>
-                                    <FormDescription className="text-xs leading-tight mt-0.5">
-                                        Can be received via purchase invoices from suppliers
-                                    </FormDescription>
+                    <FormItem>
+                        <Card className={`transition-colors ${purchasable ? 'border-primary/20 bg-primary/5' : 'bg-muted/30'}`}>
+                            <CardContent className="p-3.5 flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-3 flex-1">
+                                    <Box className="h-4 w-4 text-muted-foreground shrink-0" />
+                                    <div className="min-w-0">
+                                        <FormLabel className="text-sm font-semibold cursor-pointer mb-0">
+                                            Purchasable
+                                        </FormLabel>
+                                        <FormDescription className="text-xs leading-tight mt-0.5">
+                                            Can be received via purchase invoices from suppliers
+                                        </FormDescription>
+                                    </div>
                                 </div>
-                            </div>
-                            <FormControl>
-                                <Switch
-                                    checked={field.value ?? true}
-                                    onCheckedChange={field.onChange}
-                                />
-                            </FormControl>
-                        </CardContent>
-                    </Card>
+                                <FormControl>
+                                    <Switch
+                                        checked={field.value ?? true}
+                                        onCheckedChange={field.onChange}
+                                    />
+                                </FormControl>
+                            </CardContent>
+                        </Card>
+                    </FormItem>
                 )} />
 
                 {/* Available for POS */}
                 <FormField control={form.control} name="availableForPOS" render={({ field }) => (
-                    <Card className={`transition-colors ${availableForPOS ? 'border-primary/20 bg-primary/5' : 'bg-muted/30'}`}>
-                        <CardContent className="p-3.5 flex items-center justify-between gap-3">
-                            <div className="flex items-center gap-3 flex-1">
-                                <ShoppingCart className="h-4 w-4 text-muted-foreground shrink-0" />
-                                <div className="min-w-0">
-                                    <FormLabel className="text-sm font-semibold cursor-pointer mb-0">
-                                        Available for POS
-                                    </FormLabel>
-                                    <FormDescription className="text-xs leading-tight mt-0.5">
-                                        Can be sold in point-of-sale transactions
-                                    </FormDescription>
+                    <FormItem>
+                        <Card className={`transition-colors ${availableForPOS ? 'border-primary/20 bg-primary/5' : 'bg-muted/30'}`}>
+                            <CardContent className="p-3.5 flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-3 flex-1">
+                                    <ShoppingCart className="h-4 w-4 text-muted-foreground shrink-0" />
+                                    <div className="min-w-0">
+                                        <FormLabel className="text-sm font-semibold cursor-pointer mb-0">
+                                            Available for POS
+                                        </FormLabel>
+                                        <FormDescription className="text-xs leading-tight mt-0.5">
+                                            Can be sold in point-of-sale transactions
+                                        </FormDescription>
+                                    </div>
                                 </div>
-                            </div>
-                            <FormControl>
-                                <Switch
-                                    checked={field.value ?? true}
-                                    onCheckedChange={field.onChange}
-                                />
-                            </FormControl>
-                        </CardContent>
-                    </Card>
+                                <FormControl>
+                                    <Switch
+                                        checked={field.value ?? true}
+                                        onCheckedChange={field.onChange}
+                                    />
+                                </FormControl>
+                            </CardContent>
+                        </Card>
+                    </FormItem>
                 )} />
 
                 {/* Consumable */}
                 <FormField control={form.control} name="consumable" render={({ field }) => (
-                    <Card className={`transition-colors ${consumable ? 'border-primary/20 bg-primary/5' : 'bg-muted/30'}`}>
-                        <CardContent className="p-3.5 flex items-center justify-between gap-3">
-                            <div className="flex items-center gap-3 flex-1">
-                                <Utensils className="h-4 w-4 text-muted-foreground shrink-0" />
-                                <div className="min-w-0">
-                                    <FormLabel className="text-sm font-semibold cursor-pointer mb-0">
-                                        Consumable
-                                    </FormLabel>
-                                    <FormDescription className="text-xs leading-tight mt-0.5">
-                                        Can be consumed internally without creating output
-                                    </FormDescription>
+                    <FormItem>
+                        <Card className={`transition-colors ${consumable ? 'border-primary/20 bg-primary/5' : 'bg-muted/30'}`}>
+                            <CardContent className="p-3.5 flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-3 flex-1">
+                                    <Utensils className="h-4 w-4 text-muted-foreground shrink-0" />
+                                    <div className="min-w-0">
+                                        <FormLabel className="text-sm font-semibold cursor-pointer mb-0">
+                                            Consumable
+                                        </FormLabel>
+                                        <FormDescription className="text-xs leading-tight mt-0.5">
+                                            Can be consumed internally without creating output
+                                        </FormDescription>
+                                    </div>
                                 </div>
-                            </div>
-                            <FormControl>
-                                <Switch
-                                    checked={field.value ?? false}
-                                    onCheckedChange={field.onChange}
-                                />
-                            </FormControl>
-                        </CardContent>
-                    </Card>
+                                <FormControl>
+                                    <Switch
+                                        checked={field.value ?? false}
+                                        onCheckedChange={field.onChange}
+                                    />
+                                </FormControl>
+                            </CardContent>
+                        </Card>
+                    </FormItem>
                 )} />
 
                 {/* Production Output */}
                 <FormField control={form.control} name="productionOutput" render={({ field }) => (
-                    <Card className={`transition-colors ${productionOutput ? 'border-primary/20 bg-primary/5' : 'bg-muted/30'}`}>
-                        <CardContent className="p-3.5 flex items-center justify-between gap-3">
-                            <div className="flex items-center gap-3 flex-1">
-                                <Factory className="h-4 w-4 text-muted-foreground shrink-0" />
-                                <div className="min-w-0">
-                                    <FormLabel className="text-sm font-semibold cursor-pointer mb-0">
-                                        Production Output
-                                    </FormLabel>
-                                    <FormDescription className="text-xs leading-tight mt-0.5">
-                                        Can be created as output of production/transformation
-                                    </FormDescription>
+                    <FormItem>
+                        <Card className={`transition-colors ${productionOutput ? 'border-primary/20 bg-primary/5' : 'bg-muted/30'}`}>
+                            <CardContent className="p-3.5 flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-3 flex-1">
+                                    <Factory className="h-4 w-4 text-muted-foreground shrink-0" />
+                                    <div className="min-w-0">
+                                        <FormLabel className="text-sm font-semibold cursor-pointer mb-0">
+                                            Production Output
+                                        </FormLabel>
+                                        <FormDescription className="text-xs leading-tight mt-0.5">
+                                            Can be created as output of production/transformation
+                                        </FormDescription>
+                                    </div>
                                 </div>
-                            </div>
-                            <FormControl>
-                                <Switch
-                                    checked={field.value ?? false}
-                                    onCheckedChange={field.onChange}
-                                />
-                            </FormControl>
-                        </CardContent>
-                    </Card>
+                                <FormControl>
+                                    <Switch
+                                        checked={field.value ?? false}
+                                        onCheckedChange={field.onChange}
+                                    />
+                                </FormControl>
+                            </CardContent>
+                        </Card>
+                    </FormItem>
                 )} />
 
                 {/* Available in Menu */}
                 <FormField control={form.control} name="availableInMenu" render={({ field }) => (
-                    <Card className={`transition-colors ${availableInMenu ? 'border-primary/20 bg-primary/5' : 'bg-muted/30'}`}>
-                        <CardContent className="p-3.5 flex items-center justify-between gap-3">
-                            <div className="flex items-center gap-3 flex-1">
-                                <Menu className="h-4 w-4 text-muted-foreground shrink-0" />
-                                <div className="min-w-0">
-                                    <FormLabel className="text-sm font-semibold cursor-pointer mb-0">
-                                        Available in Menu
-                                    </FormLabel>
-                                    <FormDescription className="text-xs leading-tight mt-0.5">
-                                        Can appear as customer-facing menu item
-                                    </FormDescription>
+                    <FormItem>
+                        <Card className={`transition-colors ${availableInMenu ? 'border-primary/20 bg-primary/5' : 'bg-muted/30'}`}>
+                            <CardContent className="p-3.5 flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-3 flex-1">
+                                    <Menu className="h-4 w-4 text-muted-foreground shrink-0" />
+                                    <div className="min-w-0">
+                                        <FormLabel className="text-sm font-semibold cursor-pointer mb-0">
+                                            Available in Menu
+                                        </FormLabel>
+                                        <FormDescription className="text-xs leading-tight mt-0.5">
+                                            Can appear as customer-facing menu item
+                                        </FormDescription>
+                                    </div>
                                 </div>
-                            </div>
-                            <FormControl>
-                                <Switch
-                                    checked={field.value ?? false}
-                                    onCheckedChange={field.onChange}
-                                />
-                            </FormControl>
-                        </CardContent>
-                    </Card>
+                                <FormControl>
+                                    <Switch
+                                        checked={field.value ?? false}
+                                        onCheckedChange={field.onChange}
+                                    />
+                                </FormControl>
+                            </CardContent>
+                        </Card>
+                    </FormItem>
                 )} />
             </div>
         </section>
