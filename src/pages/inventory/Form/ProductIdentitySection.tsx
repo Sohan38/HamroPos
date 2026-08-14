@@ -39,6 +39,10 @@ export const ProductIdentitySection = React.memo(({ form, isNew, existingCategor
       return;
     }
 
+    if (form.formState.isSubmitting || form.formState.isSubmitSuccessful) {
+      return;
+    }
+
     const trimmedName = nameValue.trim();
     if (trimmedName.length < 2) {
       if (form.formState.errors.name?.type === 'duplicateName') {
@@ -60,11 +64,22 @@ export const ProductIdentitySection = React.memo(({ form, isNew, existingCategor
       form.clearErrors('name');
       form.trigger('name');
     }
-  }, [existingNameLookup, form, isNew, nameValue]);
+  }, [existingNameLookup, form, isNew, nameValue, form.formState.isSubmitting, form.formState.isSubmitSuccessful]);
+
+  useEffect(() => {
+    if (form.formState.isSubmitting || form.formState.isSubmitSuccessful) {
+      return;
+    }
+    const isDirty = form.getFieldState('category').isDirty;
+    if (isDirty || categoryValue.length > 0) {
+      form.trigger('category');
+    }
+  }, [categoryValue, form, form.formState.isSubmitting, form.formState.isSubmitSuccessful]);
 
   const nameError = form.formState.errors.name?.message;
   const categoryError = form.formState.errors.category?.message;
-  const hasDuplicateName = isNew && nameValue.trim().length >= 2 && (existingNameLookup?.has(nameValue.trim().toLowerCase()) ?? false);
+  const isSubmittingOrSuccessful = form.formState.isSubmitting || form.formState.isSubmitSuccessful;
+  const hasDuplicateName = !isSubmittingOrSuccessful && isNew && nameValue.trim().length >= 2 && (existingNameLookup?.has(nameValue.trim().toLowerCase()) ?? false);
   const duplicateNameMessage = hasDuplicateName ? 'Name already exists.' : undefined;
   const nameOk = !nameError && !hasDuplicateName && nameValue.length >= 2;
   const categoryOk = !categoryError && categoryValue.length > 0;

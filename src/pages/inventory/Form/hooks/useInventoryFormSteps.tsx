@@ -71,6 +71,8 @@ export function useInventoryFormSteps(
         setSupplierPresetName, setSupplierDialogOpen,
     } = input;
 
+    const watchedVariants = form.watch('variants') || [];
+
     const steps = useMemo(() => {
         const result: StepDefinition[] = [];
 
@@ -221,12 +223,21 @@ export function useInventoryFormSteps(
 
     const stepErrorsWithUI = useMemo(() => {
         return stepErrors.map((err, idx) => {
-            if (steps[idx]?.id === 'suppliers' && !hasExpiry && watchedSupplierIds.length === 0) {
+            const stepId = steps[idx]?.id;
+            if (stepId === 'suppliers' && !hasExpiry && watchedSupplierIds.length === 0) {
                 return true;
+            }
+            if (stepId === 'inventory') {
+                if (hasExpiry && localBatches.length === 0) {
+                    return true;
+                }
+                if (hasVariants && watchedVariants.length === 0) {
+                    return true;
+                }
             }
             return err;
         });
-    }, [stepErrors, steps, hasExpiry, watchedSupplierIds]);
+    }, [stepErrors, steps, hasExpiry, watchedSupplierIds, hasVariants, localBatches, watchedVariants]);
 
     const stepsWithReview = useMemo(() => {
         return steps.map((step, idx) => {

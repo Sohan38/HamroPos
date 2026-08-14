@@ -212,7 +212,7 @@ export function useInventoryForm(
 
     // Sync purchaseRate from supplierStocks
     useEffect(() => {
-        if (hasExpiry || hasVariants || watchedSupplierIds.length === 0) return;
+        if (hasExpiry || watchedSupplierIds.length === 0) return;
         const stocks = watchedSupplierStocks as any[];
         let computed = 0;
         if (watchedSupplierIds.length === 1) {
@@ -228,7 +228,7 @@ export function useInventoryForm(
         }
         const current = form.getValues('purchaseRate');
         if (Math.abs(computed - current) > 0.001) form.setValue('purchaseRate', computed, { shouldDirty: false });
-    }, [watchedSupplierIds, watchedSupplierStocks, hasExpiry, hasVariants, form]);
+    }, [watchedSupplierIds, watchedSupplierStocks, hasExpiry, form]);
 
     // Quantity sync
     useEffect(() => {
