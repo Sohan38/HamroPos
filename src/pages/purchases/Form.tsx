@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useParams } from 'wouter';
 import { addMonths, format as formatDate, parseISO } from 'date-fns';
-import { usePurchases, useSuppliers, useInventory, useProductBatches } from '@/contexts/GlobalProviders';
+import { usePurchases, useSuppliers, useInventory, useProductBatches, useLocations } from '@/contexts/GlobalProviders';
 import { useStorageProvider } from '@/storage/StorageContext';
 import { useSmartBack } from '@/contexts/NavigationContext';
 import { useCurrency } from '@/hooks/useCurrency';
@@ -40,15 +40,19 @@ export default function PurchaseForm() {
   const { items: suppliers } = useSuppliers();
   const { items: inventory, refresh: refreshInventory } = useInventory();
   const { items: existingBatches, refresh: refreshBatches } = useProductBatches();
+  const { items: locations } = useLocations();
   const { format } = useCurrency();
 
   const queryParams = new URLSearchParams(location.split('?')[1] || '');
   const supplierIdFromQuery = queryParams.get('supplierId') ?? '';
   const productIdFromQuery = queryParams.get('productId') ?? '';
+  const locationIdFromQuery = queryParams.get('locationId') ?? '';
+  const defaultLocationId = settings.defaultLocationId || locations.find(loc => loc.status !== 'inactive')?.id || locations[0]?.id || '';
   const isNew = !id || id === 'new';
   const existing = isNew ? null : purchases.find(purchase => purchase.id === id) ?? null;
 
   const [supplierId, setSupplierId] = useState(existing?.supplierId ?? supplierIdFromQuery);
+  const [locationId, setLocationId] = useState(existing?.locationId ?? (locationIdFromQuery || defaultLocationId));
   const [invoiceNumber, setInvoiceNumber] = useState(existing?.invoiceNumber ?? '');
   const [referenceNumber, setReferenceNumber] = useState(existing?.referenceNumber ?? '');
   const [purchaseDate, setPurchaseDate] = useState(existing?.date?.slice(0, 10) ?? today());
@@ -302,6 +306,7 @@ export default function PurchaseForm() {
         supplierId,
         supplierName: selectedSupplier?.name ?? null,
         date: buildPurchaseDate().toISOString(),
+        locationId: locationId || undefined,
         items: items.map(item => {
           const expiryMode = item.expiryMode ?? (item.expiryMonths ? 'months' : 'manual');
           const resolvedExpiryDate = expiryMode === 'months'
@@ -401,6 +406,17 @@ export default function PurchaseForm() {
                 <label className="space-y-2 text-sm font-medium">
                   Supplier invoice #
                   <Input value={invoiceNumber} onChange={event => setInvoiceNumber(event.target.value)} placeholder="e.g. SUP-2026-001" />
+                </label>
+                <label className="space-y-2 text-sm font-medium">
+                  Receiving location
+                  <Select value={locationId || defaultLocationId || undefined} onValueChange={setLocationId}>
+                    <SelectTrigger><SelectValue placeholder="Select receiving location" /></SelectTrigger>
+                    <SelectContent>
+                      {locations.map(loc => (
+                        <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </label>
                 <label className="space-y-2 text-sm font-medium">
                   Reference number

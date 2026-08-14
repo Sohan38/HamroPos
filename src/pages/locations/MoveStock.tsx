@@ -1,6 +1,6 @@
 import { useLocation } from 'wouter';
-import { useState, useMemo } from 'react';
-import { useLocations, useInventory, useInventoryLocationStocks, useInventoryMovements, useProductBatches, useProductBatchLocations } from '@/contexts/GlobalProviders';
+import { useState, useMemo, useEffect } from 'react';
+import { useLocations, useInventory, useInventoryLocationStocks, useInventoryMovements, useProductBatches, useProductBatchLocations, useSuppliers } from '@/contexts/GlobalProviders';
 import { getLocationStockForProduct } from '@/lib/locationStock';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -16,6 +16,7 @@ export default function MoveStockPage() {
     const [, setLocation] = useLocation();
     const { items: locations } = useLocations();
     const { items: inventory } = useInventory();
+    const { items: suppliers } = useSuppliers();
     const { items: locationStocks, update: updateLocationStock, add: addLocationStock } = useInventoryLocationStocks();
     const { items: movements, add: addMovement } = useInventoryMovements();
     const { items: batches } = useProductBatches();
@@ -25,6 +26,7 @@ export default function MoveStockPage() {
     const [sourceLocationId, setSourceLocationId] = useState('');
     const [destinationLocationId, setDestinationLocationId] = useState('');
     const [productId, setProductId] = useState('');
+    const [supplierId, setSupplierId] = useState('');
     const [batchId, setBatchId] = useState('');
     const [quantity, setQuantity] = useState('');
     const [notes, setNotes] = useState('');
@@ -35,6 +37,32 @@ export default function MoveStockPage() {
         () => locations.filter((loc) => (loc.status ?? 'active') !== 'inactive'),
         [locations],
     );
+
+    // Get suppliers for the selected product (filtered by those with stock at source location)
+    const productSuppliers = useMemo(() => {
+        if (!productId || !sourceLocationId) return [];
+        const product = inventory.find((p) => p.id === productId);
+        if (!product) return [];
+
+        const ids = product.supplierIds?.length ? product.supplierIds : product.supplierId ? [product.supplierId] : [];
+        const allProductSuppliers = suppliers.filter(supplier => ids.includes(supplier.id));
+
+        // Filter to only suppliers that have batches with stock at the source location
+        return allProductSuppliers.filter(supplier => {
+            const supplierBatches = batches.filter(
+                (b) => b.productId === productId && b.supplierId === supplier.id,
+            );
+            for (const batch of supplierBatches) {
+                const batchLocationAlloc = batchLocations.find(
+                    (bl) => bl.batchId === batch.id && bl.locationId === sourceLocationId,
+                );
+                if (batchLocationAlloc && batchLocationAlloc.quantity > 0) {
+                    return true;
+                }
+            }
+            return false;
+        });
+    }, [productId, sourceLocationId, inventory, suppliers, batches, batchLocations]);
 
     // Get products at source location
     const productsAtSource = useMemo(() => {
@@ -76,12 +104,66 @@ export default function MoveStockPage() {
         return getLocationStockForProduct(product, sourceLocationId, locationStocks);
     }, [productId, sourceLocationId, inventory, locationStocks]);
 
-    // Get batches at source location for selected product
+    // Get selected batch info
+    const selectedBatch = useMemo(() => {
+        if (!batchId) return null;
+        return batches.find((b) => b.id === batchId) ?? null;
+    }, [batchId, batches]);
+
+    // Get selected batch supplier name
+    const selectedBatchSupplier = useMemo(() => {
+        if (!selectedBatch) return null;
+        return suppliers.find((s) => s.id === selectedBatch.supplierId) ?? null;
+    }, [selectedBatch, suppliers]);
+
+    // Calculate quantity available for the selected batch
+    const quantityAvailable = useMemo(() => {
+        if (batchId && selectedBatch) {
+            // If batch selected, return quantity at that batch's location
+            const batchLocationAlloc = batchLocations.find(
+                (bl) => bl.batchId === batchId && bl.locationId === sourceLocationId,
+            );
+            return batchLocationAlloc?.quantity ?? 0;
+        }
+
+        if (supplierId && !batchId) {
+            // If supplier selected but no batch, calculate supplier's total stock at location
+            const supplierBatches = batches.filter(
+                (b) => b.productId === productId && b.supplierId === supplierId,
+            );
+            let supplierStockAtLocation = 0;
+            for (const batch of supplierBatches) {
+                const batchLocationAlloc = batchLocations.find(
+                    (bl) => bl.batchId === batch.id && bl.locationId === sourceLocationId,
+                );
+                supplierStockAtLocation += batchLocationAlloc?.quantity ?? 0;
+            }
+            return supplierStockAtLocation > 0 ? supplierStockAtLocation : 0;
+        }
+
+        // If no batch or supplier selected, return total stock at location
+        return currentStockAtSource;
+    }, [batchId, selectedBatch, supplierId, productId, sourceLocationId, currentStockAtSource, batches, batchLocations]);
+
+    // Auto-clamp quantity when available changes
+    useEffect(() => {
+        const currentQty = Number(quantity || 0);
+        if (currentQty > quantityAvailable) {
+            setQuantity(quantityAvailable > 0 ? String(quantityAvailable) : '');
+        }
+    }, [quantityAvailable, quantity]);
+
+    // Get batches at source location for selected product (filtered by supplier if selected)
     const batchesAtSource = useMemo(() => {
         if (!productId || !sourceLocationId) return [];
 
         return batches
-            .filter((b) => b.productId === productId && b.quantity > 0)
+            .filter((b) => {
+                if (b.productId !== productId || b.quantity <= 0) return false;
+                // If supplier selected, only show batches from that supplier
+                if (supplierId && b.supplierId !== supplierId) return false;
+                return true;
+            })
             .map((batch) => {
                 const locationAllocation = batchLocations.find(
                     (bl) => bl.batchId === batch.id && bl.locationId === sourceLocationId,
@@ -92,7 +174,7 @@ export default function MoveStockPage() {
                 };
             })
             .filter((item) => item.quantityAtLocation > 0);
-    }, [productId, sourceLocationId, batches, batchLocations]);
+    }, [productId, sourceLocationId, supplierId, batches, batchLocations]);
 
     // Validation
     const errors = useMemo(() => {
@@ -102,13 +184,14 @@ export default function MoveStockPage() {
         if (!destinationLocationId) errs.push('Select destination location');
         if (sourceLocationId === destinationLocationId) errs.push('Source and destination cannot be the same');
         if (!productId) errs.push('Select product');
+        if (productSuppliers.length > 1 && !supplierId) errs.push('Select supplier');
 
         const qty = Number(quantity);
         if (!quantity || qty <= 0) errs.push('Quantity must be greater than 0');
-        if (qty > currentStockAtSource) errs.push(`Not enough stock (available: ${currentStockAtSource})`);
+        if (qty > quantityAvailable) errs.push(`Not enough stock (available: ${quantityAvailable})`);
 
         return errs;
-    }, [sourceLocationId, destinationLocationId, productId, quantity, currentStockAtSource]);
+    }, [sourceLocationId, destinationLocationId, productId, supplierId, quantity, quantityAvailable, productSuppliers.length]);
 
     const canSubmit = errors.length === 0;
 
@@ -127,13 +210,9 @@ export default function MoveStockPage() {
             const now = new Date().toISOString();
 
             // Get batch info if moving a specific batch
-            let selectedBatch = null;
-            let supplierId = null;
-            if (batchId) {
-                selectedBatch = batches.find((b) => b.id === batchId);
-                if (selectedBatch) {
-                    supplierId = selectedBatch.supplierId;
-                }
+            let batchSupplierId = null;
+            if (batchId && selectedBatch) {
+                batchSupplierId = selectedBatch.supplierId;
             }
 
             // 1. Get or create location stock records for source and destination
@@ -208,7 +287,7 @@ export default function MoveStockPage() {
                 destinationLocationId,
                 quantity: qty,
                 batchId: batchId || null,
-                supplierId: supplierId || null,
+                supplierId: batchSupplierId || null,
                 notes: notes || undefined,
                 status: 'completed',
             });
@@ -219,6 +298,7 @@ export default function MoveStockPage() {
             setSourceLocationId('');
             setDestinationLocationId('');
             setProductId('');
+            setSupplierId('');
             setBatchId('');
             setQuantity('');
             setNotes('');
@@ -286,7 +366,7 @@ export default function MoveStockPage() {
                     {sourceLocationId && (
                         <div className="space-y-2">
                             <Label htmlFor="product">Product</Label>
-                            <Select value={productId} onValueChange={(val) => { setProductId(val); setBatchId(''); }}>
+                            <Select value={productId} onValueChange={(val) => { setProductId(val); setSupplierId(''); setBatchId(''); }}>
                                 <SelectTrigger id="product">
                                     <SelectValue placeholder="Select product" />
                                 </SelectTrigger>
@@ -304,10 +384,36 @@ export default function MoveStockPage() {
                         </div>
                     )}
 
+                    {/* Supplier selection (if multiple suppliers) */}
+                    {productId && productSuppliers.length > 1 && (
+                        <div className="space-y-2">
+                            <Label htmlFor="supplier">Supplier</Label>
+                            <Select value={supplierId} onValueChange={(val) => { setSupplierId(val); setBatchId(''); }}>
+                                <SelectTrigger id="supplier">
+                                    <SelectValue placeholder="Select supplier" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="">All suppliers</SelectItem>
+                                    {productSuppliers.map(supplier => (
+                                        <SelectItem key={supplier.id} value={supplier.id}>
+                                            {supplier.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    )}
+
                     {/* Batch selection (if product has batches) */}
                     {productId && batchesAtSource.length > 0 && (
                         <div className="space-y-2">
                             <Label htmlFor="batch">Batch (optional)</Label>
+                            {selectedBatch && selectedBatchSupplier && (
+                                <div className="mb-2 p-2 bg-muted rounded text-sm">
+                                    <div>Batch: <span className="font-medium">{selectedBatch.batchNumber}</span></div>
+                                    <div>Supplier: <span className="font-medium">{selectedBatchSupplier.name}</span></div>
+                                </div>
+                            )}
                             <Select value={batchId} onValueChange={setBatchId}>
                                 <SelectTrigger id="batch">
                                     <SelectValue placeholder="Select specific batch or leave empty" />
@@ -330,15 +436,35 @@ export default function MoveStockPage() {
                             <Label htmlFor="qty">
                                 Quantity
                                 <span className="text-xs text-muted-foreground ml-2">
-                                    (available: {currentStockAtSource})
+                                    (available: {quantityAvailable})
                                 </span>
                             </Label>
+                            {batchId && selectedBatch && (
+                                <div className="mb-2 p-2 bg-muted rounded text-sm">
+                                    <div>Batch: <span className="font-medium">{selectedBatch.batchNumber}</span></div>
+                                    <div>Available: <span className="font-medium">{quantityAvailable}</span></div>
+                                </div>
+                            )}
+                            {supplierId && !batchId && (
+                                <div className="mb-2 p-2 bg-muted rounded text-sm">
+                                    <div>Supplier: <span className="font-medium">{productSuppliers.find(s => s.id === supplierId)?.name || 'Unknown'}</span></div>
+                                    <div>Supplier stock: <span className="font-medium">{quantityAvailable}</span></div>
+                                </div>
+                            )}
                             <Input
                                 id="qty"
                                 type="number"
-                                min="1"
+                                min={1}
+                                max={quantityAvailable}
                                 value={quantity}
-                                onChange={(e) => setQuantity(e.target.value)}
+                                onChange={(event) => {
+                                    const raw = Number(event.target.value);
+                                    if (Number.isNaN(raw)) {
+                                        setQuantity('');
+                                        return;
+                                    }
+                                    setQuantity(String(Math.max(1, Math.min(raw, quantityAvailable))));
+                                }}
                                 placeholder="Enter quantity to move"
                             />
                         </div>

@@ -1,11 +1,13 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useLocation } from 'wouter';
-import { useSuppliers, usePurchases, useInventory } from '@/contexts/GlobalProviders';
+import { useSuppliers, usePurchases, useInventory, useLocations } from '@/contexts/GlobalProviders';
 import { useSmartBack } from '@/contexts/NavigationContext';
+import { useApp } from '@/contexts/AppContext';
 import { useCurrency } from '@/hooks/useCurrency';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
     ArrowLeft, Edit, Truck, Phone, Mail, MapPin, Hash, FileText,
     Package, ShoppingCart, TrendingUp, Calendar, User, Plus,
@@ -20,7 +22,17 @@ export default function SupplierDetail() {
     const { items: suppliers } = useSuppliers();
     const { items: purchases } = usePurchases();
     const { items: inventory } = useInventory();
+    const { items: locations } = useLocations();
+    const { settings } = useApp();
     const { format } = useCurrency();
+    const defaultLocationId = settings.defaultLocationId || locations.find(loc => loc.status !== 'inactive')?.id || locations[0]?.id || '';
+    const [selectedLocation, setSelectedLocation] = useState<string>(defaultLocationId);
+
+    useEffect(() => {
+        if (!selectedLocation && defaultLocationId) {
+            setSelectedLocation(defaultLocationId);
+        }
+    }, [defaultLocationId, selectedLocation]);
 
     const supplier = useMemo(() => suppliers.find(s => s.id === id), [suppliers, id]);
 
@@ -218,22 +230,43 @@ export default function SupplierDetail() {
             )}
 
             {/* Quick actions */}
-            <div className="flex gap-3">
-                <Button
-                    className="flex-1 h-11 gap-2"
-                    onClick={() => setLocation(`/purchases/new?supplierId=${id}`)}
-                >
-                    <Truck className="h-4 w-4" />
-                    New Purchase
-                </Button>
-                <Button
-                    variant="outline"
-                    className="flex-1 h-11 gap-2"
-                    onClick={() => setLocation(`/inventory/new?supplierId=${id}`)}
-                >
-                    <Plus className="h-4 w-4" />
-                    Add Product
-                </Button>
+            <div className="space-y-3">
+                <div className="flex gap-2 items-end">
+                    <div className="flex-1">
+                        <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Receiving location</label>
+                        <Select value={selectedLocation || defaultLocationId || undefined} onValueChange={setSelectedLocation}>
+                            <SelectTrigger>
+                                <SelectValue placeholder="Select location" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {locations.map(loc => (
+                                    <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </div>
+                <div className="flex gap-3">
+                    <Button
+                        className="flex-1 h-11 gap-2"
+                        onClick={() => {
+                            const locationToUse = selectedLocation || defaultLocationId;
+                            const url = `/purchases/new?supplierId=${id}&locationId=${encodeURIComponent(locationToUse)}`;
+                            setLocation(url);
+                        }}
+                    >
+                        <Truck className="h-4 w-4" />
+                        New Purchase
+                    </Button>
+                    <Button
+                        variant="outline"
+                        className="flex-1 h-11 gap-2"
+                        onClick={() => setLocation(`/inventory/new?supplierId=${id}`)}
+                    >
+                        <Plus className="h-4 w-4" />
+                        Add Product
+                    </Button>
+                </div>
             </div>
 
             {/* Products supplied */}

@@ -1,11 +1,12 @@
 import { useMemo, useState, useCallback, useEffect } from 'react';
 import { useLocation } from 'wouter';
-import { usePurchases, useSuppliers } from '@/contexts/GlobalProviders';
+import { usePurchases, useSuppliers, useLocations } from '@/contexts/GlobalProviders';
 import { useCurrency } from '@/hooks/useCurrency';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import {
   Search,
@@ -103,6 +104,7 @@ export default function PurchaseList() {
   const [, setLocation] = useLocation();
   const { items: purchases } = usePurchases();
   const { items: suppliers } = useSuppliers();
+  const { items: locations } = useLocations();
   const { format } = useCurrency();
 
   // Filter state
@@ -110,6 +112,7 @@ export default function PurchaseList() {
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<PurchaseStatusFilter>('all');
   const [paymentFilter, setPaymentFilter] = useState<PaymentStatusFilter>('all');
+  const [locationFilter, setLocationFilter] = useState<string>('all');
   const [datePreset, setDatePreset] = useState<DatePreset>('all');
   const [customOpen, setCustomOpen] = useState(false);
   const [customDateFrom, setCustomDateFrom] = useState('');
@@ -125,7 +128,7 @@ export default function PurchaseList() {
   // Reset display count when any filter changes
   useEffect(() => {
     setDisplayCount(PAGE_SIZE);
-  }, [debouncedQuery, statusFilter, paymentFilter, datePreset, customDateFrom, customDateTo]);
+  }, [debouncedQuery, statusFilter, paymentFilter, locationFilter, datePreset, customDateFrom, customDateTo]);
 
   // Derived date range from preset
   const dateRange = useMemo(() => {
@@ -188,6 +191,10 @@ export default function PurchaseList() {
       filtered = filtered.filter((invoice) => getPaymentState(invoice) === paymentFilter);
     }
 
+    if (locationFilter !== 'all') {
+      filtered = filtered.filter((invoice) => invoice.locationId === locationFilter);
+    }
+
     if (debouncedQuery.trim()) {
       filtered = rankSearch(filtered, debouncedQuery, filtered.length);
     }
@@ -197,7 +204,7 @@ export default function PurchaseList() {
       if (dateCompare !== 0) return dateCompare;
       return (b.createdAt ?? '').localeCompare(a.createdAt ?? '');
     });
-  }, [purchases, suppliers, debouncedQuery, statusFilter, paymentFilter, dateRange]);
+  }, [purchases, suppliers, debouncedQuery, statusFilter, paymentFilter, locationFilter, dateRange]);
 
   // Summary stats
   const summary = useMemo(() => {
@@ -223,6 +230,7 @@ export default function PurchaseList() {
     debouncedQuery !== '',
     statusFilter !== 'all',
     paymentFilter !== 'all',
+    locationFilter !== 'all',
     datePreset !== 'all',
   ].filter(Boolean).length;
 
@@ -230,6 +238,7 @@ export default function PurchaseList() {
     setInputValue('');
     setStatusFilter('all');
     setPaymentFilter('all');
+    setLocationFilter('all');
     setDatePreset('all');
     setCustomDateFrom('');
     setCustomDateTo('');
@@ -309,6 +318,22 @@ export default function PurchaseList() {
             {p.label}
           </Chip>
         ))}
+      </div>
+
+      {/* Location filter */}
+      <div className="flex gap-2 items-center">
+        <label className="text-xs font-medium text-muted-foreground">Location:</label>
+        <Select value={locationFilter} onValueChange={setLocationFilter}>
+          <SelectTrigger className="w-40">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Locations</SelectItem>
+            {locations.map(loc => (
+              <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Search + clear filters */}

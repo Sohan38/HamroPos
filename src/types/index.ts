@@ -199,6 +199,7 @@ export interface PurchaseInvoice extends StorageRecord {
   paymentStatus?: PurchasePaymentStatus;
   paidAmount?: number;
   payments?: CreditPayment[];
+  locationId?: string; // which location this purchase is for
 }
 
 export interface SaleCostAllocation {

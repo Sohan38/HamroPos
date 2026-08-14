@@ -1,7 +1,7 @@
 import { useParams, useLocation } from 'wouter';
 import { useSmartBack } from '@/contexts/NavigationContext';
 import {
-  useInventory, useProductBatches, useSuppliers,
+  useInventory, useProductBatches, useSuppliers, useLocations, useInventoryLocationStocks, useProductBatchLocations,
 } from '@/contexts/GlobalProviders';
 import { useCurrency } from '@/hooks/useCurrency';
 import { format as formatDate, parseISO } from 'date-fns';
@@ -36,6 +36,9 @@ export default function InventoryDetail() {
   const { items: inventory } = useInventory();
   const { items: allBatches } = useProductBatches();
   const { items: suppliers } = useSuppliers();
+  const { items: locations } = useLocations();
+  const { items: locationStocks } = useInventoryLocationStocks();
+  const { items: batchLocations } = useProductBatchLocations();
   const { format } = useCurrency();
   const [dispositionDialogOpen, setDispositionDialogOpen] = useState(false);
 
@@ -101,6 +104,27 @@ export default function InventoryDetail() {
     (sum, batch) => sum + batch.quantity,
     0
   );
+
+  // Calculate stock breakdown by location
+  const locationStockBreakdown = useMemo(() => {
+    const breakdown: Array<{ location: typeof locations[0]; quantity: number; value: number }> = [];
+
+    for (const loc of locations.filter(l => (l.status ?? 'active') !== 'inactive')) {
+      const qty = locationStocks
+        .filter(s => s.productId === product.id && s.locationId === loc.id)
+        .reduce((sum, s) => sum + (s.quantity ?? 0), 0);
+
+      if (qty > 0) {
+        breakdown.push({
+          location: loc,
+          quantity: qty,
+          value: qty * (product.purchaseRate ?? 0),
+        });
+      }
+    }
+
+    return breakdown;
+  }, [product, locations, locationStocks]);
 
   const nextExpiryBatch = batches.find(
     b => getBatchStatus(b.expiryDate) !== 'expired'
@@ -285,6 +309,32 @@ export default function InventoryDetail() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Location breakdown */}
+      {locationStockBreakdown.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2 pt-4">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Layers className="h-4 w-4 text-muted-foreground" /> Stock by Location
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pb-4">
+            <div className="divide-y border rounded-lg overflow-hidden bg-card">
+              {locationStockBreakdown.map(({ location, quantity, value }) => (
+                <div key={location.id} className="flex items-center justify-between px-3 py-3 hover:bg-muted/10 transition-colors">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-foreground truncate">{location.name}</p>
+                    <p className="text-xs text-muted-foreground">{quantity} {product.unit}</p>
+                  </div>
+                  <div className="text-right ml-3 shrink-0">
+                    <p className="text-sm font-semibold text-foreground">{format(value)}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Product details */}
       <Card>

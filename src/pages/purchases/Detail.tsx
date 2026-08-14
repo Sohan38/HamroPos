@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useLocation, useParams } from 'wouter';
-import { usePurchases, useSuppliers, useInventory, useProductBatches } from '@/contexts/GlobalProviders';
+import { usePurchases, useSuppliers, useInventory, useProductBatches, useLocations } from '@/contexts/GlobalProviders';
 import { useStorageProvider } from '@/storage/StorageContext';
 import { useCurrency } from '@/hooks/useCurrency';
 import { useSmartBack } from '@/contexts/NavigationContext';
@@ -19,6 +19,7 @@ export default function PurchaseDetail() {
     const storage = useStorageProvider();
     const { items: purchases, refresh: refreshPurchases } = usePurchases();
     const { items: suppliers } = useSuppliers();
+    const { items: locations } = useLocations();
     const { items: inventory, refresh: refreshInventory } = useInventory();
     const { items: batches, refresh: refreshBatches } = useProductBatches();
     const { format } = useCurrency();
@@ -26,6 +27,7 @@ export default function PurchaseDetail() {
 
     const purchase = purchases.find(candidate => candidate.id === id);
     const supplier = suppliers.find(candidate => candidate.id === purchase?.supplierId);
+    const purchaseLocation = purchase?.locationId ? locations.find(candidate => candidate.id === purchase.locationId) : null;
 
     const items = useMemo(() => purchase?.items.map(item => ({
         item,
@@ -87,6 +89,7 @@ export default function PurchaseDetail() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground flex items-center gap-1"><CalendarDays className="h-3 w-3" /> Date</p><p className="font-semibold mt-1">{formatDate(parseISO(purchase.date), 'dd MMM yyyy')}</p></CardContent></Card>
                 <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground flex items-center gap-1"><Truck className="h-3 w-3" /> Supplier</p><p className="font-semibold mt-1 truncate">{supplier?.name ?? purchase.supplierName ?? '—'}</p></CardContent></Card>
+                {purchaseLocation && <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Location</p><p className="font-semibold mt-1 truncate">{purchaseLocation.name}</p></CardContent></Card>}
                 <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Status</p><Badge className={`mt-2 capitalize ${statusClass}`}>{status}</Badge></CardContent></Card>
                 <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">Payment</p><p className="font-semibold mt-1 capitalize">{purchase.paymentStatus ?? purchase.paymentMethod}</p></CardContent></Card>
             </div>
