@@ -77,7 +77,7 @@ export function ConsumptionForm() {
             // Include products where consumable is explicitly true, OR undefined (legacy products before Phase 1)
             // Only exclude if explicitly false
             const isConsumable = p.consumable !== false;
-            return isConsumable && p.deletedAt === null;
+            return isConsumable;
         });
     }, [products]);
 
@@ -287,7 +287,7 @@ export function ConsumptionForm() {
                                 <SelectValue placeholder="Select location" />
                             </SelectTrigger>
                             <SelectContent>
-                                {locations.filter(l => l.deletedAt === null).map(location => (
+                                {locations.filter(l => (l.status ?? 'active') !== 'inactive').map(location => (
                                     <SelectItem key={location.id} value={location.id}>
                                         {location.name}
                                     </SelectItem>

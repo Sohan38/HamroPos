@@ -127,8 +127,8 @@ export function ConsumptionDetail() {
                                 <p className="text-xl font-bold capitalize">
                                     <span
                                         className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${consumption.status === 'completed'
-                                                ? 'bg-green-100 text-green-800'
-                                                : 'bg-red-100 text-red-800'
+                                            ? 'bg-green-100 text-green-800'
+                                            : 'bg-red-100 text-red-800'
                                             }`}
                                     >
                                         {consumption.status === 'completed' ? 'Completed' : 'Reversed'}

@@ -130,7 +130,7 @@ export function ConsumptionList() {
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="">All Locations</SelectItem>
-                                    {locations.filter(l => l.deletedAt === null).map(location => (
+                                    {locations.filter(l => (l.status ?? 'active') !== 'inactive').map(location => (
                                         <SelectItem key={location.id} value={location.id}>
                                             {location.name}
                                         </SelectItem>
