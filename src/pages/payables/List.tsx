@@ -77,6 +77,7 @@ export default function PayablesList() {
   const [customDateFrom, setCustomDateFrom] = useState('');
   const [customDateTo, setCustomDateTo] = useState('');
   const [displayCount, setDisplayCount] = useState(PAGE_SIZE);
+  const [expandedSuppliers, setExpandedSuppliers] = useState<Set<string>>(new Set());
 
   // Debounce search
   useEffect(() => {
@@ -112,9 +113,9 @@ export default function PayablesList() {
     }
   }, [datePreset, customDateFrom, customDateTo]);
 
-  // Process payables: filter -> enrich -> search -> sort
-  const payables = useMemo(() => {
-    // 1. Filter only unpaid/partial and not cancelled
+  // Filter invoices that are outstanding (unpaid/partial)
+  const filteredInvoices = useMemo(() => {
+    // 1. Only unpaid/partial and not cancelled
     let filtered = purchases.filter(p => {
       const paidAmount = Number(p.paidAmount ?? 0);
       const remaining = Math.max(0, Number(p.grandTotal ?? 0) - paidAmount);
@@ -122,7 +123,7 @@ export default function PayablesList() {
       return remaining > 0 && ps !== 'paid' && (p.status ?? 'received') !== 'cancelled';
     });
 
-    // 2. Date filter using string prefixes (no parseISO)
+    // 2. Date filter
     const { from, to } = dateRange;
     if (from || to) {
       filtered = filtered.filter(invoice => {
@@ -148,7 +149,7 @@ export default function PayablesList() {
       const supplierName = supplier?.name || invoice.supplierName || 'Unknown';
       return {
         ...invoice,
-        name: supplierName, // required for rankSearch
+        name: supplierName,
         supplierName,
         searchText: [
           supplierName,
@@ -166,27 +167,69 @@ export default function PayablesList() {
       result = rankSearch(enriched, debouncedQuery, enriched.length);
     }
 
-    // 6. Sort
+    // 6. Sort (for internal use; supplier grouping will re-sort)
     return sortByLatestFirst(result, item => item.date, item => item.createdAt);
   }, [purchases, suppliers, debouncedQuery, statusFilter, dateRange]);
 
-  // Summary metrics
+  // Aggregate filtered invoices by supplier
+  const supplierSummaries = useMemo(() => {
+    const map = new Map<string, {
+      supplierId: string;
+      supplierName: string;
+      invoices: typeof filteredInvoices;
+      totalOutstanding: number;
+      totalPaid: number;
+      totalInvoiceAmount: number;
+      oldestDate: string;
+      invoiceCount: number;
+    }>();
+
+    filteredInvoices.forEach(invoice => {
+      const supplierId = invoice.supplierId;
+      if (!map.has(supplierId)) {
+        map.set(supplierId, {
+          supplierId,
+          supplierName: invoice.supplierName,
+          invoices: [],
+          totalOutstanding: 0,
+          totalPaid: 0,
+          totalInvoiceAmount: 0,
+          oldestDate: invoice.date,
+          invoiceCount: 0,
+        });
+      }
+      const summary = map.get(supplierId)!;
+      const paid = Number(invoice.paidAmount ?? 0);
+      const outstanding = Math.max(0, Number(invoice.grandTotal ?? 0) - paid);
+      summary.invoices.push(invoice);
+      summary.totalOutstanding += outstanding;
+      summary.totalPaid += paid;
+      summary.totalInvoiceAmount += Number(invoice.grandTotal ?? 0);
+      summary.invoiceCount++;
+      if (invoice.date < summary.oldestDate) summary.oldestDate = invoice.date;
+    });
+
+    // Convert to array and sort by totalOutstanding descending
+    return Array.from(map.values()).sort((a, b) => b.totalOutstanding - a.totalOutstanding);
+  }, [filteredInvoices]);
+
+  // Summary metrics (across all filtered invoices)
   const totalOwed = useMemo(
-    () => payables.reduce((sum, p) => sum + Math.max(0, p.grandTotal - (p.paidAmount ?? 0)), 0),
-    [payables]
+    () => filteredInvoices.reduce((sum, p) => sum + Math.max(0, p.grandTotal - (p.paidAmount ?? 0)), 0),
+    [filteredInvoices]
   );
-  const totalPartial = useMemo(
-    () => payables.reduce((sum, p) => sum + (p.paidAmount ?? 0), 0),
-    [payables]
+  const totalPaid = useMemo(
+    () => filteredInvoices.reduce((sum, p) => sum + (p.paidAmount ?? 0), 0),
+    [filteredInvoices]
   );
 
-  // Pagination
-  const visiblePayables = useMemo(
-    () => payables.slice(0, displayCount),
-    [payables, displayCount]
+  // Pagination for supplier cards
+  const visibleSuppliers = useMemo(
+    () => supplierSummaries.slice(0, displayCount),
+    [supplierSummaries, displayCount]
   );
-  const hasMore = displayCount < payables.length;
-  const remaining = payables.length - displayCount;
+  const hasMore = displayCount < supplierSummaries.length;
+  const remaining = supplierSummaries.length - displayCount;
 
   const activeFilterCount = [
     debouncedQuery !== '',
@@ -220,6 +263,15 @@ export default function PayablesList() {
 
   const loadMore = useCallback(() => setDisplayCount(c => c + PAGE_SIZE), []);
 
+  const toggleSupplier = useCallback((supplierId: string) => {
+    setExpandedSuppliers(prev => {
+      const next = new Set(prev);
+      if (next.has(supplierId)) next.delete(supplierId);
+      else next.add(supplierId);
+      return next;
+    });
+  }, []);
+
   const statusConfig = {
     unpaid: {
       label: 'Unpaid',
@@ -245,7 +297,7 @@ export default function PayablesList() {
         <div>
           <h1 className="text-2xl font-bold">Payables</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Outstanding payments to suppliers
+            Outstanding payments grouped by supplier
           </p>
         </div>
         <Button onClick={() => setLocation('/purchases/new')} className="w-full sm:w-auto shrink-0">
@@ -372,15 +424,15 @@ export default function PayablesList() {
             <div className="min-w-0">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Paid So Far</p>
               <p className="font-bold text-lg leading-tight text-sky-600 tabular-nums wrap-break-word">
-                {format(totalPartial)}
+                {format(totalPaid)}
               </p>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* List / empty */}
-      {payables.length === 0 ? (
+      {/* Supplier list / empty state */}
+      {supplierSummaries.length === 0 ? (
         <Card>
           <CardContent className="py-16 text-center space-y-3">
             <CheckCircle2 className="mx-auto h-12 w-12 text-emerald-500/70" />
@@ -393,82 +445,110 @@ export default function PayablesList() {
       ) : (
         <div className="space-y-5">
           <div className="space-y-3">
-            {visiblePayables.map((invoice, index) => {
-              const supplier = suppliers.find(s => s.id === invoice.supplierId);
-              const paid = invoice.paidAmount ?? 0;
-              const remaining = Math.max(0, invoice.grandTotal - paid);
-              const progressPct = invoice.grandTotal > 0
-                ? Math.min(100, (paid / invoice.grandTotal) * 100)
+            {visibleSuppliers.map(summary => {
+              const isExpanded = expandedSuppliers.has(summary.supplierId);
+              const progressPct = summary.totalInvoiceAmount > 0
+                ? Math.min(100, (summary.totalPaid / summary.totalInvoiceAmount) * 100)
                 : 0;
-              const ps = invoice.paymentStatus ?? (paid > 0 ? 'partial' : 'unpaid');
-              const statusCfg = statusConfig[ps] ?? statusConfig.unpaid;
 
               return (
-                <Card
-                  key={invoice.id}
-                  className="shadow-sm hover:shadow-md transition-shadow cursor-pointer hover:border-primary/40"
-                  onClick={() => setLocation(`/payables/${invoice.id}`)}
-                >
-                  <CardContent className="p-4 sm:p-5 space-y-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className={cn(
-                          'h-10 w-10 rounded-xl flex items-center justify-center shrink-0',
-                          ps === 'unpaid' ? 'bg-rose-500/10 text-rose-600' : 'bg-sky-500/10 text-sky-600'
-                        )}>
-                          <Truck className="h-5 w-5" />
+                <Card key={summary.supplierId} className="shadow-sm hover:shadow-md transition-shadow">
+                  {/* Supplier summary row */}
+                  <div
+                    className="p-4 sm:p-5 cursor-pointer flex items-start justify-between gap-3"
+                    onClick={() => toggleSupplier(summary.supplierId)}
+                  >
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <div className="h-10 w-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                        <Truck className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h4 className="font-semibold text-sm truncate">
+                          {summary.supplierName}
+                        </h4>
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground mt-1">
+                          <span>{summary.invoiceCount} invoice{summary.invoiceCount !== 1 ? 's' : ''}</span>
+                          <span>•</span>
+                          <span className="flex items-center gap-1">
+                            <Calendar className="h-3 w-3" />
+                            {formatDate(new Date(summary.oldestDate), 'dd MMM yyyy')}
+                          </span>
                         </div>
-                        <div className="min-w-0">
-                          <h4 className="font-semibold text-sm truncate">
-                            {supplier?.name ?? invoice.supplierName ?? 'Unknown Supplier'}
-                          </h4>
-                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground mt-1">
-                            <span className="font-mono bg-muted px-1.5 py-0.5 rounded text-[11px]">
-                              {invoice.invoiceNumber || 'No Ref#'}
-                            </span>
-                            <span>•</span>
-                            <span className="flex items-center gap-1">
-                              <Calendar className="h-3 w-3" />
-                              {formatDateTime(invoice.date)}
-                            </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <div className="text-right">
+                        <p className="font-bold text-rose-600 text-base sm:text-lg tabular-nums">
+                          {format(summary.totalOutstanding)}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          of {format(summary.totalInvoiceAmount)}
+                        </p>
+                      </div>
+                      <ChevronDown className={cn(
+                        'h-5 w-5 text-muted-foreground transition-transform',
+                        isExpanded && 'rotate-180'
+                      )} />
+                    </div>
+                  </div>
+
+                  {/* Progress bar */}
+                  <div className="px-4 pb-4 sm:px-5 sm:pb-5">
+                    <div className="flex justify-between items-end text-xs mb-1">
+                      <span className="text-muted-foreground">Payment Progress</span>
+                      <span className="font-bold">{progressPct.toFixed(0)}% paid</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-muted overflow-hidden">
+                      <div
+                        className={cn(
+                          'h-full rounded-full transition-all duration-500',
+                          progressPct >= 100 ? 'bg-emerald-500' : progressPct > 0 ? 'bg-sky-500' : 'bg-rose-500',
+                        )}
+                        style={{ width: `${Math.max(progressPct, 1.5)}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Expanded invoices */}
+                  {isExpanded && (
+                    <div className="border-t border-border/60 divide-y">
+                      {summary.invoices.map(invoice => {
+                        const paid = Number(invoice.paidAmount ?? 0);
+                        const remaining = Math.max(0, Number(invoice.grandTotal ?? 0) - paid);
+                        const ps = invoice.paymentStatus ?? (paid > 0 ? 'partial' : 'unpaid');
+                        const statusCfg = statusConfig[ps] ?? statusConfig.unpaid;
+
+                        return (
+                          <div
+                            key={invoice.id}
+                            className="p-4 sm:px-5 hover:bg-muted/40 cursor-pointer transition-colors"
+                            onClick={() => setLocation(`/payables/${invoice.id}`)}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono bg-muted px-1.5 py-0.5 rounded text-[11px]">
+                                    {invoice.invoiceNumber || 'No Ref#'}
+                                  </span>
+                                  <Badge variant="outline" className={cn('flex items-center gap-1 px-2 py-0 text-[10px] font-semibold rounded-full border', statusCfg.className)}>
+                                    {statusCfg.icon}
+                                    {statusCfg.label}
+                                  </Badge>
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  {formatDateTime(invoice.date)}
+                                </p>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <p className="font-semibold text-sm text-rose-600">{format(remaining)}</p>
+                                <p className="text-xs text-muted-foreground">of {format(invoice.grandTotal)}</p>
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                      </div>
-                      <Badge variant="outline" className={cn('flex items-center gap-1 px-2.5 py-0.5 text-xs font-semibold rounded-full border shrink-0', statusCfg.className)}>
-                        {statusCfg.icon}
-                        {statusCfg.label}
-                      </Badge>
+                        );
+                      })}
                     </div>
-
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-end text-xs">
-                        <span className="text-muted-foreground font-medium">Payment Progress</span>
-                        <span className="font-bold text-foreground">{progressPct.toFixed(0)}% paid</span>
-                      </div>
-                      <div className="h-2 rounded-full bg-muted overflow-hidden">
-                        <div
-                          className={cn(
-                            'h-full rounded-full transition-all duration-500',
-                            progressPct >= 100 ? 'bg-emerald-500' : progressPct > 0 ? 'bg-sky-500' : 'bg-rose-500',
-                          )}
-                          style={{ width: `${Math.max(progressPct, 1.5)}%` }}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between pt-2 border-t border-border/60 text-sm">
-                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <Receipt className="h-3.5 w-3.5" />
-                        <span>{invoice.items.length} item{invoice.items.length !== 1 ? 's' : ''}</span>
-                      </div>
-                      <div className="flex items-baseline gap-1.5">
-                        <span className="text-xs text-muted-foreground">Owed</span>
-                        <span className="font-extrabold text-rose-600 text-base">{format(remaining)}</span>
-                        <span className="text-xs text-muted-foreground">/ {format(invoice.grandTotal)}</span>
-                        <ChevronRight className="h-4 w-4 text-muted-foreground/60 group-hover:text-primary transition-colors ml-1 shrink-0" />
-                      </div>
-                    </div>
-                  </CardContent>
+                  )}
                 </Card>
               );
             })}
@@ -486,19 +566,19 @@ export default function PayablesList() {
           )}
 
           {/* End of list */}
-          {!hasMore && payables.length > PAGE_SIZE && (
+          {!hasMore && supplierSummaries.length > PAGE_SIZE && (
             <p className="text-center text-xs text-muted-foreground py-2">
-              All {payables.length} payables shown
+              All {supplierSummaries.length} suppliers shown
             </p>
           )}
         </div>
       )}
 
-      {payables.length > 0 && (
+      {supplierSummaries.length > 0 && (
         <div className="text-center">
           <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground font-medium bg-muted/40 px-3 py-1.5 rounded-full border border-border/40">
             <AlertCircle className="h-3.5 w-3.5 text-muted-foreground/80" />
-            Select an invoice to settle payments
+            Click a supplier to view invoices
           </span>
         </div>
       )}

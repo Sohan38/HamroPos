@@ -8,8 +8,8 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import {
-  Banknote, Plus, Calendar, User, ChevronRight, CheckCircle2,
-  Clock, TrendingDown, Search, Phone, X, ChevronDown,
+  Banknote, Plus, Calendar, User, ChevronRight, ChevronDown,
+  Clock, TrendingDown, CheckCircle2, Search, Phone, X,
 } from 'lucide-react';
 import { format as formatDate, parseISO, subDays, startOfMonth } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -77,6 +77,7 @@ export default function CreditList() {
   const [customDateFrom, setCustomDateFrom] = useState('');
   const [customDateTo, setCustomDateTo] = useState('');
   const [displayCount, setDisplayCount] = useState(PAGE_SIZE);
+  const [expandedCustomers, setExpandedCustomers] = useState<Set<string>>(new Set());
 
   // Debounce search
   useEffect(() => {
@@ -112,8 +113,8 @@ export default function CreditList() {
     }
   }, [datePreset, customDateFrom, customDateTo]);
 
-  // Process credits: enrich -> date filter -> status filter -> search -> sort
-  const processedCredits = useMemo(() => {
+  // Filter and enrich individual credit records
+  const filteredCredits = useMemo(() => {
     // 1. Enrich with searchable fields
     const enriched = items.map(credit => ({
       ...credit,
@@ -130,7 +131,7 @@ export default function CreditList() {
 
     let filtered = enriched;
 
-    // 2. Date filter (string prefix)
+    // 2. Date filter
     const { from, to } = dateRange;
     if (from || to) {
       filtered = filtered.filter(credit => {
@@ -151,11 +152,55 @@ export default function CreditList() {
       filtered = rankSearch(filtered, debouncedQuery, filtered.length);
     }
 
-    // 5. Sort
+    // 5. Sort for internal use (grouping will reorder)
     return sortByLatestFirst(filtered, item => item.date, item => item.createdAt);
   }, [items, debouncedQuery, statusFilter, dateRange]);
 
-  // Summary metrics (computed from all items as in original)
+  // Aggregate credits by customer (composite key: name + phone)
+  const customerSummaries = useMemo(() => {
+    const map = new Map<string, {
+      key: string;
+      customerName: string;
+      phone: string;
+      credits: typeof filteredCredits;
+      totalOutstanding: number;
+      totalReceived: number;
+      totalAmount: number;
+      oldestDate: string;
+      creditCount: number;
+    }>();
+
+    filteredCredits.forEach(credit => {
+      const key = `${credit.customerName}-${credit.phone || 'no-phone'}`;
+      if (!map.has(key)) {
+        map.set(key, {
+          key,
+          customerName: credit.customerName,
+          phone: credit.phone,
+          credits: [],
+          totalOutstanding: 0,
+          totalReceived: 0,
+          totalAmount: 0,
+          oldestDate: credit.date,
+          creditCount: 0,
+        });
+      }
+      const summary = map.get(key)!;
+      const paid = Number(credit.paidAmount ?? 0);
+      const outstanding = Math.max(0, Number(credit.amount ?? 0) - paid);
+      summary.credits.push(credit);
+      summary.totalOutstanding += outstanding;
+      summary.totalReceived += paid;
+      summary.totalAmount += Number(credit.amount ?? 0);
+      summary.creditCount++;
+      if (credit.date < summary.oldestDate) summary.oldestDate = credit.date;
+    });
+
+    // Sort by totalOutstanding descending
+    return Array.from(map.values()).sort((a, b) => b.totalOutstanding - a.totalOutstanding);
+  }, [filteredCredits]);
+
+  // Summary metrics (based on all items, consistent with original)
   const totalPending = useMemo(
     () =>
       items
@@ -172,13 +217,13 @@ export default function CreditList() {
     [items]
   );
 
-  // Pagination
-  const visibleCredits = useMemo(
-    () => processedCredits.slice(0, displayCount),
-    [processedCredits, displayCount]
+  // Pagination on customer groups
+  const visibleCustomers = useMemo(
+    () => customerSummaries.slice(0, displayCount),
+    [customerSummaries, displayCount]
   );
-  const hasMore = displayCount < processedCredits.length;
-  const remaining = processedCredits.length - displayCount;
+  const hasMore = displayCount < customerSummaries.length;
+  const remaining = customerSummaries.length - displayCount;
 
   const activeFilterCount = [
     debouncedQuery !== '',
@@ -214,6 +259,15 @@ export default function CreditList() {
     setDisplayCount(c => c + PAGE_SIZE);
   }, []);
 
+  const toggleCustomer = useCallback((key: string) => {
+    setExpandedCustomers(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
   const statusConfig = {
     pending: {
       label: 'Pending',
@@ -239,7 +293,7 @@ export default function CreditList() {
         <div>
           <h1 className="text-2xl font-bold">Credit (Udharo)</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Track customer debts and payment installments
+            Customer debts grouped by person
           </p>
         </div>
         <Button onClick={() => setLocation('/credit/new')} className="w-full sm:w-auto shrink-0">
@@ -373,7 +427,7 @@ export default function CreditList() {
         </CardContent>
       </Card>
 
-      {/* List / empty */}
+      {/* Customer list / empty states */}
       {items.length === 0 ? (
         <Card>
           <CardContent className="py-16 text-center space-y-3">
@@ -384,11 +438,11 @@ export default function CreditList() {
             </p>
           </CardContent>
         </Card>
-      ) : processedCredits.length === 0 ? (
+      ) : customerSummaries.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center space-y-3">
             <Search className="mx-auto h-10 w-10 text-muted-foreground/30" />
-            <h3 className="text-base font-semibold">No matching credits</h3>
+            <h3 className="text-base font-semibold">No matching customers</h3>
             <p className="text-muted-foreground text-sm">
               {activeFilterCount > 0
                 ? 'Try a different date, status, or search term.'
@@ -405,106 +459,126 @@ export default function CreditList() {
       ) : (
         <div className="space-y-5">
           <div className="space-y-3">
-            {visibleCredits.map((credit, index) => {
-              const paidAmount = credit.paidAmount ?? 0;
-              const remaining = Math.max(0, credit.amount - paidAmount);
-              const progressPct = credit.amount > 0 ? Math.min(100, (paidAmount / credit.amount) * 100) : 0;
-              const statusCfg = statusConfig[credit.status] ?? statusConfig.pending;
+            {visibleCustomers.map(summary => {
+              const isExpanded = expandedCustomers.has(summary.key);
+              const progressPct = summary.totalAmount > 0
+                ? Math.min(100, (summary.totalReceived / summary.totalAmount) * 100)
+                : 0;
 
               return (
-                <Card
-                  key={credit.id}
-                  className="shadow-sm hover:shadow-md transition-shadow cursor-pointer hover:border-primary/40"
-                  onClick={() => setLocation(`/credit/${credit.id}`)}
-                >
-                  <CardContent className="p-4 sm:p-5 space-y-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className={cn(
-                          'h-10 w-10 rounded-xl flex items-center justify-center shrink-0',
-                          credit.status === 'paid'
-                            ? 'bg-emerald-500/10 text-emerald-600'
-                            : credit.status === 'partial'
-                              ? 'bg-blue-500/10 text-blue-600'
-                              : 'bg-orange-500/10 text-orange-600'
-                        )}>
-                          <User className="h-5 w-5" />
-                        </div>
-                        <div className="min-w-0">
-                          <h4 className="font-semibold text-sm truncate">
-                            {credit.customerName}
-                          </h4>
-                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground mt-1">
-                            {credit.phone && (
-                              <>
-                                <span className="flex items-center gap-1">
-                                  <Phone className="h-3 w-3" />
-                                  {credit.phone}
-                                </span>
-                                <span>•</span>
-                              </>
-                            )}
-                            <span className="flex items-center gap-1">
-                              <Calendar className="h-3 w-3" />
-                              {formatDateTime(credit.date)}
-                            </span>
-                            {credit.dueDate && (
-                              <>
-                                <span>•</span>
-                                <span className="text-orange-600 font-semibold">
-                                  Due {formatDate(parseISO(credit.dueDate), 'MMM d')}
-                                </span>
-                              </>
-                            )}
-                          </div>
-                        </div>
+                <Card key={summary.key} className="shadow-sm hover:shadow-md transition-shadow">
+                  {/* Customer summary row */}
+                  <div
+                    className="p-4 sm:p-5 cursor-pointer flex items-start justify-between gap-3"
+                    onClick={() => toggleCustomer(summary.key)}
+                  >
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <div className="h-10 w-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                        <User className="h-5 w-5" />
                       </div>
-                      <Badge variant="outline" className={cn('flex items-center gap-1 px-2.5 py-0.5 text-xs font-semibold rounded-full border shrink-0', statusCfg.className)}>
-                        {statusCfg.icon}
-                        {statusCfg.label}
-                      </Badge>
-                    </div>
-
-                    {credit.description && (
-                      <p className="text-xs text-muted-foreground line-clamp-1 italic px-1">
-                        {credit.description}
-                      </p>
-                    )}
-
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-end text-xs">
-                        <span className="text-muted-foreground font-medium">Settle Progress</span>
-                        <span className="font-bold text-foreground">{progressPct.toFixed(0)}% paid</span>
-                      </div>
-                      <div className="h-2 rounded-full bg-muted overflow-hidden">
-                        <div
-                          className={cn(
-                            'h-full rounded-full transition-all duration-500',
-                            progressPct >= 100 ? 'bg-emerald-500' : progressPct > 0 ? 'bg-blue-500' : 'bg-orange-500',
+                      <div className="min-w-0 flex-1">
+                        <h4 className="font-semibold text-sm truncate">
+                          {summary.customerName}
+                        </h4>
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground mt-1">
+                          {summary.phone && (
+                            <>
+                              <span className="flex items-center gap-1">
+                                <Phone className="h-3 w-3" />
+                                {summary.phone}
+                              </span>
+                              <span>•</span>
+                            </>
                           )}
-                          style={{ width: `${Math.max(progressPct, 1.5)}%` }}
-                        />
+                          <span>{summary.creditCount} credit{summary.creditCount !== 1 ? 's' : ''}</span>
+                          <span>•</span>
+                          <span className="flex items-center gap-1">
+                            <Calendar className="h-3 w-3" />
+                            {formatDate(parseISO(summary.oldestDate), 'dd MMM yyyy')}
+                          </span>
+                        </div>
                       </div>
                     </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <div className="text-right">
+                        <p className="font-bold text-orange-600 text-base sm:text-lg tabular-nums">
+                          {format(summary.totalOutstanding)}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          of {format(summary.totalAmount)}
+                        </p>
+                      </div>
+                      <ChevronDown className={cn(
+                        'h-5 w-5 text-muted-foreground transition-transform',
+                        isExpanded && 'rotate-180'
+                      )} />
+                    </div>
+                  </div>
 
-                    <div className="flex items-center justify-between pt-2 border-t border-border/60 text-sm">
-                      <div className="text-xs text-muted-foreground font-semibold">
-                        {credit.status === 'paid' ? 'Full Settlement' : 'Partial Due'}
-                      </div>
-                      <div className="flex items-baseline gap-1.5">
-                        {credit.status !== 'paid' ? (
-                          <>
-                            <span className="text-xs text-muted-foreground">Owed</span>
-                            <span className="font-extrabold text-orange-600 text-base">{format(remaining)}</span>
-                            <span className="text-xs text-muted-foreground">/ {format(credit.amount)}</span>
-                          </>
-                        ) : (
-                          <span className="font-extrabold text-emerald-600 text-base">{format(credit.amount)}</span>
-                        )}
-                        <ChevronRight className="h-4 w-4 text-muted-foreground/60 group-hover:text-primary transition-colors ml-1 shrink-0" />
-                      </div>
+                  {/* Progress bar */}
+                  <div className="px-4 pb-4 sm:px-5 sm:pb-5">
+                    <div className="flex justify-between items-end text-xs mb-1">
+                      <span className="text-muted-foreground">Settle Progress</span>
+                      <span className="font-bold">{progressPct.toFixed(0)}% paid</span>
                     </div>
-                  </CardContent>
+                    <div className="h-2 rounded-full bg-muted overflow-hidden">
+                      <div
+                        className={cn(
+                          'h-full rounded-full transition-all duration-500',
+                          progressPct >= 100 ? 'bg-emerald-500' : progressPct > 0 ? 'bg-blue-500' : 'bg-orange-500',
+                        )}
+                        style={{ width: `${Math.max(progressPct, 1.5)}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Expanded individual credits */}
+                  {isExpanded && (
+                    <div className="border-t border-border/60 divide-y">
+                      {summary.credits.map(credit => {
+                        const paid = Number(credit.paidAmount ?? 0);
+                        const remaining = Math.max(0, Number(credit.amount ?? 0) - paid);
+                        const statusCfg = statusConfig[credit.status] ?? statusConfig.pending;
+
+                        return (
+                          <div
+                            key={credit.id}
+                            className="p-4 sm:px-5 hover:bg-muted/40 cursor-pointer transition-colors"
+                            onClick={() => setLocation(`/credit/${credit.id}`)}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono bg-muted px-1.5 py-0.5 rounded text-[11px]">
+                                    {credit.id.slice(0, 8).toUpperCase()}
+                                  </span>
+                                  <Badge variant="outline" className={cn('flex items-center gap-1 px-2 py-0 text-[10px] font-semibold rounded-full border', statusCfg.className)}>
+                                    {statusCfg.icon}
+                                    {statusCfg.label}
+                                  </Badge>
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  {formatDateTime(credit.date)}
+                                  {credit.dueDate && (
+                                    <> &middot; Due {formatDate(parseISO(credit.dueDate), 'MMM d')}</>
+                                  )}
+                                </p>
+                                {credit.description && (
+                                  <p className="text-xs text-muted-foreground line-clamp-1 italic mt-0.5">
+                                    {credit.description}
+                                  </p>
+                                )}
+                              </div>
+                              <div className="text-right shrink-0">
+                                <p className="font-semibold text-sm text-orange-600">{format(remaining)}</p>
+                                <p className="text-xs text-muted-foreground">of {format(credit.amount)}</p>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </Card>
               );
             })}
@@ -522,9 +596,9 @@ export default function CreditList() {
           )}
 
           {/* End of list */}
-          {!hasMore && processedCredits.length > PAGE_SIZE && (
+          {!hasMore && customerSummaries.length > PAGE_SIZE && (
             <p className="text-center text-xs text-muted-foreground py-2">
-              All {processedCredits.length} credits shown
+              All {customerSummaries.length} customers shown
             </p>
           )}
         </div>
