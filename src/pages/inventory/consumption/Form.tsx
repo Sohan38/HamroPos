@@ -26,11 +26,8 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
-import { ArrowLeft, Trash2, MapPin, Package, FileText, IndianRupee, Layers, AlertCircle } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
+import { ArrowLeft, Plus, Trash2, ChevronDown } from 'lucide-react';
 import { ProductSearchPicker } from '@/components/ProductSearchPicker';
-import { SupplierSearchPicker } from '@/components/SupplierSearchPicker';
 
 interface LineItem {
     productId: string;
@@ -66,29 +63,32 @@ export function ConsumptionForm() {
     // Feature check
     if (!consumptionEnabled) {
         return (
-            <div className="flex flex-col items-center justify-center min-h-[70vh] gap-4 p-6 max-w-md mx-auto text-center">
-                <div className="h-12 w-12 rounded-full bg-destructive/10 text-destructive flex items-center justify-center">
-                    <AlertCircle className="h-6 w-6" />
-                </div>
-                <div>
-                    <h2 className="text-xl font-bold text-foreground">Access Denied</h2>
-                    <p className="text-sm text-muted-foreground mt-2">
-                        Consumption feature is not enabled in your current license configuration.
+            <div className="flex flex-col items-center justify-center min-h-screen gap-4 p-4">
+                <div className="text-center">
+                    <h2 className="text-2xl font-bold">Access Denied</h2>
+                    <p className="text-muted-foreground mt-2">
+                        Consumption feature is not enabled in your license.
                     </p>
                 </div>
-                <Button onClick={() => setLocation('/dashboard')} variant="outline" className="rounded-xl w-full">
+                <Button onClick={() => setLocation('/dashboard')} variant="outline">
                     Back to Dashboard
                 </Button>
             </div>
         );
     }
 
-    // Performance Optimization 1: Memoize consumable products list
+    // Get consumable products
     const consumableProducts = useMemo(() => {
-        return products.filter(p => p.consumable !== false);
+        return products.filter(p => {
+            // Include products where consumable is explicitly true, OR undefined (legacy products before Phase 1)
+            // Only exclude if explicitly false
+            const isConsumable = p.consumable !== false;
+            return isConsumable;
+        });
     }, [products]);
 
-    // Performance Optimization 2: Pre-index and memoize available products at the selected location
+    // Get products available at selected location (with stock amounts)
+    // Follows the same pattern as MoveStock's productsAtSource
     const productsAtLocation = useMemo(() => {
         if (!selectedLocationId) return [];
 
@@ -104,7 +104,7 @@ export function ConsumptionForm() {
             }
         }
 
-        // Also check getLocationStockForProduct fallback
+        // Also check getLocationStockForProduct fallback (supplierStocks legacy)
         for (const product of consumableProducts) {
             if (!productStockMap.has(product.id)) {
                 const stock = getLocationStockForProduct(product, selectedLocationId, locationStocks);
@@ -122,71 +122,45 @@ export function ConsumptionForm() {
             .filter((item): item is { product: typeof products[0]; stock: number } => item !== null);
     }, [consumableProducts, selectedLocationId, locationStocks]);
 
-    // Performance Optimization 3: Index suppliers by product ID for quick lookups
-    const suppliersByProductMap = useMemo(() => {
-        const map = new Map<string, typeof suppliers>();
-        for (const p of products) {
-            const ids = p.supplierIds?.length ? p.supplierIds : p.supplierId ? [p.supplierId] : [];
-            const productSuppliers = suppliers.filter(s => ids.includes(s.id));
-            map.set(p.id, productSuppliers);
-        }
-        return map;
-    }, [products, suppliers]);
-
+    // Get suppliers for a specific product
     const getSuppliersForProduct = (productId: string) => {
-        return suppliersByProductMap.get(productId) || [];
+        const product = products.find(p => p.id === productId);
+        if (!product) return [];
+        const ids = product.supplierIds?.length ? product.supplierIds : product.supplierId ? [product.supplierId] : [];
+        return suppliers.filter(s => ids.includes(s.id));
     };
 
-    // Performance Optimization 4: Pre-index and memoize batches by product & location (FEFO sorted) to avoid searching everything on render
-    const batchesMap = useMemo(() => {
-        if (!selectedLocationId) return new Map<string, Array<{ id: string; number: string; available: number; purchaseRate: number }>>();
-
-        const map = new Map<string, Array<{ id: string; number: string; available: number; purchaseRate: number; expiryDate?: string }>>();
-
-        for (const b of batches) {
-            if (b.quantity <= 0) continue;
-
-            // Check allocation at this location
-            const locationAlloc = batchLocations.find(
-                bl => bl.batchId === b.id && bl.locationId === selectedLocationId
-            );
-            const quantityAtLocation = locationAlloc?.quantity ?? b.quantity;
-
-            if (quantityAtLocation <= 0) continue;
-
-            const list = map.get(b.productId) || [];
-            list.push({
-                id: b.id,
-                number: b.batchNumber || `Batch ${b.id.slice(0, 8)}`,
-                available: quantityAtLocation,
-                purchaseRate: b.purchaseRate ?? 0,
-                expiryDate: b.expiryDate ?? undefined,
-            });
-            map.set(b.productId, list);
-        }
-
-        // Sort each product's batch list by expiry date (FEFO)
-        for (const [prodId, list] of map.entries()) {
-            list.sort((a, b) => {
+    // Get batches for a product at the selected location, FEFO sorted
+    const getBatchesForProduct = (productId: string, supplierId?: string): Array<{ id: string; number: string; available: number; purchaseRate: number }> => {
+        return batches
+            .filter(b => {
+                if (b.productId !== productId || b.quantity <= 0) return false;
+                // Filter by supplier if selected
+                if (supplierId && b.supplierId !== supplierId) return false;
+                return true;
+            })
+            .map(b => {
+                // Check batch quantity at the selected location via batchLocations
+                const locationAlloc = batchLocations.find(
+                    bl => bl.batchId === b.id && bl.locationId === selectedLocationId
+                );
+                const quantityAtLocation = locationAlloc?.quantity ?? b.quantity;
+                return {
+                    id: b.id,
+                    number: b.batchNumber || `Batch ${b.id.slice(0, 8)}`,
+                    available: quantityAtLocation,
+                    purchaseRate: b.purchaseRate ?? 0,
+                    expiryDate: b.expiryDate,
+                };
+            })
+            .filter(b => b.available > 0)
+            .sort((a, b) => {
+                // Sort by expiry date (FEFO)
                 const aExpiry = a.expiryDate ? new Date(a.expiryDate).getTime() : Infinity;
                 const bExpiry = b.expiryDate ? new Date(b.expiryDate).getTime() : Infinity;
                 return aExpiry - bExpiry;
-            });
-        }
-
-        return map;
-    }, [batches, batchLocations, selectedLocationId]);
-
-    const getBatchesForProduct = (productId: string, supplierId?: string) => {
-        const productBatches = batchesMap.get(productId) || [];
-        if (supplierId) {
-            // Further filter by supplier if specified
-            return productBatches.filter(b => {
-                const batchRecord = batches.find(br => br.id === b.id);
-                return batchRecord?.supplierId === supplierId;
-            });
-        }
-        return productBatches;
+            })
+            .map(({ expiryDate, ...rest }) => rest);
     };
 
     // Get available stock for a line item (considering batch/supplier selection)
@@ -194,17 +168,13 @@ export function ConsumptionForm() {
         if (!item.productId || !selectedLocationId) return 0;
 
         if (item.batchId) {
+            // Specific batch selected — show that batch's available quantity
             const batchData = getBatchesForProduct(item.productId, item.supplierId)
                 .find(b => b.id === item.batchId);
             return batchData?.available ?? 0;
         }
 
-        if (item.supplierId) {
-            // Bug Fix: If supplier selected but no batch, sum the available quantity of all batches belonging to this supplier at this location
-            const supplierBatches = getBatchesForProduct(item.productId, item.supplierId);
-            return supplierBatches.reduce((sum, b) => sum + b.available, 0);
-        }
-
+        // No batch selected — show total stock at location
         const entry = productsAtLocation.find(p => p.product.id === item.productId);
         return entry?.stock ?? 0;
     };
@@ -220,6 +190,7 @@ export function ConsumptionForm() {
             return batch?.purchaseRate ?? product.purchaseRate ?? 0;
         }
 
+        // FEFO: use earliest-expiry batch's cost, or product.purchaseRate fallback
         const productBatches = getBatchesForProduct(item.productId, item.supplierId);
         if (productBatches.length > 0) {
             return productBatches[0].purchaseRate ?? product.purchaseRate ?? 0;
@@ -246,7 +217,7 @@ export function ConsumptionForm() {
                 productId,
                 quantity: 1,
                 supplierId,
-                key: Math.random().toString(36).slice(2, 9),
+                key: Math.random().toString(36),
             }
         ]);
     };
@@ -265,23 +236,7 @@ export function ConsumptionForm() {
         );
     };
 
-    // Keep quantity within valid bounds when supplier selection changes
-    const handleSupplierSelectInItem = (key: string, supplierId: string, item: LineItem) => {
-        const supplierBatches = getBatchesForProduct(item.productId, supplierId);
-        const available = supplierBatches.reduce((sum, b) => sum + b.available, 0);
-        // Retain current quantity if it fits, otherwise fallback to 1 or 0
-        const newQty = item.quantity > available ? (available > 0 ? 1 : 0) : item.quantity;
-        updateLineItem(key, { supplierId, batchId: undefined, quantity: newQty || (available > 0 ? 1 : 0) });
-    };
-
-    const handleSupplierRemoveInItem = (key: string, item: LineItem) => {
-        const entry = productsAtLocation.find(p => p.product.id === item.productId);
-        const available = entry?.stock ?? 0;
-        const newQty = item.quantity > available ? (available > 0 ? 1 : 0) : item.quantity;
-        updateLineItem(key, { supplierId: undefined, batchId: undefined, quantity: newQty || (available > 0 ? 1 : 0) });
-    };
-
-    // Performance Optimization 5: Memoize summary calculations
+    // Calculate summary
     const summary = useMemo(() => {
         let totalItems = 0;
         let totalCost = 0;
@@ -293,7 +248,7 @@ export function ConsumptionForm() {
         }
 
         return { totalItems, totalCost };
-    }, [lineItems, products, batches, selectedLocationId, batchesMap]);
+    }, [lineItems, products, batches, selectedLocationId, batchLocations]);
 
     // Product search list items mapping for ProductSearchPicker
     const productPickerItems = useMemo(() => {
@@ -315,6 +270,7 @@ export function ConsumptionForm() {
     // Submit consumption
     const handleSubmit = async () => {
         try {
+            // Validation
             if (!selectedLocationId) {
                 toast.error('Please select a location');
                 return;
@@ -404,85 +360,82 @@ export function ConsumptionForm() {
     };
 
     return (
-        <div className="max-w-3xl mx-auto p-4 md:p-6 pb-28 md:pb-8 space-y-6">
-            {/* Header */}
-            <div className="flex items-center gap-3">
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={goBack}
-                    className="rounded-full hover:bg-muted shrink-0"
-                >
-                    <ArrowLeft className="h-5 w-5" />
-                </Button>
-                <div>
-                    <h1 className="text-2xl font-bold tracking-tight text-foreground">Create Consumption</h1>
-                    <p className="text-xs text-muted-foreground mt-0.5">Record internal consumption of stock items.</p>
+        <div className="min-h-screen bg-gradient-to-br from-primary/5 to-secondary/5 p-4">
+            <div className="max-w-4xl mx-auto space-y-6">
+                {/* Header */}
+                <div className="flex items-center gap-4">
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={goBack}
+                    >
+                        <ArrowLeft className="h-4 w-4" />
+                    </Button>
+                    <div>
+                        <h1 className="text-3xl font-bold">Create Consumption</h1>
+                        <p className="text-muted-foreground">
+                            Record internal consumption of stock
+                        </p>
+                    </div>
                 </div>
-            </div>
 
-            {/* Location Selection */}
-            <Card className="border border-muted-foreground/10 bg-card/60 backdrop-blur-sm shadow-sm">
-                <CardHeader className="pb-4">
-                    <CardTitle className="text-base font-semibold text-foreground flex items-center gap-2">
-                        <MapPin className="h-4.5 w-4.5 text-primary" /> Select Origin Location
-                    </CardTitle>
-                    <CardDescription className="text-xs">Specify the warehouse or retail store location where the stock consumption is taking place.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <Select value={selectedLocationId} onValueChange={(v) => {
-                        setSelectedLocationId(v);
-                        // Reset line items when location changes
-                        setLineItems([]);
-                    }}>
-                        <SelectTrigger className="h-11 rounded-xl border-muted-foreground/20 shadow-sm">
-                            <SelectValue placeholder="Select origin location" />
-                        </SelectTrigger>
-                        <SelectContent className="rounded-xl">
-                            {locations.filter(l => (l.status ?? 'active') !== 'inactive').map(location => (
-                                <SelectItem key={location.id} value={location.id} className="rounded-lg">
-                                    {location.name}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                </CardContent>
-            </Card>
-
-            {/* Items Section */}
-            {selectedLocationId && (
-                <Card className="border border-muted-foreground/10 bg-card/60 backdrop-blur-sm shadow-sm overflow-hidden">
-                    <CardHeader className="pb-4 border-b border-muted-foreground/10 bg-muted/20">
-                        <CardTitle className="text-base font-semibold text-foreground flex items-center gap-2">
-                            <Package className="h-4.5 w-4.5 text-primary" /> Products Consumed
-                        </CardTitle>
-                        <CardDescription className="text-xs">
-                            Search and tap products below to add them to this consumption transaction.
-                        </CardDescription>
+                {/* Location Selection */}
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Location</CardTitle>
+                        <CardDescription>Where is the consumption occurring?</CardDescription>
                     </CardHeader>
-                    <CardContent className="p-4 sm:p-6 space-y-6">
-                        {/* Search and Picker */}
-                        <ProductSearchPicker
-                            label="Search Products"
-                            items={availableProductItems}
-                            onSelect={addItemById}
-                            placeholder="Type product name or scan barcode..."
-                            emptyMessage="No consumable products available at this location."
-                            defaultLimit={8}
-                        />
+                    <CardContent>
+                        <Select value={selectedLocationId} onValueChange={(v) => {
+                            setSelectedLocationId(v);
+                            // Reset line items when location changes
+                            setLineItems([]);
+                        }}>
+                            <SelectTrigger>
+                                <SelectValue placeholder="Select location" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {locations.filter(l => (l.status ?? 'active') !== 'inactive').map(location => (
+                                    <SelectItem key={location.id} value={location.id}>
+                                        {location.name}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </CardContent>
+                </Card>
 
-                        {/* Selected List */}
-                        <div className="space-y-4 border-t border-muted-foreground/10 pt-6">
-                            <h3 className="text-sm font-semibold text-foreground">Added Items ({lineItems.length})</h3>
+                {/* Items Section */}
+                {selectedLocationId && (
+                    <Card>
+                        <CardHeader>
+                            <div>
+                                <CardTitle>Items</CardTitle>
+                                <CardDescription>
+                                    Search and select products to add.
+                                </CardDescription>
+                            </div>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            {/* Product search picker */}
+                            <ProductSearchPicker
+                                label="Select Product"
+                                items={availableProductItems}
+                                onSelect={addItemById}
+                                placeholder="Search by product name or barcode..."
+                                emptyMessage="No consumable products available at this location."
+                                defaultLimit={8}
+                            />
 
-                            {lineItems.length === 0 ? (
-                                <div className="text-center py-10 text-muted-foreground bg-muted/10 rounded-2xl border border-dashed">
-                                    <p className="text-sm font-medium">No items added to this log yet.</p>
-                                    <p className="text-xs text-muted-foreground mt-0.5">Use the search picker above to add items.</p>
-                                </div>
-                            ) : (
-                                <div className="space-y-4">
-                                    {lineItems.map((item, idx) => {
+                            <div className="space-y-4 border-t pt-6">
+                                <h3 className="text-sm font-semibold">Added items ({lineItems.length})</h3>
+
+                                {lineItems.length === 0 ? (
+                                    <div className="text-center py-8 text-muted-foreground">
+                                        <p>No items added yet. Search for products above to begin.</p>
+                                    </div>
+                                ) : (
+                                    lineItems.map((item, idx) => {
                                         const productSuppliers = item.productId ? getSuppliersForProduct(item.productId) : [];
                                         const hasMultipleSuppliers = productSuppliers.length > 1;
                                         const availableBatches = item.productId ? getBatchesForProduct(item.productId, item.supplierId) : [];
@@ -491,81 +444,87 @@ export function ConsumptionForm() {
                                         const prodRecord = products.find(p => p.id === item.productId);
 
                                         return (
-                                            <div key={item.key} className="border border-muted-foreground/10 rounded-2xl p-4 sm:p-5 space-y-4 bg-muted/20 hover:bg-muted/30 transition-colors relative">
-                                                <div className="flex items-center justify-between">
+                                            <div key={item.key} className="border rounded-lg p-4 space-y-4 bg-muted/30">
+                                                <div className="flex items-start justify-between">
                                                     <div>
-                                                        <h4 className="text-sm font-bold text-foreground">{prodRecord?.name || 'Unknown Product'}</h4>
-                                                        <span className="text-[10px] text-muted-foreground font-medium">
-                                                            Item Row #{idx + 1}
+                                                        <h4 className="font-bold text-sm">{prodRecord?.name || 'Unknown Product'}</h4>
+                                                        <span className="text-xs text-muted-foreground">
+                                                            Item {idx + 1}
                                                         </span>
                                                     </div>
                                                     <Button
-                                                        type="button"
                                                         variant="ghost"
                                                         size="icon"
                                                         onClick={() => removeLineItem(item.key)}
-                                                        className="h-8 w-8 rounded-full text-destructive hover:text-destructive hover:bg-destructive/10"
                                                     >
-                                                        <Trash2 className="h-4 w-4" />
+                                                        <Trash2 className="h-4 w-4 text-destructive" />
                                                     </Button>
                                                 </div>
 
-                                                <div className="grid gap-4 sm:grid-cols-2">
-                                                    {/* Supplier Search Picker */}
-                                                    {item.productId && hasMultipleSuppliers && (
-                                                        <div className="space-y-1.5 sm:col-span-2">
-                                                            <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">
-                                                                Supplier Filter
-                                                            </Label>
-                                                            <SupplierSearchPicker
-                                                                suppliers={productSuppliers}
-                                                                selectedSupplierId={item.supplierId}
-                                                                onSelect={supplierId =>
-                                                                    handleSupplierSelectInItem(item.key, supplierId, item)
-                                                                }
-                                                                onRemove={() =>
-                                                                    handleSupplierRemoveInItem(item.key, item)
-                                                                }
-                                                                placeholder="Search supplier by name..."
-                                                            />
-                                                        </div>
-                                                    )}
-
-                                                    {/* Batch Select */}
-                                                    <div className="space-y-1.5">
-                                                        <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-                                                            <Layers className="h-3.5 w-3.5 text-muted-foreground" /> Batch selection
-                                                        </Label>
+                                                {/* Supplier Select (only if product has multiple suppliers) */}
+                                                {item.productId && hasMultipleSuppliers && (
+                                                    <div>
+                                                        <label className="text-sm font-medium mb-2 block">
+                                                            Supplier <span className="text-destructive">*</span>
+                                                        </label>
                                                         <Select
-                                                            value={item.batchId || '_auto'}
-                                                            onValueChange={batchId =>
-                                                                updateLineItem(item.key, {
-                                                                    batchId: batchId === '_auto' ? undefined : batchId,
-                                                                })
+                                                            value={item.supplierId || ''}
+                                                            onValueChange={supplierId =>
+                                                                updateLineItem(item.key, { supplierId: supplierId || undefined, batchId: undefined, quantity: 0 })
                                                             }
                                                         >
-                                                            <SelectTrigger className="h-11 rounded-xl border-muted-foreground/20 bg-background shadow-sm">
-                                                                <SelectValue placeholder="Auto-select (FEFO)" />
+                                                            <SelectTrigger>
+                                                                <SelectValue placeholder="Select supplier" />
                                                             </SelectTrigger>
-                                                            <SelectContent className="rounded-xl">
-                                                                <SelectItem value="_auto" className="rounded-lg">Auto-select (FEFO)</SelectItem>
-                                                                {availableBatches.map(batch => (
-                                                                    <SelectItem key={batch.id} value={batch.id} className="rounded-lg">
-                                                                        Batch: {batch.number} ({batch.available} available)
+                                                            <SelectContent>
+                                                                {productSuppliers.map(supplier => (
+                                                                    <SelectItem key={supplier.id} value={supplier.id}>
+                                                                        {supplier.name}
                                                                     </SelectItem>
                                                                 ))}
                                                             </SelectContent>
                                                         </Select>
                                                     </div>
+                                                )}
+
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                    {/* Batch Select */}
+                                                    {item.productId && (
+                                                        <div>
+                                                            <label className="text-sm font-medium mb-2 block">Batch</label>
+                                                            <Select
+                                                                value={item.batchId || '_auto'}
+                                                                onValueChange={batchId =>
+                                                                    updateLineItem(item.key, {
+                                                                        batchId: batchId === '_auto' ? undefined : batchId,
+                                                                    })
+                                                                }
+                                                            >
+                                                                <SelectTrigger>
+                                                                    <SelectValue placeholder="Auto-select (FEFO)" />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem value="_auto">Auto-select (FEFO)</SelectItem>
+                                                                    {availableBatches.map(batch => (
+                                                                        <SelectItem key={batch.id} value={batch.id}>
+                                                                            {batch.number} — {batch.available} available
+                                                                        </SelectItem>
+                                                                    ))}
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </div>
+                                                    )}
 
                                                     {/* Quantity Input */}
-                                                    <div className="space-y-1.5">
-                                                        <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex justify-between items-center">
-                                                            <span>Quantity</span>
-                                                            <span className="text-[11px] text-primary font-bold lowercase normal-case bg-primary/10 px-2 py-0.5 rounded-full">
-                                                                Max: {availableStock}
-                                                            </span>
-                                                        </Label>
+                                                    <div>
+                                                        <label className="text-sm font-medium mb-2 block">
+                                                            Quantity
+                                                            {item.productId && (
+                                                                <span className="text-muted-foreground font-normal ml-1">
+                                                                    (max: {availableStock})
+                                                                </span>
+                                                            )}
+                                                        </label>
                                                         <Input
                                                             type="number"
                                                             min="0"
@@ -578,101 +537,94 @@ export function ConsumptionForm() {
                                                                 updateLineItem(item.key, { quantity: clamped });
                                                             }}
                                                             placeholder="0"
-                                                            className="h-11 rounded-xl border-muted-foreground/20 bg-background shadow-sm"
                                                         />
                                                         {item.quantity > 0 && item.quantity > availableStock && (
-                                                            <p className="text-xs text-destructive font-medium mt-1">
-                                                                Exceeds available stock level ({availableStock})
+                                                            <p className="text-xs text-destructive mt-1">
+                                                                Exceeds available stock ({availableStock})
                                                             </p>
                                                         )}
                                                     </div>
                                                 </div>
 
-                                                {/* Cost Subtotal Preview */}
+                                                {/* Cost Preview */}
                                                 {item.productId && item.quantity > 0 && (
-                                                    <div className="bg-primary/5 rounded-xl border border-primary/10 p-3 text-xs flex justify-between items-center text-foreground/90 font-medium">
-                                                        <span className="flex items-center gap-1"><IndianRupee className="h-3.5 w-3.5 text-muted-foreground" /> Unit cost: ₹{unitCost.toFixed(2)}</span>
-                                                        <span className="font-bold text-primary">Subtotal: ₹{(item.quantity * unitCost).toFixed(2)}</span>
+                                                    <div className="bg-primary/10 rounded px-3 py-2 text-sm">
+                                                        <div className="flex justify-between items-center">
+                                                            <span>Cost: ₹{unitCost.toFixed(2)}/unit</span>
+                                                            <span className="font-bold">Subtotal: ₹{(item.quantity * unitCost).toFixed(2)}</span>
+                                                        </div>
                                                     </div>
                                                 )}
                                             </div>
                                         );
-                                    })}
-                                </div>
-                            )}
+                                    })
+                                )}
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
+
+                {/* Additional Information */}
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Additional Information</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div>
+                            <label className="text-sm font-medium mb-2 block">Reason (Optional)</label>
+                            <Input
+                                placeholder="e.g., Staff meal, Testing, Waste disposal"
+                                value={reason}
+                                onChange={e => setReason(e.target.value)}
+                            />
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium mb-2 block">Notes (Optional)</label>
+                            <Textarea
+                                placeholder="Additional notes about this consumption..."
+                                value={notes}
+                                onChange={e => setNotes(e.target.value)}
+                                rows={3}
+                            />
                         </div>
                     </CardContent>
                 </Card>
-            )}
 
-            {/* Additional Information */}
-            <Card className="border border-muted-foreground/10 bg-card/60 backdrop-blur-sm shadow-sm">
-                <CardHeader className="pb-4">
-                    <CardTitle className="text-base font-semibold text-foreground flex items-center gap-2">
-                        <FileText className="h-4.5 w-4.5 text-primary" /> Additional Information
-                    </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    <div className="space-y-1.5">
-                        <Label htmlFor="reason" className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Reason for Consumption</Label>
-                        <Input
-                            id="reason"
-                            placeholder="e.g. Staff meal, quality testing, waste disposal, etc."
-                            value={reason}
-                            onChange={e => setReason(e.target.value)}
-                            className="h-11 rounded-xl border-muted-foreground/20 shadow-sm"
-                        />
-                    </div>
-                    <div className="space-y-1.5">
-                        <Label htmlFor="notes" className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Internal Notes / Remarks</Label>
-                        <Textarea
-                            id="notes"
-                            placeholder="Provide any additional comments or audit details here..."
-                            value={notes}
-                            onChange={e => setNotes(e.target.value)}
-                            rows={3}
-                            className="rounded-xl border-muted-foreground/20 shadow-sm"
-                        />
-                    </div>
-                </CardContent>
-            </Card>
-
-            {/* Summary and Actions */}
-            <Card className="border border-primary/20 bg-primary/5 shadow-sm">
-                <CardHeader className="pb-4">
-                    <CardTitle className="text-base font-semibold text-foreground">Log Summary</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-5">
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <span className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider block">Total Items</span>
-                            <span className="text-xl sm:text-2xl font-extrabold text-foreground mt-0.5 block">{summary.totalItems}</span>
+                {/* Summary and Actions */}
+                <Card className="border-primary/20 bg-primary/5">
+                    <CardHeader>
+                        <CardTitle>Summary</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <p className="text-sm text-muted-foreground">Total Items</p>
+                                <p className="text-2xl font-bold">{summary.totalItems}</p>
+                            </div>
+                            <div>
+                                <p className="text-sm text-muted-foreground">Total Cost</p>
+                                <p className="text-2xl font-bold">₹{summary.totalCost.toFixed(2)}</p>
+                            </div>
                         </div>
-                        <div>
-                            <span className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider block">Estimated Cost</span>
-                            <span className="text-xl sm:text-2xl font-extrabold text-foreground mt-0.5 block">₹{summary.totalCost.toFixed(2)}</span>
-                        </div>
-                    </div>
 
-                    <div className="flex gap-3 pt-4 border-t border-primary/10">
-                        <Button
-                            variant="outline"
-                            onClick={goBack}
-                            disabled={isSubmitting}
-                            className="rounded-xl px-5 h-11 border-muted-foreground/20 text-muted-foreground hover:bg-muted/80 bg-background"
-                        >
-                            Cancel
-                        </Button>
-                        <Button
-                            onClick={handleSubmit}
-                            disabled={isSubmitting || lineItems.length === 0 || !selectedLocationId}
-                            className="flex-1 rounded-xl h-11 font-semibold shadow-sm"
-                        >
-                            {isSubmitting ? 'Logging Consumption...' : 'Confirm & Log Consumption'}
-                        </Button>
-                    </div>
-                </CardContent>
-            </Card>
+                        <div className="flex gap-4 pt-4">
+                            <Button
+                                variant="outline"
+                                onClick={goBack}
+                                disabled={isSubmitting}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                onClick={handleSubmit}
+                                disabled={isSubmitting || lineItems.length === 0 || !selectedLocationId}
+                            >
+                                {isSubmitting ? 'Creating...' : 'Create Consumption'}
+                            </Button>
+                        </div>
+                    </CardContent>
+                </Card>
+            </div>
         </div>
     );
 }
