@@ -220,7 +220,7 @@ export default function LocationsList() {
                             className={`
                                 group flex flex-col justify-between rounded-2xl border bg-card/40 hover:bg-card
                                 p-4 cursor-pointer select-none border-l-4 transition-all duration-200
-                                hover:shadow-md hover:-translate-y-[2px] active:scale-[0.99]
+                                hover:shadow-md hover:-translate-y-0.5 active:scale-[0.99]
                                 ${location.isDefault ? 'border-l-primary' : 'border-l-muted-foreground/30'}
                             `}
                             onClick={() => setLocation(`/locations/${location.id}`)}

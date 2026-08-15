@@ -163,7 +163,7 @@ export function ConsumptionForm() {
         if (!product) return [];
         const ids = product.supplierIds?.length ? product.supplierIds : product.supplierId ? [product.supplierId] : [];
         const allProductSuppliers = suppliers.filter(s => ids.includes(s.id));
-        
+
         return allProductSuppliers.filter(supplier => {
             const supplierBatches = getBatchesForProduct(productId, supplier.id);
             return supplierBatches.length > 0;
@@ -373,7 +373,7 @@ export function ConsumptionForm() {
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-primary/5 to-secondary/5 p-4">
+        <div className="min-h-screen bg-linear-to-br from-primary/5 to-secondary/5 p-4">
             <div className="max-w-4xl mx-auto space-y-6">
                 {/* Header */}
                 <div className="flex items-center gap-4">
@@ -451,8 +451,8 @@ export function ConsumptionForm() {
                                     lineItems.map((item, idx) => {
                                         const productSuppliers = item.productId ? getSuppliersForProduct(item.productId) : [];
                                         const hasMultipleSuppliers = productSuppliers.length > 1;
-                                        const availableBatches = item.productId 
-                                            ? (hasMultipleSuppliers && !item.supplierId ? [] : getBatchesForProduct(item.productId, item.supplierId)) 
+                                        const availableBatches = item.productId
+                                            ? (hasMultipleSuppliers && !item.supplierId ? [] : getBatchesForProduct(item.productId, item.supplierId))
                                             : [];
                                         const availableStock = getAvailableForItem(item);
                                         const unitCost = getUnitCostForItem(item);

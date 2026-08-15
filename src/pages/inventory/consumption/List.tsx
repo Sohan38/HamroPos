@@ -271,7 +271,7 @@ export function ConsumptionList() {
                             className={`
                                 group flex flex-col md:flex-row justify-between gap-4 rounded-2xl border bg-card/40 hover:bg-card
                                 p-4 sm:p-5 cursor-pointer select-none border-l-4 transition-all duration-200
-                                hover:shadow-md hover:-translate-y-[2px] active:scale-[0.99]
+                                hover:shadow-md hover:-translate-y-0.5 active:scale-[0.99]
                                 ${consumption.status === 'completed' ? 'border-l-emerald-500' : 'border-l-rose-500'}
                             `}
                             onClick={() => setLocation(`/inventory/consumption/${consumption.id}`)}
@@ -312,11 +312,10 @@ export function ConsumptionList() {
                                     </span>
                                     <Badge
                                         variant="outline"
-                                        className={`text-[9px] px-2 py-0.5 rounded font-bold uppercase tracking-wider ${
-                                            consumption.status === 'completed'
+                                        className={`text-[9px] px-2 py-0.5 rounded font-bold uppercase tracking-wider ${consumption.status === 'completed'
                                                 ? 'border-emerald-200 text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20'
                                                 : 'border-rose-200 text-rose-600 bg-rose-50 dark:bg-rose-950/20'
-                                        }`}
+                                            }`}
                                     >
                                         {consumption.status === 'completed' ? 'Completed' : 'Reversed'}
                                     </Badge>
@@ -326,7 +325,7 @@ export function ConsumptionList() {
                                 <div className="rounded-xl bg-muted/40 p-3 border border-muted-foreground/5 space-y-1.5">
                                     {consumption.items.slice(0, 2).map((item, idx) => (
                                         <div key={idx} className="flex justify-between items-center text-xs text-foreground/80">
-                                            <span className="truncate max-w-[200px] sm:max-w-xs font-medium">{item.productName}</span>
+                                            <span className="truncate max-w-50 sm:max-w-xs font-medium">{item.productName}</span>
                                             <div className="flex items-center gap-2 shrink-0">
                                                 <span className="text-muted-foreground">× {item.quantity} {item.unit}</span>
                                                 <span className="font-semibold text-foreground">₹{item.totalCost.toFixed(1)}</span>
