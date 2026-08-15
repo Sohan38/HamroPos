@@ -4,9 +4,10 @@ import { toast } from 'sonner';
 import { useSmartBack } from '@/contexts/NavigationContext';
 import { useConsumptions, useLocations, useInventory, useProductBatches, useInventoryLocationStocks, useInventoryMovements } from '@/contexts/GlobalProviders';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { ConsumptionService } from '@/services/consumptionService';
-import { ArrowLeft, Calendar, MapPin, FileText } from 'lucide-react';
+import { ArrowLeft, Calendar, MapPin, FileText, RefreshCw, AlertTriangle, ShieldCheck, HelpCircle, Package, ArrowRightLeft } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 
 export function ConsumptionDetail() {
     const goBack = useSmartBack('/inventory/consumption');
@@ -24,21 +25,20 @@ export function ConsumptionDetail() {
 
     if (!consumption) {
         return (
-            <div className="flex flex-col items-center justify-center min-h-screen gap-4 p-4">
-                <div className="text-center">
-                    <h2 className="text-2xl font-bold">Transaction Not Found</h2>
-                    <p className="text-muted-foreground mt-2">
-                        The consumption transaction you're looking for doesn't exist.
-                    </p>
+            <div className="p-12 text-center max-w-md mx-auto my-12 bg-card rounded-2xl border shadow-sm space-y-4">
+                <div className="h-12 w-12 rounded-full bg-destructive/10 text-destructive flex items-center justify-center mx-auto">
+                    <AlertTriangle className="h-6 w-6" />
                 </div>
-                <Button onClick={goBack} variant="outline">
-                    Back to Consumption
+                <h3 className="text-lg font-bold text-foreground">Transaction Not Found</h3>
+                <p className="text-sm text-muted-foreground">The consumption log you are trying to view does not exist or has been removed.</p>
+                <Button variant="outline" className="w-full rounded-xl" onClick={goBack}>
+                    <ArrowLeft className="h-4 w-4 mr-2" /> Back to Consumption List
                 </Button>
             </div>
         );
     }
 
-    const location = locations.find(l => l.id === consumption.locationId);
+    const location = useMemo(() => locations.find(l => l.id === consumption.locationId), [locations, consumption.locationId]);
     const isReversible = consumption.status === 'completed';
 
     const handleReverse = async () => {
@@ -97,157 +97,189 @@ export function ConsumptionDetail() {
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-primary/5 to-secondary/5 p-4">
-            <div className="max-w-4xl mx-auto space-y-6">
-                {/* Header */}
-                <div className="flex items-center gap-4">
-                    <Button variant="ghost" size="icon" onClick={goBack}>
-                        <ArrowLeft className="h-4 w-4" />
+        <div className="max-w-4xl mx-auto p-4 md:p-6 pb-28 md:pb-8 space-y-6">
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3 min-w-0">
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={goBack}
+                        className="rounded-full hover:bg-muted shrink-0"
+                    >
+                        <ArrowLeft className="h-5 w-5" />
                     </Button>
-                    <div>
-                        <h1 className="text-3xl font-bold">{consumption.referenceNumber}</h1>
-                        <p className="text-muted-foreground">Consumption Transaction Details</p>
+                    <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <h1 className="text-2xl font-bold tracking-tight text-foreground truncate">{consumption.referenceNumber}</h1>
+                            <Badge
+                                variant="outline"
+                                className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider ${
+                                    consumption.status === 'completed'
+                                        ? 'border-emerald-200 text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20'
+                                        : 'border-rose-200 text-rose-600 bg-rose-50 dark:bg-rose-950/20'
+                                }`}
+                            >
+                                {consumption.status === 'completed' ? 'Completed' : 'Reversed'}
+                            </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5">Internal Stock Consumption Details</p>
                     </div>
                 </div>
+            </div>
 
-                {/* Summary Card */}
-                <Card className="border-primary/20 bg-primary/5">
-                    <CardContent className="pt-6">
-                        <div className="grid grid-cols-3 gap-6">
-                            <div>
-                                <p className="text-sm text-muted-foreground mb-1">Total Cost</p>
-                                <p className="text-3xl font-bold">₹{consumption.totalCost.toFixed(2)}</p>
-                            </div>
-                            <div>
-                                <p className="text-sm text-muted-foreground mb-1">Items</p>
-                                <p className="text-3xl font-bold">{consumption.items.length}</p>
-                            </div>
-                            <div>
-                                <p className="text-sm text-muted-foreground mb-1">Status</p>
-                                <p className="text-xl font-bold capitalize">
-                                    <span
-                                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${consumption.status === 'completed'
-                                            ? 'bg-green-100 text-green-800'
-                                            : 'bg-red-100 text-red-800'
-                                            }`}
-                                    >
-                                        {consumption.status === 'completed' ? 'Completed' : 'Reversed'}
-                                    </span>
-                                </p>
-                            </div>
-                        </div>
+            {/* Metrics & Overview Row */}
+            <div className="grid grid-cols-3 gap-3 sm:gap-4">
+                <Card className="border border-muted-foreground/10 bg-card/60 backdrop-blur-sm shadow-sm">
+                    <CardContent className="p-3 sm:p-4">
+                        <span className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider block">Total Cost</span>
+                        <span className="text-xl sm:text-2xl font-extrabold text-foreground mt-1 block">₹{consumption.totalCost.toFixed(2)}</span>
                     </CardContent>
                 </Card>
+                <Card className="border border-muted-foreground/10 bg-card/60 backdrop-blur-sm shadow-sm">
+                    <CardContent className="p-3 sm:p-4">
+                        <span className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider block">Total Items</span>
+                        <span className="text-xl sm:text-2xl font-extrabold text-foreground mt-1 block">
+                            {consumption.items.reduce((sum, item) => sum + item.quantity, 0)}
+                        </span>
+                    </CardContent>
+                </Card>
+                <Card className="border border-muted-foreground/10 bg-card/60 backdrop-blur-sm shadow-sm">
+                    <CardContent className="p-3 sm:p-4">
+                        <span className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider block">Product Lines</span>
+                        <span className="text-xl sm:text-2xl font-extrabold text-foreground mt-1 block">{consumption.items.length}</span>
+                    </CardContent>
+                </Card>
+            </div>
 
+            <div className="grid gap-6 md:grid-cols-3">
                 {/* Details Card */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Details</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        <div className="grid grid-cols-2 gap-6">
-                            <div>
-                                <label className="text-sm font-medium text-muted-foreground">Date</label>
-                                <div className="flex items-center gap-2 mt-1">
-                                    <Calendar className="h-4 w-4 text-muted-foreground" />
-                                    <p className="text-base">{formatDate(consumption.date)}</p>
+                <div className="md:col-span-2 space-y-6">
+                    <Card className="border border-muted-foreground/10 bg-card/60 backdrop-blur-sm shadow-sm">
+                        <CardHeader className="pb-4">
+                            <CardTitle className="text-base font-semibold text-foreground flex items-center gap-2">
+                                <FileText className="h-4.5 w-4.5 text-primary" /> Profile Details
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <span className="text-xs text-muted-foreground font-medium flex items-center gap-1">
+                                        <Calendar className="h-3.5 w-3.5" /> Date Logged
+                                    </span>
+                                    <p className="text-sm font-semibold text-foreground/90">{formatDate(consumption.date)}</p>
+                                </div>
+                                <div className="space-y-1">
+                                    <span className="text-xs text-muted-foreground font-medium flex items-center gap-1">
+                                        <MapPin className="h-3.5 w-3.5" /> Origin Location
+                                    </span>
+                                    <p className="text-sm font-semibold text-foreground/90">{location?.name || 'Unknown'}</p>
                                 </div>
                             </div>
-                            <div>
-                                <label className="text-sm font-medium text-muted-foreground">Location</label>
-                                <div className="flex items-center gap-2 mt-1">
-                                    <MapPin className="h-4 w-4 text-muted-foreground" />
-                                    <p className="text-base">{location?.name || 'Unknown'}</p>
-                                </div>
-                            </div>
-                        </div>
-                        {consumption.reason && (
-                            <div>
-                                <label className="text-sm font-medium text-muted-foreground">Reason</label>
-                                <p className="text-base mt-1">{consumption.reason}</p>
-                            </div>
-                        )}
-                        {consumption.notes && (
-                            <div>
-                                <label className="text-sm font-medium text-muted-foreground">Notes</label>
-                                <p className="text-base mt-1 text-wrap">{consumption.notes}</p>
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
 
-                {/* Items Card */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Consumed Items</CardTitle>
-                        <CardDescription>{consumption.items.length} item{consumption.items.length !== 1 ? 's' : ''}</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="space-y-4">
+                            {consumption.reason && (
+                                <div className="border-t border-muted-foreground/10 pt-3.5">
+                                    <span className="text-xs text-muted-foreground font-medium block">Reason for Consumption</span>
+                                    <p className="text-sm font-semibold text-foreground/90 mt-1">{consumption.reason}</p>
+                                </div>
+                            )}
+
+                            {consumption.notes && (
+                                <div className="border-t border-muted-foreground/10 pt-3.5">
+                                    <span className="text-xs text-muted-foreground font-medium block">Transaction Notes</span>
+                                    <p className="text-sm text-foreground/80 mt-1 bg-muted/30 border border-muted-foreground/5 p-3 rounded-xl whitespace-pre-wrap leading-relaxed">
+                                        {consumption.notes}
+                                    </p>
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+
+                    {/* Items Card */}
+                    <Card className="border border-muted-foreground/10 bg-card/60 backdrop-blur-sm shadow-sm">
+                        <CardHeader className="pb-4">
+                            <CardTitle className="text-base font-semibold text-foreground flex items-center gap-2">
+                                <Package className="h-4.5 w-4.5 text-primary" /> Consumed Products
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="p-0 divide-y divide-muted-foreground/10">
                             {consumption.items.map((item, idx) => (
-                                <div
-                                    key={idx}
-                                    className="border rounded-lg p-4 space-y-2 bg-muted/30"
-                                >
-                                    <div className="flex items-start justify-between">
-                                        <div>
-                                            <h4 className="font-medium">{item.productName}</h4>
-                                            {item.batchNumber && (
-                                                <p className="text-sm text-muted-foreground mt-1">Batch: {item.batchNumber}</p>
-                                            )}
-                                        </div>
-                                        <div className="text-right">
-                                            <p className="text-lg font-bold">₹{item.totalCost.toFixed(2)}</p>
-                                            <p className="text-xs text-muted-foreground">
-                                                {item.quantity} {item.unit}
-                                            </p>
-                                        </div>
+                                <div key={idx} className="p-4 flex justify-between items-start gap-4 hover:bg-muted/10 transition-colors">
+                                    <div className="min-w-0 space-y-1">
+                                        <h4 className="text-sm font-bold text-foreground truncate">{item.productName}</h4>
+                                        {item.batchNumber ? (
+                                            <Badge variant="outline" className="text-[10px] font-mono px-2 py-0.5 rounded-md border-muted-foreground/10 bg-muted/40">
+                                                Batch: {item.batchNumber}
+                                            </Badge>
+                                        ) : (
+                                            <span className="text-[10px] text-muted-foreground italic">No batch tracking</span>
+                                        )}
                                     </div>
-                                    <div className="bg-primary/10 rounded px-3 py-2 text-sm">
-                                        <div className="flex justify-between">
-                                            <span>Cost per unit: ₹{item.unitCost.toFixed(2)}</span>
-                                            <span>Quantity: {item.quantity} {item.unit}</span>
-                                        </div>
+                                    <div className="text-right shrink-0">
+                                        <span className="text-sm font-bold text-foreground block">
+                                            ₹{item.totalCost.toFixed(2)}
+                                        </span>
+                                        <span className="text-[10px] text-muted-foreground block">
+                                            {item.quantity} {item.unit} @ ₹{item.unitCost.toFixed(2)}
+                                        </span>
                                     </div>
                                 </div>
                             ))}
-                        </div>
-                    </CardContent>
-                </Card>
-
-                {/* Metadata */}
-                <Card className="text-xs text-muted-foreground">
-                    <CardContent className="pt-6 space-y-2">
-                        <div className="flex justify-between">
-                            <span>Created: {formatDate(consumption.createdAt)}</span>
-                            <span>Last Updated: {formatDate(consumption.updatedAt)}</span>
-                        </div>
-                        <div>Reference ID: {consumption.id}</div>
-                    </CardContent>
-                </Card>
-
-                {isReversible && (
-                    <Card className="border-amber-200 bg-amber-50/50">
-                        <CardContent className="pt-6 space-y-3">
-                            <div>
-                                <h3 className="text-lg font-semibold">Reverse Consumption</h3>
-                                <p className="text-sm text-muted-foreground mt-1">
-                                    This keeps the original record in history and restores the consumed stock.
-                                </p>
-                            </div>
-                            <Button variant="destructive" onClick={handleReverse}>
-                                Reverse Consumption
-                            </Button>
                         </CardContent>
                     </Card>
-                )}
-
-                {/* Back Button */}
-                <div className="flex justify-center pt-4">
-                    <Button onClick={goBack} variant="outline">
-                        Back to Consumption List
-                    </Button>
                 </div>
+
+                {/* Audit & Reversal Sidebar */}
+                <div className="space-y-6">
+                    <Card className="border border-muted-foreground/10 bg-card/60 backdrop-blur-sm shadow-sm">
+                        <CardHeader className="pb-4">
+                            <CardTitle className="text-base font-semibold text-foreground">Transaction Audit</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-3.5 text-xs">
+                            <div className="flex justify-between items-center py-1.5 border-b border-muted-foreground/5">
+                                <span className="text-muted-foreground font-medium">Log Version</span>
+                                <span className="font-mono text-foreground font-bold">v{consumption.version || 1}</span>
+                            </div>
+                            <div className="flex justify-between items-center py-1.5 border-b border-muted-foreground/5">
+                                <span className="text-muted-foreground font-medium">Created</span>
+                                <span className="text-foreground/80">{formatDate(consumption.createdAt)}</span>
+                            </div>
+                            <div className="flex justify-between items-center py-1.5">
+                                <span className="text-muted-foreground font-medium">Last Updated</span>
+                                <span className="text-foreground/80">{formatDate(consumption.updatedAt)}</span>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {isReversible && (
+                        <Card className="border border-amber-200/40 bg-amber-500/5 dark:bg-amber-500/10 shadow-sm">
+                            <CardHeader className="pb-3">
+                                <CardTitle className="text-sm font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                                    <AlertTriangle className="h-4 w-4" /> Reversal Option
+                                </CardTitle>
+                                <CardDescription className="text-xs">
+                                    Reversing this record will return all consumed items back to their respective batch stocks and location inventory.
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent className="pt-0">
+                                <Button
+                                    variant="destructive"
+                                    onClick={handleReverse}
+                                    className="w-full rounded-xl gap-2 font-semibold shadow-sm text-xs bg-amber-600 hover:bg-amber-700 text-white border-none"
+                                >
+                                    <ArrowRightLeft className="h-3.5 w-3.5" /> Reverse Transaction
+                                </Button>
+                            </CardContent>
+                        </Card>
+                    )}
+                </div>
+            </div>
+
+            {/* Back Actions */}
+            <div className="flex justify-center pt-2">
+                <Button onClick={goBack} variant="outline" className="rounded-xl px-6 border-muted-foreground/20 text-muted-foreground hover:bg-muted/80">
+                    <ArrowLeft className="h-4 w-4 mr-2" /> Back to Consumption List
+                </Button>
             </div>
         </div>
     );
