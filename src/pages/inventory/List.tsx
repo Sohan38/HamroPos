@@ -183,10 +183,24 @@ export default function InventoryList() {
   const expiringCount = Object.values(expiryStatusMap).filter(s => s === 'expiring').length;
 
   const getSupplierName = useCallback((product: Product) => {
-    const ids = product.supplierIds?.length ? product.supplierIds : product.supplierId ? [product.supplierId] : [];
+    let ids = product.supplierIds?.length ? product.supplierIds : product.supplierId ? [product.supplierId] : [];
+
+    // Filter suppliers by selected location stock if a location is selected
+    if (locationFilter !== 'all') {
+      const productBatches = batchesByProduct[product.id] ?? [];
+      const activeBatchesAtLocation = productBatches.filter(batch => {
+        const allocationAtLocation = batchLocations.find(
+          bl => bl.batchId === batch.id && bl.locationId === locationFilter
+        );
+        return allocationAtLocation && Number(allocationAtLocation.quantity ?? 0) > 0;
+      });
+      const activeSupplierIds = new Set(activeBatchesAtLocation.map(b => b.supplierId));
+      ids = ids.filter(id => activeSupplierIds.has(id));
+    }
+
     const names = ids.map(id => suppliers.find(s => s.id === id)?.name).filter(Boolean);
     return names.length ? names.join(', ') : '—';
-  }, [suppliers]);
+  }, [locationFilter, suppliers, batchesByProduct, batchLocations]);
 
   const handleDelete = useCallback((id: string, name: string) => {
     if (confirm(`Delete "${name}"? This can be undone.`)) {

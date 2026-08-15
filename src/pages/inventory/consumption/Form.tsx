@@ -122,13 +122,7 @@ export function ConsumptionForm() {
             .filter((item): item is { product: typeof products[0]; stock: number } => item !== null);
     }, [consumableProducts, selectedLocationId, locationStocks]);
 
-    // Get suppliers for a specific product
-    const getSuppliersForProduct = (productId: string) => {
-        const product = products.find(p => p.id === productId);
-        if (!product) return [];
-        const ids = product.supplierIds?.length ? product.supplierIds : product.supplierId ? [product.supplierId] : [];
-        return suppliers.filter(s => ids.includes(s.id));
-    };
+
 
     // Get batches for a product at the selected location, FEFO sorted
     const getBatchesForProduct = (productId: string, supplierId?: string): Array<{ id: string; number: string; available: number; purchaseRate: number }> => {
@@ -144,7 +138,7 @@ export function ConsumptionForm() {
                 const locationAlloc = batchLocations.find(
                     bl => bl.batchId === b.id && bl.locationId === selectedLocationId
                 );
-                const quantityAtLocation = locationAlloc?.quantity ?? b.quantity;
+                const quantityAtLocation = locationAlloc ? locationAlloc.quantity : 0;
                 return {
                     id: b.id,
                     number: b.batchNumber || `Batch ${b.id.slice(0, 8)}`,
@@ -161,6 +155,19 @@ export function ConsumptionForm() {
                 return aExpiry - bExpiry;
             })
             .map(({ expiryDate, ...rest }) => rest);
+    };
+
+    // Get suppliers for a specific product (filtered by those with stock at selected location)
+    const getSuppliersForProduct = (productId: string) => {
+        const product = products.find(p => p.id === productId);
+        if (!product) return [];
+        const ids = product.supplierIds?.length ? product.supplierIds : product.supplierId ? [product.supplierId] : [];
+        const allProductSuppliers = suppliers.filter(s => ids.includes(s.id));
+        
+        return allProductSuppliers.filter(supplier => {
+            const supplierBatches = getBatchesForProduct(productId, supplier.id);
+            return supplierBatches.length > 0;
+        });
     };
 
     // Get available stock for a line item (considering batch/supplier selection)
@@ -444,7 +451,9 @@ export function ConsumptionForm() {
                                     lineItems.map((item, idx) => {
                                         const productSuppliers = item.productId ? getSuppliersForProduct(item.productId) : [];
                                         const hasMultipleSuppliers = productSuppliers.length > 1;
-                                        const availableBatches = item.productId ? getBatchesForProduct(item.productId, item.supplierId) : [];
+                                        const availableBatches = item.productId 
+                                            ? (hasMultipleSuppliers && !item.supplierId ? [] : getBatchesForProduct(item.productId, item.supplierId)) 
+                                            : [];
                                         const availableStock = getAvailableForItem(item);
                                         const unitCost = getUnitCostForItem(item);
                                         const prodRecord = products.find(p => p.id === item.productId);
