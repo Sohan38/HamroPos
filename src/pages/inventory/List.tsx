@@ -435,7 +435,7 @@ export default function InventoryList() {
                   <CardContent className="p-0">
                     <div
                       className="p-4 flex gap-3 cursor-pointer hover:bg-muted/30 transition-colors"
-                      onClick={() => setLocation(`/inventory/${item.id}`)}
+                      onClick={() => setLocation(`/inventory/${item.id}${locationFilter !== 'all' ? `?location=${locationFilter}` : ''}`)}
                     >
                       {item.imageBase64 ? (
                         <div
@@ -453,30 +453,32 @@ export default function InventoryList() {
                             {item.name}
                             <span className="text-[10px] text-muted-foreground">View</span>
                           </div>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                              <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 -mt-1">
-                                <MoreVertical className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => setAdjustProduct(item)}>
-                                <SlidersHorizontal className="h-4 w-4 mr-2" /> Adjust Stock
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => setLocation('/sales/new')}>
-                                <ShoppingCart className="h-4 w-4 mr-2" /> Sell
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => setLocation(`/inventory/${item.id}/edit`)}>
-                                <Edit className="h-4 w-4 mr-2" /> Edit
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                className="text-destructive"
-                                onClick={() => handleDelete(item.id, item.name)}
-                              >
-                                <Trash2 className="h-4 w-4 mr-2" /> Delete
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                          {locationFilter === 'all' && (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                                <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 -mt-1">
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => setAdjustProduct(item)}>
+                                  <SlidersHorizontal className="h-4 w-4 mr-2" /> Adjust Stock
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => setLocation('/sales/new')}>
+                                  <ShoppingCart className="h-4 w-4 mr-2" /> Sell
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => setLocation(`/inventory/${item.id}/edit`)}>
+                                  <Edit className="h-4 w-4 mr-2" /> Edit
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  className="text-destructive"
+                                  onClick={() => handleDelete(item.id, item.name)}
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" /> Delete
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          )}
                         </div>
                         <div className="text-xs text-muted-foreground truncate mt-0.5">{item.brand || item.category}</div>
                         <div className="flex items-center gap-2 mt-2 flex-wrap">
@@ -519,30 +521,32 @@ export default function InventoryList() {
                       <span className="font-medium shrink-0">Val: {format(item.purchaseRate * displayQuantity)}</span>
                     </div>
 
-                    <div className="px-4 pb-3 flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="flex-1 h-8 text-xs"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setAdjustProduct(item);
-                        }}
-                      >
-                        <SlidersHorizontal className="h-3 w-3 mr-1" /> Adjust Stock
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-8 text-xs"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setLocation(`/inventory/${item.id}/edit`);
-                        }}
-                      >
-                        <Edit className="h-3 w-3 mr-1" /> Edit
-                      </Button>
-                    </div>
+                    {locationFilter === 'all' && (
+                      <div className="px-4 pb-3 flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 h-8 text-xs"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setAdjustProduct(item);
+                          }}
+                        >
+                          <SlidersHorizontal className="h-3 w-3 mr-1" /> Adjust Stock
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 text-xs"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setLocation(`/inventory/${item.id}/edit`);
+                          }}
+                        >
+                          <Edit className="h-3 w-3 mr-1" /> Edit
+                        </Button>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               );
