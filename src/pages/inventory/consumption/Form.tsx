@@ -27,7 +27,10 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, Plus, Trash2, MapPin, Package, FileText, IndianRupee, Layers, AlertCircle, Badge } from 'lucide-react';
+import { ArrowLeft, Trash2, MapPin, Package, FileText, IndianRupee, Layers, AlertCircle } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { ProductSearchPicker } from '@/components/ProductSearchPicker';
+import { SupplierSearchPicker } from '@/components/SupplierSearchPicker';
 
 interface LineItem {
     productId: string;
@@ -157,7 +160,7 @@ export function ConsumptionForm() {
                 number: b.batchNumber || `Batch ${b.id.slice(0, 8)}`,
                 available: quantityAtLocation,
                 purchaseRate: b.purchaseRate ?? 0,
-                expiryDate: b.expiryDate,
+                expiryDate: b.expiryDate ?? undefined,
             });
             map.set(b.productId, list);
         }
@@ -196,6 +199,12 @@ export function ConsumptionForm() {
             return batchData?.available ?? 0;
         }
 
+        if (item.supplierId) {
+            // Bug Fix: If supplier selected but no batch, sum the available quantity of all batches belonging to this supplier at this location
+            const supplierBatches = getBatchesForProduct(item.productId, item.supplierId);
+            return supplierBatches.reduce((sum, b) => sum + b.available, 0);
+        }
+
         const entry = productsAtLocation.find(p => p.product.id === item.productId);
         return entry?.stock ?? 0;
     };
@@ -222,15 +231,23 @@ export function ConsumptionForm() {
         return products.find(p => p.id === productId)?.name || 'Unknown';
     };
 
-    // Add new line item
-    const addLineItem = () => {
-        setLineItems([
-            ...lineItems,
+    // Add new line item by ID (from ProductSearchPicker selection)
+    const addItemById = (productId: string) => {
+        const product = products.find(p => p.id === productId);
+        if (!product) return;
+
+        // Auto-select supplier if there is only 1 supplier
+        const productSuppliers = getSuppliersForProduct(productId);
+        const supplierId = productSuppliers.length === 1 ? productSuppliers[0].id : undefined;
+
+        setLineItems(current => [
+            ...current,
             {
-                productId: '',
-                quantity: 0,
+                productId,
+                quantity: 1,
+                supplierId,
                 key: Math.random().toString(36).slice(2, 9),
-            },
+            }
         ]);
     };
 
@@ -248,6 +265,22 @@ export function ConsumptionForm() {
         );
     };
 
+    // Keep quantity within valid bounds when supplier selection changes
+    const handleSupplierSelectInItem = (key: string, supplierId: string, item: LineItem) => {
+        const supplierBatches = getBatchesForProduct(item.productId, supplierId);
+        const available = supplierBatches.reduce((sum, b) => sum + b.available, 0);
+        // Retain current quantity if it fits, otherwise fallback to 1 or 0
+        const newQty = item.quantity > available ? (available > 0 ? 1 : 0) : item.quantity;
+        updateLineItem(key, { supplierId, batchId: undefined, quantity: newQty || (available > 0 ? 1 : 0) });
+    };
+
+    const handleSupplierRemoveInItem = (key: string, item: LineItem) => {
+        const entry = productsAtLocation.find(p => p.product.id === item.productId);
+        const available = entry?.stock ?? 0;
+        const newQty = item.quantity > available ? (available > 0 ? 1 : 0) : item.quantity;
+        updateLineItem(key, { supplierId: undefined, batchId: undefined, quantity: newQty || (available > 0 ? 1 : 0) });
+    };
+
     // Performance Optimization 5: Memoize summary calculations
     const summary = useMemo(() => {
         let totalItems = 0;
@@ -261,6 +294,23 @@ export function ConsumptionForm() {
 
         return { totalItems, totalCost };
     }, [lineItems, products, batches, selectedLocationId, batchesMap]);
+
+    // Product search list items mapping for ProductSearchPicker
+    const productPickerItems = useMemo(() => {
+        return productsAtLocation.map(({ product, stock }) => ({
+            id: product.id,
+            name: product.name,
+            barcode: product.barcode,
+            category: product.category,
+            sublabel: `Available: ${stock} ${product.unit || 'units'}`.trim(),
+        }));
+    }, [productsAtLocation]);
+
+    // Added product IDs to filter out from ProductSearchPicker list
+    const addedProductIds = useMemo(() => new Set(lineItems.map(i => i.productId)), [lineItems]);
+    const availableProductItems = useMemo(() => {
+        return productPickerItems.filter(p => !addedProductIds.has(p.id));
+    }, [productPickerItems, addedProductIds]);
 
     // Submit consumption
     const handleSubmit = async () => {
@@ -403,107 +453,88 @@ export function ConsumptionForm() {
             {selectedLocationId && (
                 <Card className="border border-muted-foreground/10 bg-card/60 backdrop-blur-sm shadow-sm overflow-hidden">
                     <CardHeader className="pb-4 border-b border-muted-foreground/10 bg-muted/20">
-                        <div className="flex items-center justify-between gap-4">
-                            <div>
-                                <CardTitle className="text-base font-semibold text-foreground flex items-center gap-2">
-                                    <Package className="h-4.5 w-4.5 text-primary" /> Consumable Items List
-                                </CardTitle>
-                                <CardDescription className="text-xs">
-                                    {productsAtLocation.length} consumable products currently stocked at this location
-                                </CardDescription>
-                            </div>
-                            <Button onClick={addLineItem} size="sm" className="rounded-xl gap-1.5 shadow-sm shrink-0">
-                                <Plus className="h-3.5 w-3.5" /> Add Product Row
-                            </Button>
-                        </div>
+                        <CardTitle className="text-base font-semibold text-foreground flex items-center gap-2">
+                            <Package className="h-4.5 w-4.5 text-primary" /> Products Consumed
+                        </CardTitle>
+                        <CardDescription className="text-xs">
+                            Search and tap products below to add them to this consumption transaction.
+                        </CardDescription>
                     </CardHeader>
-                    <CardContent className="p-4 sm:p-6 space-y-4">
-                        {lineItems.length === 0 ? (
-                            <div className="text-center py-10 text-muted-foreground bg-muted/10 rounded-2xl border border-dashed">
-                                <p className="text-sm font-medium">No items added to this log yet.</p>
-                                <p className="text-xs text-muted-foreground mt-0.5">Click "Add Product Row" above to include stock items.</p>
-                            </div>
-                        ) : (
-                            <div className="space-y-4">
-                                {lineItems.map((item, idx) => {
-                                    const productSuppliers = item.productId ? getSuppliersForProduct(item.productId) : [];
-                                    const hasMultipleSuppliers = productSuppliers.length > 1;
-                                    const availableBatches = item.productId ? getBatchesForProduct(item.productId, item.supplierId) : [];
-                                    const availableStock = getAvailableForItem(item);
-                                    const unitCost = getUnitCostForItem(item);
+                    <CardContent className="p-4 sm:p-6 space-y-6">
+                        {/* Search and Picker */}
+                        <ProductSearchPicker
+                            label="Search Products"
+                            items={availableProductItems}
+                            onSelect={addItemById}
+                            placeholder="Type product name or scan barcode..."
+                            emptyMessage="No consumable products available at this location."
+                            defaultLimit={8}
+                        />
 
-                                    return (
-                                        <div key={item.key} className="border border-muted-foreground/10 rounded-2xl p-4 sm:p-5 space-y-4 bg-muted/20 hover:bg-muted/30 transition-colors relative">
-                                            <div className="flex items-center justify-between">
-                                                <Badge variant="outline" className="text-[10px] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider bg-background border-muted-foreground/10">
-                                                    Item Row #{idx + 1}
-                                                </Badge>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    onClick={() => removeLineItem(item.key)}
-                                                    className="h-8 w-8 rounded-full text-destructive hover:text-destructive hover:bg-destructive/10"
-                                                >
-                                                    <Trash2 className="h-4 w-4" />
-                                                </Button>
-                                            </div>
+                        {/* Selected List */}
+                        <div className="space-y-4 border-t border-muted-foreground/10 pt-6">
+                            <h3 className="text-sm font-semibold text-foreground">Added Items ({lineItems.length})</h3>
 
-                                            <div className="grid gap-4 sm:grid-cols-2">
-                                                {/* Product Select */}
-                                                <div className="space-y-1.5">
-                                                    <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Product</Label>
-                                                    <Select
-                                                        value={item.productId}
-                                                        onValueChange={productId =>
-                                                            updateLineItem(item.key, { productId, batchId: undefined, supplierId: undefined, quantity: 0 })
-                                                        }
+                            {lineItems.length === 0 ? (
+                                <div className="text-center py-10 text-muted-foreground bg-muted/10 rounded-2xl border border-dashed">
+                                    <p className="text-sm font-medium">No items added to this log yet.</p>
+                                    <p className="text-xs text-muted-foreground mt-0.5">Use the search picker above to add items.</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    {lineItems.map((item, idx) => {
+                                        const productSuppliers = item.productId ? getSuppliersForProduct(item.productId) : [];
+                                        const hasMultipleSuppliers = productSuppliers.length > 1;
+                                        const availableBatches = item.productId ? getBatchesForProduct(item.productId, item.supplierId) : [];
+                                        const availableStock = getAvailableForItem(item);
+                                        const unitCost = getUnitCostForItem(item);
+                                        const prodRecord = products.find(p => p.id === item.productId);
+
+                                        return (
+                                            <div key={item.key} className="border border-muted-foreground/10 rounded-2xl p-4 sm:p-5 space-y-4 bg-muted/20 hover:bg-muted/30 transition-colors relative">
+                                                <div className="flex items-center justify-between">
+                                                    <div>
+                                                        <h4 className="text-sm font-bold text-foreground">{prodRecord?.name || 'Unknown Product'}</h4>
+                                                        <span className="text-[10px] text-muted-foreground font-medium">
+                                                            Item Row #{idx + 1}
+                                                        </span>
+                                                    </div>
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        onClick={() => removeLineItem(item.key)}
+                                                        className="h-8 w-8 rounded-full text-destructive hover:text-destructive hover:bg-destructive/10"
                                                     >
-                                                        <SelectTrigger className="h-11 rounded-xl border-muted-foreground/20 bg-background shadow-sm">
-                                                            <SelectValue placeholder="Choose product" />
-                                                        </SelectTrigger>
-                                                        <SelectContent className="rounded-xl">
-                                                            {productsAtLocation.map(({ product, stock }) => (
-                                                                <SelectItem key={product.id} value={product.id} className="rounded-lg">
-                                                                    {product.name} ({stock} {product.unit || 'units'} available)
-                                                                </SelectItem>
-                                                            ))}
-                                                        </SelectContent>
-                                                    </Select>
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
                                                 </div>
 
-                                                {/* Supplier Select */}
-                                                {item.productId && hasMultipleSuppliers && (
-                                                    <div className="space-y-1.5">
-                                                        <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-                                                            Supplier <span className="text-destructive">*</span>
-                                                        </Label>
-                                                        <Select
-                                                            value={item.supplierId || ''}
-                                                            onValueChange={supplierId =>
-                                                                updateLineItem(item.key, { supplierId: supplierId || undefined, batchId: undefined })
-                                                            }
-                                                        >
-                                                            <SelectTrigger className="h-11 rounded-xl border-muted-foreground/20 bg-background shadow-sm">
-                                                                <SelectValue placeholder="Choose supplier" />
-                                                            </SelectTrigger>
-                                                            <SelectContent className="rounded-xl">
-                                                                {productSuppliers.map(supplier => (
-                                                                    <SelectItem key={supplier.id} value={supplier.id} className="rounded-lg">
-                                                                        {supplier.name}
-                                                                    </SelectItem>
-                                                                ))}
-                                                            </SelectContent>
-                                                        </Select>
-                                                    </div>
-                                                )}
-                                            </div>
-
-                                            {item.productId && (
                                                 <div className="grid gap-4 sm:grid-cols-2">
+                                                    {/* Supplier Search Picker */}
+                                                    {item.productId && hasMultipleSuppliers && (
+                                                        <div className="space-y-1.5 sm:col-span-2">
+                                                            <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">
+                                                                Supplier Filter
+                                                            </Label>
+                                                            <SupplierSearchPicker
+                                                                suppliers={productSuppliers}
+                                                                selectedSupplierId={item.supplierId}
+                                                                onSelect={supplierId =>
+                                                                    handleSupplierSelectInItem(item.key, supplierId, item)
+                                                                }
+                                                                onRemove={() =>
+                                                                    handleSupplierRemoveInItem(item.key, item)
+                                                                }
+                                                                placeholder="Search supplier by name..."
+                                                            />
+                                                        </div>
+                                                    )}
+
                                                     {/* Batch Select */}
                                                     <div className="space-y-1.5">
                                                         <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-                                                            <Layers className="h-3.5 w-3.5 text-muted-foreground" /> Batch tracking
+                                                            <Layers className="h-3.5 w-3.5 text-muted-foreground" /> Batch selection
                                                         </Label>
                                                         <Select
                                                             value={item.batchId || '_auto'}
@@ -556,20 +587,20 @@ export function ConsumptionForm() {
                                                         )}
                                                     </div>
                                                 </div>
-                                            )}
 
-                                            {/* Cost Subtotal Preview */}
-                                            {item.productId && item.quantity > 0 && (
-                                                <div className="bg-primary/5 rounded-xl border border-primary/10 p-3 text-xs flex justify-between items-center text-foreground/90 font-medium">
-                                                    <span className="flex items-center gap-1"><IndianRupee className="h-3.5 w-3.5 text-muted-foreground" /> Unit cost: ₹{unitCost.toFixed(2)}</span>
-                                                    <span className="font-bold text-primary">Subtotal: ₹{(item.quantity * unitCost).toFixed(2)}</span>
-                                                </div>
-                                            )}
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
+                                                {/* Cost Subtotal Preview */}
+                                                {item.productId && item.quantity > 0 && (
+                                                    <div className="bg-primary/5 rounded-xl border border-primary/10 p-3 text-xs flex justify-between items-center text-foreground/90 font-medium">
+                                                        <span className="flex items-center gap-1"><IndianRupee className="h-3.5 w-3.5 text-muted-foreground" /> Unit cost: ₹{unitCost.toFixed(2)}</span>
+                                                        <span className="font-bold text-primary">Subtotal: ₹{(item.quantity * unitCost).toFixed(2)}</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
                     </CardContent>
                 </Card>
             )}
