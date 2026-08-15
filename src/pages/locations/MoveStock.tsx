@@ -11,6 +11,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ArrowLeft, AlertTriangle, MapPin, Package, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { v4 as uuidv4 } from 'uuid';
+import { ProductSearchPicker } from '@/components/ProductSearchPicker';
+import { SupplierSearchPicker } from '@/components/SupplierSearchPicker';
 
 export default function MoveStockPage() {
     const [, setLocation] = useLocation();
@@ -95,6 +97,17 @@ export default function MoveStockPage() {
             })
             .filter((item) => item !== null) as Array<{ product: any; stock: number }>;
     }, [sourceLocationId, inventory, locationStocks]);
+
+    // Product search list items mapping for ProductSearchPicker
+    const availableProductItems = useMemo(() => {
+        return productsAtSource.map(({ product, stock }) => ({
+            id: product.id,
+            name: product.name,
+            barcode: product.barcode,
+            category: product.category,
+            sublabel: `Stock: ${stock} ${product.unit || 'units'}`.trim(),
+        }));
+    }, [productsAtSource]);
 
     // Get current stock at source
     const currentStockAtSource = useMemo(() => {
@@ -382,23 +395,37 @@ export default function MoveStockPage() {
                     {/* Product Selector */}
                     {sourceLocationId && (
                         <div className="space-y-2 border-t border-muted-foreground/10 pt-4">
-                            <Label htmlFor="product" className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                            <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
                                 <Package className="h-3.5 w-3.5 text-primary" /> Product to Move
                             </Label>
-                            <Select value={productId} onValueChange={(val) => { setProductId(val); setSupplierId(''); setBatchId(''); }}>
-                                <SelectTrigger id="product" className="h-11 rounded-xl border-muted-foreground/20 focus-visible:ring-primary shadow-sm">
-                                    <SelectValue placeholder="Search or select product" />
-                                </SelectTrigger>
-                                <SelectContent className="rounded-xl">
-                                    {productsAtSource.map(({ product, stock }) => (
-                                        <SelectItem key={product.id} value={product.id} className="rounded-lg">
-                                            {product.name} ({stock} units in stock)
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                            {productsAtSource.length === 0 && (
-                                <p className="text-xs text-destructive italic font-medium">No stock is available at this source location.</p>
+                            {productId ? (
+                                <div className="flex items-center justify-between p-3 bg-muted/40 rounded-xl border border-muted-foreground/10">
+                                    <div>
+                                        <p className="font-semibold text-sm">{inventory.find(p => p.id === productId)?.name}</p>
+                                        <p className="text-xs text-muted-foreground">Stock: {currentStockAtSource} units</p>
+                                    </div>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => { setProductId(''); setSupplierId(''); setBatchId(''); }}
+                                        className="h-8 text-xs text-destructive rounded-lg hover:bg-destructive/10"
+                                    >
+                                        Change Product
+                                    </Button>
+                                </div>
+                            ) : (
+                                <ProductSearchPicker
+                                    items={availableProductItems}
+                                    onSelect={(id) => {
+                                        setProductId(id);
+                                        setSupplierId('');
+                                        setBatchId('');
+                                    }}
+                                    placeholder="Search product to move..."
+                                    emptyMessage="No stock available at this source location."
+                                    defaultLimit={8}
+                                />
                             )}
                         </div>
                     )}
@@ -406,22 +433,16 @@ export default function MoveStockPage() {
                     {/* Supplier selection (if multiple suppliers) */}
                     {productId && productSuppliers.length > 1 && (
                         <div className="space-y-2 border-t border-muted-foreground/10 pt-4">
-                            <Label htmlFor="supplier" className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-                                <Label className="text-xs font-semibold text-muted-foreground">Supplier Filter</Label>
+                            <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                                Supplier Filter
                             </Label>
-                            <Select value={supplierId} onValueChange={(val) => { setSupplierId(val); setBatchId(''); }}>
-                                <SelectTrigger id="supplier" className="h-11 rounded-xl border-muted-foreground/20 focus-visible:ring-primary shadow-sm">
-                                    <SelectValue placeholder="All Suppliers (Show all batches)" />
-                                </SelectTrigger>
-                                <SelectContent className="rounded-xl">
-                                    <SelectItem value="" className="rounded-lg">All suppliers</SelectItem>
-                                    {productSuppliers.map(supplier => (
-                                        <SelectItem key={supplier.id} value={supplier.id} className="rounded-lg">
-                                            {supplier.name}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            <SupplierSearchPicker
+                                suppliers={productSuppliers}
+                                selectedSupplierId={supplierId}
+                                onSelect={(val) => { setSupplierId(val); setBatchId(''); }}
+                                onRemove={() => { setSupplierId(''); setBatchId(''); }}
+                                placeholder="Search supplier..."
+                            />
                         </div>
                     )}
 

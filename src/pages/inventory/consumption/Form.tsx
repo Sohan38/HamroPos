@@ -28,6 +28,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { ArrowLeft, Plus, Trash2, ChevronDown } from 'lucide-react';
 import { ProductSearchPicker } from '@/components/ProductSearchPicker';
+import { SupplierSearchPicker } from '@/components/SupplierSearchPicker';
 
 interface LineItem {
     productId: string;
@@ -482,23 +483,17 @@ export function ConsumptionForm() {
                                                         <label className="text-sm font-medium mb-2 block">
                                                             Supplier <span className="text-destructive">*</span>
                                                         </label>
-                                                        <Select
-                                                            value={item.supplierId || ''}
-                                                            onValueChange={supplierId =>
-                                                                updateLineItem(item.key, { supplierId: supplierId || undefined, batchId: undefined, quantity: 0 })
+                                                        <SupplierSearchPicker
+                                                            suppliers={productSuppliers}
+                                                            selectedSupplierId={item.supplierId}
+                                                            onSelect={supplierId =>
+                                                                updateLineItem(item.key, { supplierId, batchId: undefined, quantity: 0 })
                                                             }
-                                                        >
-                                                            <SelectTrigger>
-                                                                <SelectValue placeholder="Select supplier" />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                {productSuppliers.map(supplier => (
-                                                                    <SelectItem key={supplier.id} value={supplier.id}>
-                                                                        {supplier.name}
-                                                                    </SelectItem>
-                                                                ))}
-                                                            </SelectContent>
-                                                        </Select>
+                                                            onRemove={() =>
+                                                                updateLineItem(item.key, { supplierId: undefined, batchId: undefined, quantity: 0 })
+                                                            }
+                                                            placeholder="Search supplier..."
+                                                        />
                                                     </div>
                                                 )}
 
