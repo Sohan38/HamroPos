@@ -160,7 +160,9 @@ export default function Dashboard() {
     const expensesByDate = new Map<string, number>();
 
     for (const sale of sales) {
-      const dateKey = sale.date.split('T')[0] ?? sale.date;
+      const dateKey = (sale.date ?? '').split('T')[0] ?? (sale.date ?? '').slice(0, 10);
+      if (!dateKey) continue;
+
       const existing = salesByDate.get(dateKey) ?? { revenue: 0, cogs: 0 };
       existing.revenue += sale.grandTotal;
       for (const item of sale.items) {
@@ -173,7 +175,8 @@ export default function Dashboard() {
 
     for (const expense of expenses) {
       if (expense.sourcePurchaseId) continue;
-      const dateKey = expense.date.split('T')[0] ?? expense.date;
+      const dateKey = (expense.date ?? '').split('T')[0] ?? (expense.date ?? '').slice(0, 10);
+      if (!dateKey) continue;
       expensesByDate.set(dateKey, (expensesByDate.get(dateKey) ?? 0) + expense.amount);
     }
 
@@ -193,7 +196,7 @@ export default function Dashboard() {
       });
     }
     return data;
-  }, [sales, expenses, purchases, inventoryMap]); // fixed: added purchases
+  }, [sales, expenses, purchases, inventoryMap]);
 
   const recentSales = useMemo(
     () =>
