@@ -174,6 +174,12 @@ export function ConsumptionForm() {
             return batchData?.available ?? 0;
         }
 
+        if (item.supplierId) {
+            // Supplier selected but no specific batch — sum available stock of all batches for this supplier
+            const supplierBatches = getBatchesForProduct(item.productId, item.supplierId);
+            return supplierBatches.reduce((sum, b) => sum + b.available, 0);
+        }
+
         // No batch selected — show total stock at location
         const entry = productsAtLocation.find(p => p.product.id === item.productId);
         return entry?.stock ?? 0;
