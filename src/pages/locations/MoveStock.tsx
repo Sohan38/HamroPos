@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { ArrowLeft, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, MapPin, Package, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -313,89 +313,110 @@ export default function MoveStockPage() {
     };
 
     return (
-        <div className="max-w-2xl mx-auto p-4 md:p-6 pb-24 space-y-5">
+        <div className="max-w-3xl mx-auto p-4 md:p-6 pb-28 md:pb-8 space-y-6">
             {/* Header */}
             <div className="flex items-center gap-3">
-                <Button variant="ghost" size="icon" onClick={() => setLocation('/locations')}>
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setLocation('/locations')}
+                    className="rounded-full hover:bg-muted shrink-0"
+                >
                     <ArrowLeft className="h-5 w-5" />
                 </Button>
-                <h1 className="text-2xl font-bold">Move stock</h1>
+                <div>
+                    <h1 className="text-2xl font-bold tracking-tight text-foreground">Move Stock</h1>
+                    <p className="text-xs text-muted-foreground mt-0.5">Transfer inventory items securely between active locations.</p>
+                </div>
             </div>
 
             {/* Form */}
-            <Card>
-                <CardHeader>
-                    <CardTitle>Stock transfer between locations</CardTitle>
+            <Card className="border border-muted-foreground/10 bg-card/60 backdrop-blur-sm shadow-sm overflow-hidden">
+                <CardHeader className="pb-4 border-b border-muted-foreground/10 bg-muted/20">
+                    <CardTitle className="text-base font-semibold text-foreground flex items-center gap-2">
+                        <ArrowLeft className="h-4.5 w-4.5 text-primary rotate-180" /> Stock Transfer Details
+                    </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-6">
-                    {/* Source Location */}
-                    <div className="space-y-2">
-                        <Label htmlFor="source">Source location</Label>
-                        <Select value={sourceLocationId} onValueChange={setSourceLocationId}>
-                            <SelectTrigger id="source">
-                                <SelectValue placeholder="Select source location" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {activeLocations.map((loc) => (
-                                    <SelectItem key={loc.id} value={loc.id}>
-                                        {loc.name}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-
-                    {/* Destination Location */}
-                    <div className="space-y-2">
-                        <Label htmlFor="dest">Destination location</Label>
-                        <Select value={destinationLocationId} onValueChange={setDestinationLocationId}>
-                            <SelectTrigger id="dest">
-                                <SelectValue placeholder="Select destination location" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {activeLocations.filter((loc) => loc.id !== sourceLocationId).map((loc) => (
-                                    <SelectItem key={loc.id} value={loc.id}>
-                                        {loc.name}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-
-                    {/* Product */}
-                    {sourceLocationId && (
+                <CardContent className="p-5 sm:p-6 space-y-6">
+                    {/* Source and Destination Connection Visual Layout */}
+                    <div className="grid gap-4 sm:grid-cols-2 relative">
+                        {/* Source Location */}
                         <div className="space-y-2">
-                            <Label htmlFor="product">Product</Label>
-                            <Select value={productId} onValueChange={(val) => { setProductId(val); setSupplierId(''); setBatchId(''); }}>
-                                <SelectTrigger id="product">
-                                    <SelectValue placeholder="Select product" />
+                            <Label htmlFor="source" className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                                <MapPin className="h-3.5 w-3.5 text-rose-500" /> Source Location
+                            </Label>
+                            <Select value={sourceLocationId} onValueChange={setSourceLocationId}>
+                                <SelectTrigger id="source" className="h-11 rounded-xl border-muted-foreground/20 focus-visible:ring-primary shadow-sm">
+                                    <SelectValue placeholder="Select origin location" />
                                 </SelectTrigger>
-                                <SelectContent>
+                                <SelectContent className="rounded-xl">
+                                    {activeLocations.map((loc) => (
+                                        <SelectItem key={loc.id} value={loc.id} className="rounded-lg">
+                                            {loc.name} {loc.isDefault ? '(Default)' : ''}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        {/* Destination Location */}
+                        <div className="space-y-2">
+                            <Label htmlFor="dest" className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                                <MapPin className="h-3.5 w-3.5 text-emerald-500" /> Destination Location
+                            </Label>
+                            <Select value={destinationLocationId} onValueChange={setDestinationLocationId}>
+                                <SelectTrigger id="dest" className="h-11 rounded-xl border-muted-foreground/20 focus-visible:ring-primary shadow-sm">
+                                    <SelectValue placeholder="Select target location" />
+                                </SelectTrigger>
+                                <SelectContent className="rounded-xl">
+                                    {activeLocations.filter((loc) => loc.id !== sourceLocationId).map((loc) => (
+                                        <SelectItem key={loc.id} value={loc.id} className="rounded-lg">
+                                            {loc.name} {loc.isDefault ? '(Default)' : ''}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+
+                    {/* Product Selector */}
+                    {sourceLocationId && (
+                        <div className="space-y-2 border-t border-muted-foreground/10 pt-4">
+                            <Label htmlFor="product" className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                                <Package className="h-3.5 w-3.5 text-primary" /> Product to Move
+                            </Label>
+                            <Select value={productId} onValueChange={(val) => { setProductId(val); setSupplierId(''); setBatchId(''); }}>
+                                <SelectTrigger id="product" className="h-11 rounded-xl border-muted-foreground/20 focus-visible:ring-primary shadow-sm">
+                                    <SelectValue placeholder="Search or select product" />
+                                </SelectTrigger>
+                                <SelectContent className="rounded-xl">
                                     {productsAtSource.map(({ product, stock }) => (
-                                        <SelectItem key={product.id} value={product.id}>
-                                            {product.name} ({stock} available)
+                                        <SelectItem key={product.id} value={product.id} className="rounded-lg">
+                                            {product.name} ({stock} units in stock)
                                         </SelectItem>
                                     ))}
                                 </SelectContent>
                             </Select>
                             {productsAtSource.length === 0 && (
-                                <p className="text-xs text-muted-foreground">No products at this location</p>
+                                <p className="text-xs text-destructive italic font-medium">No stock is available at this source location.</p>
                             )}
                         </div>
                     )}
 
                     {/* Supplier selection (if multiple suppliers) */}
                     {productId && productSuppliers.length > 1 && (
-                        <div className="space-y-2">
-                            <Label htmlFor="supplier">Supplier</Label>
+                        <div className="space-y-2 border-t border-muted-foreground/10 pt-4">
+                            <Label htmlFor="supplier" className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                                <Label className="text-xs font-semibold text-muted-foreground">Supplier Filter</Label>
+                            </Label>
                             <Select value={supplierId} onValueChange={(val) => { setSupplierId(val); setBatchId(''); }}>
-                                <SelectTrigger id="supplier">
-                                    <SelectValue placeholder="Select supplier" />
+                                <SelectTrigger id="supplier" className="h-11 rounded-xl border-muted-foreground/20 focus-visible:ring-primary shadow-sm">
+                                    <SelectValue placeholder="All Suppliers (Show all batches)" />
                                 </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="">All suppliers</SelectItem>
+                                <SelectContent className="rounded-xl">
+                                    <SelectItem value="" className="rounded-lg">All suppliers</SelectItem>
                                     {productSuppliers.map(supplier => (
-                                        <SelectItem key={supplier.id} value={supplier.id}>
+                                        <SelectItem key={supplier.id} value={supplier.id} className="rounded-lg">
                                             {supplier.name}
                                         </SelectItem>
                                     ))}
@@ -406,23 +427,23 @@ export default function MoveStockPage() {
 
                     {/* Batch selection (if product has batches) */}
                     {productId && batchesAtSource.length > 0 && (
-                        <div className="space-y-2">
-                            <Label htmlFor="batch">Batch (optional)</Label>
+                        <div className="space-y-2 border-t border-muted-foreground/10 pt-4">
+                            <Label htmlFor="batch" className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Specific Batch (Optional)</Label>
                             {selectedBatch && selectedBatchSupplier && (
-                                <div className="mb-2 p-2 bg-muted rounded text-sm">
-                                    <div>Batch: <span className="font-medium">{selectedBatch.batchNumber}</span></div>
-                                    <div>Supplier: <span className="font-medium">{selectedBatchSupplier.name}</span></div>
+                                <div className="p-3 bg-muted/40 rounded-xl border border-muted-foreground/10 text-xs space-y-1">
+                                    <div className="flex justify-between"><span className="text-muted-foreground">Batch Number:</span><span className="font-semibold text-foreground">{selectedBatch.batchNumber}</span></div>
+                                    <div className="flex justify-between"><span className="text-muted-foreground">Batch Supplier:</span><span className="font-semibold text-foreground">{selectedBatchSupplier.name}</span></div>
                                 </div>
                             )}
                             <Select value={batchId} onValueChange={setBatchId}>
-                                <SelectTrigger id="batch">
-                                    <SelectValue placeholder="Select specific batch or leave empty" />
+                                <SelectTrigger id="batch" className="h-11 rounded-xl border-muted-foreground/20 focus-visible:ring-primary shadow-sm">
+                                    <SelectValue placeholder="Select specific batch (auto-allocates if empty)" />
                                 </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="">Any batch</SelectItem>
+                                <SelectContent className="rounded-xl">
+                                    <SelectItem value="" className="rounded-lg">Any batch</SelectItem>
                                     {batchesAtSource.map(({ batch, quantityAtLocation }) => (
-                                        <SelectItem key={batch.id} value={batch.id}>
-                                            {batch.batchNumber} ({quantityAtLocation} available)
+                                        <SelectItem key={batch.id} value={batch.id} className="rounded-lg">
+                                            Batch: {batch.batchNumber} ({quantityAtLocation} available)
                                         </SelectItem>
                                     ))}
                                 </SelectContent>
@@ -432,61 +453,74 @@ export default function MoveStockPage() {
 
                     {/* Quantity */}
                     {productId && (
-                        <div className="space-y-2">
-                            <Label htmlFor="qty">
-                                Quantity
-                                <span className="text-xs text-muted-foreground ml-2">
-                                    (available: {quantityAvailable})
+                        <div className="space-y-2 border-t border-muted-foreground/10 pt-4">
+                            <Label htmlFor="qty" className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex justify-between items-center">
+                                <span>Quantity to Transfer</span>
+                                <span className="text-xs text-primary font-bold bg-primary/10 px-2 py-0.5 rounded-full">
+                                    Available: {quantityAvailable} units
                                 </span>
                             </Label>
+
                             {batchId && selectedBatch && (
-                                <div className="mb-2 p-2 bg-muted rounded text-sm">
-                                    <div>Batch: <span className="font-medium">{selectedBatch.batchNumber}</span></div>
-                                    <div>Available: <span className="font-medium">{quantityAvailable}</span></div>
+                                <div className="p-3 bg-muted/40 rounded-xl border border-muted-foreground/10 text-xs space-y-1 mb-2">
+                                    <div className="flex justify-between"><span className="text-muted-foreground">Batch Stock:</span><span className="font-bold text-foreground">{quantityAvailable} units</span></div>
                                 </div>
                             )}
+
                             {supplierId && !batchId && (
-                                <div className="mb-2 p-2 bg-muted rounded text-sm">
-                                    <div>Supplier: <span className="font-medium">{productSuppliers.find(s => s.id === supplierId)?.name || 'Unknown'}</span></div>
-                                    <div>Supplier stock: <span className="font-medium">{quantityAvailable}</span></div>
+                                <div className="p-3 bg-muted/40 rounded-xl border border-muted-foreground/10 text-xs space-y-1 mb-2">
+                                    <div className="flex justify-between"><span className="text-muted-foreground">Supplier Stock:</span><span className="font-bold text-foreground">{quantityAvailable} units</span></div>
                                 </div>
                             )}
+
                             <Input
                                 id="qty"
                                 type="number"
-                                min={1}
+                                min={0}
                                 max={quantityAvailable}
                                 value={quantity}
                                 onChange={(event) => {
-                                    const raw = Number(event.target.value);
-                                    if (Number.isNaN(raw)) {
+                                    const nextValue = event.target.value;
+                                    if (nextValue === '') {
                                         setQuantity('');
                                         return;
                                     }
-                                    setQuantity(String(Math.max(1, Math.min(raw, quantityAvailable))));
+
+                                    const raw = Number(nextValue);
+                                    if (Number.isNaN(raw) || raw < 0) {
+                                        return;
+                                    }
+
+                                    const maxAllowed = Number.isFinite(quantityAvailable) ? quantityAvailable : raw;
+                                    setQuantity(String(Math.min(raw, maxAllowed)));
                                 }}
-                                placeholder="Enter quantity to move"
+                                placeholder="Enter transfer quantity"
+                                className="h-11 rounded-xl border-muted-foreground/20 focus-visible:ring-primary shadow-sm"
                             />
                         </div>
                     )}
 
                     {/* Notes */}
-                    <div className="space-y-2">
-                        <Label htmlFor="notes">Notes (optional)</Label>
+                    <div className="space-y-2 border-t border-muted-foreground/10 pt-4">
+                        <Label htmlFor="notes" className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                            <FileText className="h-3.5 w-3.5 text-muted-foreground" /> Transfer Notes / Remarks
+                        </Label>
                         <Input
                             id="notes"
                             value={notes}
                             onChange={(e) => setNotes(e.target.value)}
-                            placeholder="e.g., 'Restocking Branch B', 'Customer return', etc."
+                            placeholder="e.g. Restocking, relocation of branch stocks, customer return..."
+                            className="h-11 rounded-xl border-muted-foreground/20 focus-visible:ring-primary shadow-sm"
                         />
                     </div>
 
                     {/* Errors */}
                     {errors.length > 0 && (
-                        <Alert variant="destructive">
-                            <AlertTriangle className="h-4 w-4" />
+                        <Alert variant="destructive" className="rounded-xl border-destructive/20 bg-destructive/5">
+                            <AlertTriangle className="h-4.5 w-4.5 text-destructive shrink-0 mt-0.5" />
                             <AlertDescription>
-                                <ul className="list-disc list-inside space-y-1 mt-2">
+                                <span className="font-semibold text-sm text-destructive block">Validation Errors:</span>
+                                <ul className="list-disc list-inside space-y-1 mt-1 text-xs text-destructive/80 font-medium">
                                     {errors.map((err, i) => (
                                         <li key={i}>{err}</li>
                                     ))}
@@ -496,20 +530,21 @@ export default function MoveStockPage() {
                     )}
 
                     {/* Action Buttons */}
-                    <div className="flex gap-2 pt-4 border-t">
+                    <div className="flex gap-3 pt-5 border-t border-muted-foreground/10">
                         <Button
                             variant="outline"
                             onClick={() => setLocation('/locations')}
                             disabled={isLoading}
+                            className="rounded-xl px-5 h-11 border-muted-foreground/20 text-muted-foreground hover:bg-muted/80"
                         >
                             Cancel
                         </Button>
                         <Button
                             onClick={handleSubmit}
                             disabled={!canSubmit || isLoading}
-                            className="flex-1"
+                            className="flex-1 rounded-xl h-11 font-semibold shadow-sm"
                         >
-                            {isLoading ? 'Moving...' : 'Confirm move'}
+                            {isLoading ? 'Processing Transfer...' : 'Confirm & Move Stock'}
                         </Button>
                     </div>
                 </CardContent>
