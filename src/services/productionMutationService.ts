@@ -154,9 +154,12 @@ export class ProductionMutationService {
             // ──────────────────────────────────────────────────────────────
             // BATCH ALLOCATION (if batch-tracked)
             // ──────────────────────────────────────────────────────────────
-            let allocatedBatch: ProductBatch | undefined;
-            let allocatedQuantity = input.quantity;
-            let allocationCost = 0;
+            const allocations: Array<{
+                batch: ProductBatch;
+                quantity: number;
+                cost: number;
+            }> = [];
+            let totalAllocationCost = 0;
 
             if (product.hasExpiry || batches.some(b => b.productId === input.productId)) {
                 // Product is batch-tracked or expiry-tracked
@@ -171,15 +174,37 @@ export class ProductionMutationService {
                     );
                 }
 
-                // User specified a batch — use it
+                // User specified a batch — use it (single allocation)
                 if (input.batchId) {
-                    allocatedBatch = productBatches.find(b => b.id === input.batchId);
+                    const allocatedBatch = productBatches.find(b => b.id === input.batchId);
                     if (!allocatedBatch) {
                         throw new Error(`Specified batch not found for ${product.name}`);
                     }
+
+                    const batchLocRec = batchLocations.find(
+                        bl => bl.batchId === allocatedBatch.id &&
+                            bl.locationId === params.locationId &&
+                            !bl.deletedAt
+                    );
+                    const batchQtyAtLocation = batchLocRec?.quantity ?? 0;
+
+                    if (batchQtyAtLocation < input.quantity) {
+                        throw new Error(
+                            `Insufficient batch quantity for ${product.name} at location. ` +
+                            `Available: ${batchQtyAtLocation} ${product.unit}, Needed: ${input.quantity} ${product.unit}`
+                        );
+                    }
+
+                    const allocationCost = input.quantity * (allocatedBatch.purchaseRate ?? product.purchaseRate ?? 0);
+                    allocations.push({
+                        batch: allocatedBatch,
+                        quantity: input.quantity,
+                        cost: allocationCost,
+                    });
+                    totalAllocationCost = allocationCost;
                 } else {
                     // ────────────────────────────────────────────────────────
-                    // LOCATION-AWARE FEFO ALLOCATION
+                    // MULTI-BATCH FEFO ALLOCATION
                     // ────────────────────────────────────────────────────────
                     // Key rule: only consider batches with availability at the
                     // selected location (ProductBatchLocation records).
@@ -207,41 +232,99 @@ export class ProductionMutationService {
                         return aExpiry - bExpiry;
                     });
 
-                    allocatedBatch = batchesAtLocation[0];
-                }
+                    // Allocate across multiple batches if necessary
+                    let remainingQuantity = input.quantity;
+                    for (const batch of batchesAtLocation) {
+                        if (remainingQuantity <= 0) break;
 
-                // Verify the allocated batch has enough quantity at this location
-                if (allocatedBatch) {
-                    const batchLocRec = batchLocations.find(
-                        bl => bl.batchId === allocatedBatch!.id &&
-                            bl.locationId === params.locationId &&
-                            !bl.deletedAt
-                    );
-                    const batchQtyAtLocation = batchLocRec?.quantity ?? 0;
-
-                    if (batchQtyAtLocation < input.quantity) {
-                        throw new Error(
-                            `Insufficient batch quantity for ${product.name} at location. ` +
-                            `Available: ${batchQtyAtLocation} ${product.unit}, Needed: ${input.quantity} ${product.unit}`
+                        const batchLocRec = batchLocations.find(
+                            bl => bl.batchId === batch.id &&
+                                bl.locationId === params.locationId &&
+                                !bl.deletedAt
                         );
+                        const batchQtyAtLocation = batchLocRec?.quantity ?? 0;
+                        const allocateQty = Math.min(remainingQuantity, batchQtyAtLocation);
+
+                        const allocationCost = allocateQty * (batch.purchaseRate ?? product.purchaseRate ?? 0);
+                        allocations.push({
+                            batch,
+                            quantity: allocateQty,
+                            cost: allocationCost,
+                        });
+                        totalAllocationCost += allocationCost;
+                        remainingQuantity -= allocateQty;
                     }
 
-                    allocationCost = input.quantity * (allocatedBatch.purchaseRate ?? product.purchaseRate ?? 0);
+                    if (remainingQuantity > 0) {
+                        throw new Error(
+                            `Insufficient stock for ${product.name} at location. ` +
+                            `Available: ${input.quantity - remainingQuantity} ${product.unit}, Needed: ${input.quantity} ${product.unit}`
+                        );
+                    }
                 }
             } else {
                 // Non-batched product
-                allocationCost = input.quantity * (product.purchaseRate ?? 0);
+                totalAllocationCost = input.quantity * (product.purchaseRate ?? 0);
             }
 
-            totalInputCost += allocationCost;
+            totalInputCost += totalAllocationCost;
 
-            // Determine supplierId based on product provenance
-            let inputSupplierId: string;
-            if (allocatedBatch) {
-                // Batch-tracked: use batch's supplier
-                inputSupplierId = allocatedBatch.supplierId;
+            // Process allocations: create input items and mutations for each batch
+            // For non-batched products, create a single input item
+            if (product.hasExpiry || batches.some(b => b.productId === input.productId)) {
+                // Batch-tracked: one input item per allocation
+                for (const alloc of allocations) {
+                    // Determine supplierId based on batch
+                    const inputSupplierId = alloc.batch.supplierId;
+
+                    // Create input item record for this batch allocation
+                    inputItems.push({
+                        productId: product.id,
+                        productName: product.name,
+                        quantity: alloc.quantity,
+                        unit: product.unit,
+                        locationId: params.locationId,
+                        supplierId: inputSupplierId,
+                        batchId: alloc.batch.id,
+                        batchNumber: alloc.batch.batchNumber ?? null,
+                        unitCost: alloc.cost / alloc.quantity,
+                        totalCost: alloc.cost,
+                    });
+
+                    // Prepare stock deductions for this batch allocation
+                    // UPDATE ProductBatch.quantity
+                    const existingBatchUpdate = batchUpdates.get(alloc.batch.id) || {
+                        quantity: alloc.batch.quantity,
+                    };
+                    batchUpdates.set(alloc.batch.id, {
+                        ...(existingBatchUpdate as any),
+                        quantity: Math.max(0, (existingBatchUpdate.quantity ?? alloc.batch.quantity) - alloc.quantity),
+                        updatedAt: new Date().toISOString(),
+                        version: (alloc.batch.version || 0) + 1,
+                    });
+
+                    // UPDATE ProductBatchLocation.quantity
+                    const batchLocRec = batchLocations.find(
+                        bl => bl.batchId === alloc.batch.id &&
+                            bl.locationId === params.locationId &&
+                            !bl.deletedAt
+                    );
+                    if (batchLocRec) {
+                        const existingBatchLocUpdate = batchLocationUpdates.get(batchLocRec.id) || {
+                            quantity: batchLocRec.quantity,
+                        };
+                        batchLocationUpdates.set(batchLocRec.id, {
+                            ...(existingBatchLocUpdate as any),
+                            quantity: Math.max(0, (existingBatchLocUpdate.quantity ?? batchLocRec.quantity) - alloc.quantity),
+                            updatedAt: new Date().toISOString(),
+                            version: (batchLocRec.version || 0) + 1,
+                        });
+                    }
+                }
             } else {
-                // Non-batched: determine from supplier records at this location
+                // Non-batched product
+                // Determine supplierId based on supplier records at this location
+                let inputSupplierId: string;
                 const suppliersAtLocation = (product.supplierStocks ?? []).filter(
                     ss => ss.locationId === params.locationId && ss.stock > 0
                 );
@@ -261,24 +344,23 @@ export class ProductionMutationService {
                         `Multiple suppliers have stock at this location. Please use batch-tracked inventory or resolve supplier ambiguity.`
                     );
                 }
+
+                // Create input item record for non-batched product
+                inputItems.push({
+                    productId: product.id,
+                    productName: product.name,
+                    quantity: input.quantity,
+                    unit: product.unit,
+                    locationId: params.locationId,
+                    supplierId: inputSupplierId,
+                    batchId: null,
+                    batchNumber: null,
+                    unitCost: totalAllocationCost / input.quantity,
+                    totalCost: totalAllocationCost,
+                });
             }
 
-            // Create input item record
-            inputItems.push({
-                productId: product.id,
-                productName: product.name,
-                quantity: input.quantity,
-                unit: product.unit,
-                locationId: params.locationId,
-                supplierId: inputSupplierId,
-                batchId: allocatedBatch?.id ?? null,
-                batchNumber: allocatedBatch?.batchNumber ?? null,
-                unitCost: allocationCost / input.quantity,
-                totalCost: allocationCost,
-            });
-
-            // Prepare stock deductions
-            // UPDATE Product.quantity
+            // UPDATE Product.quantity (single update regardless of batch count)
             const existingProductUpdate = productUpdates.get(product.id) || {
                 quantity: product.quantity,
             };
@@ -289,20 +371,7 @@ export class ProductionMutationService {
                 version: (product.version || 0) + 1,
             });
 
-            // UPDATE ProductBatch.quantity (if batch allocated)
-            if (allocatedBatch) {
-                const existingBatchUpdate = batchUpdates.get(allocatedBatch.id) || {
-                    quantity: allocatedBatch.quantity,
-                };
-                batchUpdates.set(allocatedBatch.id, {
-                    ...(existingBatchUpdate as any),
-                    quantity: Math.max(0, (existingBatchUpdate.quantity ?? allocatedBatch.quantity) - input.quantity),
-                    updatedAt: new Date().toISOString(),
-                    version: (allocatedBatch.version || 0) + 1,
-                });
-            }
-
-            // UPDATE InventoryLocationStock.quantity
+            // UPDATE InventoryLocationStock.quantity (single update regardless of batch count)
             const locStock = locationStocks.find(
                 ls => ls.productId === product.id &&
                     ls.locationId === params.locationId &&
@@ -321,27 +390,10 @@ export class ProductionMutationService {
                 });
             }
 
-            // UPDATE ProductBatchLocation.quantity (if batch allocated)
-            if (allocatedBatch) {
-                const batchLocRec = batchLocations.find(
-                    bl => bl.batchId === allocatedBatch!.id &&
-                        bl.locationId === params.locationId &&
-                        !bl.deletedAt
-                );
-                if (batchLocRec) {
-                    const existingBatchLocUpdate = batchLocationUpdates.get(batchLocRec.id) || {
-                        quantity: batchLocRec.quantity,
-                    };
-                    batchLocationUpdates.set(batchLocRec.id, {
-                        ...(existingBatchLocUpdate as any),
-                        quantity: Math.max(0, (existingBatchLocUpdate.quantity ?? batchLocRec.quantity) - input.quantity),
-                        updatedAt: new Date().toISOString(),
-                        version: (batchLocRec.version || 0) + 1,
-                    });
-                }
-            }
-
             // Create movement record (input)
+            // Note: for multi-batch allocations, this is a single movement for the entire input
+            // ProductionInputItem records preserve individual batch allocations for reversal
+            const firstAllocationBatchId = allocations.length > 0 ? allocations[0].batch.id : null;
             movements.push({
                 id: uuidv4(),
                 productId: product.id,
@@ -349,7 +401,7 @@ export class ProductionMutationService {
                 movementType: 'consumption',
                 sourceLocationId: params.locationId,
                 quantity: input.quantity,
-                batchId: allocatedBatch?.id ?? null,
+                batchId: firstAllocationBatchId,
                 referenceId: referenceNumber,
                 notes: `Production input: ${referenceNumber}`,
                 status: 'completed',
