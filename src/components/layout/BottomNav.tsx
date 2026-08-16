@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'wouter';
-import { Home, Package, ShoppingCart, Hotel, MoreHorizontal, Settings, Users, Truck, FileText, UtensilsCrossed, Receipt, Wallet, Banknote, ArrowUpFromLine, Utensils } from 'lucide-react';
+import { Home, Package, ShoppingCart, Hotel, MoreHorizontal, Settings, Users, Truck, FileText, UtensilsCrossed, Receipt, Wallet, Banknote, ArrowUpFromLine, Utensils, Factory } from 'lucide-react';
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
@@ -20,6 +20,7 @@ export function BottomNav() {
   const mainNavItems = [
     { href: '/', label: 'Dashboard', icon: Home, show: true },
     { href: '/inventory', label: 'Inventory', icon: Package, show: true },
+    { href: '/inventory/production', label: 'Production', icon: Factory, show: true },
     { href: '/sales', label: 'Sales', icon: ShoppingCart, show: true },
   ];
 
