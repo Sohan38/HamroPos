@@ -9,11 +9,12 @@ import { Plus, Minus, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { Product } from '@/types';
 import { useBackModal } from '@/contexts/NavigationContext';
-import { useInventory, useProductBatches, useSuppliers, useLocations } from '@/contexts/GlobalProviders';
+import { useInventory, useProductBatches, useSuppliers, useLocations, useInventoryLocationStocks } from '@/contexts/GlobalProviders';
 import { useStorageProvider } from '@/storage/StorageContext';
 import { createPurchaseForStockIncrease } from '@/services/purchaseHelpers';
 import { rankSearch } from '@/utils/search/rank';
 import { cn } from '@/lib/utils';
+import { getLocationStockForProduct, getProductLocationStockSummary } from '@/lib/locationStock';
 import { Users, X } from 'lucide-react';
 
 interface StockAdjustDialogProps {
@@ -28,6 +29,7 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
   const { items: allBatches, update: updateBatch } = useProductBatches();
   const { items: suppliers } = useSuppliers();
   const { items: locations } = useLocations();
+  const { items: locationStocks, update: updateLocationStock, add: addLocationStock } = useInventoryLocationStocks();
 
   const [mode, setMode] = useState<'add' | 'remove' | 'set'>('add');
   const [amount, setAmount] = useState('');
@@ -49,6 +51,11 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
   const hasExpiry = !!(product?.hasExpiry && productBatches.length > 0);
   const hasVariants = !!(product?.hasVariants && product?.variants && product.variants.length > 0);
   const isMultiSupplier = !!(!hasExpiry && !hasVariants && product?.supplierIds && product.supplierIds.length >= 2);
+  const locationStockSummary = useMemo(
+    () => product ? getProductLocationStockSummary(product, locations, locationStocks) : [],
+    [product, locations, locationStocks],
+  );
+  const shouldShowLocationSelector = !hasExpiry && !hasVariants && !isMultiSupplier && locationStockSummary.length > 1;
 
   const productSuppliers = useMemo(() => {
     if (!product || !product.supplierIds) return [];
@@ -73,7 +80,9 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
     setSelectedVariantName(product.variants?.[0]?.name || '');
     const preferredSupplier = isMultiSupplier ? '' : (product.supplierIds?.[0] || '');
     setSelectedSupplierId(preferredSupplier);
-    const preferredLocation = product.supplierStocks?.find(ss => ss.supplierId === preferredSupplier)?.locationId || 'loc-default';
+    const preferredLocation = shouldShowLocationSelector
+      ? (locationStockSummary[0]?.locationId || product.supplierStocks?.[0]?.locationId || 'loc-default')
+      : (product.supplierStocks?.find(ss => ss.supplierId === preferredSupplier)?.locationId || locationStockSummary[0]?.locationId || product.supplierStocks?.[0]?.locationId || 'loc-default');
     setSelectedLocationId(preferredLocation);
     setFilterQuery('');
     setAmount('');
@@ -83,11 +92,11 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
     // Delay focus slightly to ensure modal animation has started
     const timer = setTimeout(() => amountInputRef.current?.focus(), 50);
     return () => clearTimeout(timer);
-  }, [open, product?.id]);
-
-  if (!product) return null;
+  }, [open, product?.id, shouldShowLocationSelector, locationStockSummary]);
 
   const getSelectedCurrentQty = (): number => {
+    if (!product) return 0;
+
     if (hasVariants) {
       const variant = product.variants?.find(v => v.name === selectedVariantName);
       return variant ? variant.quantity : 0;
@@ -99,6 +108,9 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
     if (isMultiSupplier) {
       const entry = product.supplierStocks?.find(ss => ss.supplierId === selectedSupplierId && (ss.locationId || 'loc-default') === (selectedLocationId || 'loc-default'));
       return entry ? entry.stock : 0;
+    }
+    if (shouldShowLocationSelector) {
+      return getLocationStockForProduct(product, selectedLocationId, locationStocks);
     }
     return product.quantity;
   };
@@ -117,9 +129,24 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
 
   // Validation logic
   const isInvalid = !amount || numericAmount < 0 || (mode === 'remove' && numericAmount > currentQty) || (isMultiSupplier && !selectedSupplierId);
-  const locationOptions = locations.length > 0 ? locations : [{ id: 'loc-default', name: 'Main Location' }];
+  const relevantLocationOptions = useMemo(() => {
+    const candidates = locations.length > 0 ? locations : [{ id: 'loc-default', name: 'Main Location' }];
+    const mappedIds = new Set(locationStockSummary.map(entry => entry.locationId));
+
+    const filtered = candidates.filter(location => mappedIds.has(location.id));
+    if (filtered.length > 0) return filtered;
+
+    return candidates.filter(location =>
+      product?.supplierStocks?.some(stock => (stock.locationId || 'loc-default') === location.id)
+      || location.id === 'loc-default'
+    );
+  }, [locations, locationStockSummary, product]);
+
+  const locationOptions = relevantLocationOptions;
 
   const storage = useStorageProvider();
+
+  if (!product) return null;
 
   const handleSave = async () => {
     if (isMultiSupplier && !selectedSupplierId) {
@@ -238,6 +265,45 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
           toast.error('Failed to create purchase for stock increase');
         }
       }
+    } else if (shouldShowLocationSelector) {
+      const currentLocationQty = getLocationStockForProduct(product, selectedLocationId, locationStocks);
+      const nextLocationQty = Math.max(0, newQty);
+      const updatedQuantity = Math.max(0, product.quantity + (nextLocationQty - currentLocationQty));
+      const existingLocationStock = locationStocks.find(stock => stock.productId === product.id && stock.locationId === selectedLocationId);
+
+      if (existingLocationStock) {
+        await updateLocationStock(existingLocationStock.id, {
+          quantity: nextLocationQty,
+          lastMovementAt: new Date().toISOString(),
+        });
+      } else {
+        await addLocationStock({
+          productId: product.id,
+          locationId: selectedLocationId,
+          quantity: nextLocationQty,
+          lastMovementAt: new Date().toISOString(),
+        });
+      }
+
+      updateProduct(product.id, { quantity: updatedQuantity });
+      const locationName = locationOptions.find(loc => loc.id === selectedLocationId)?.name ?? 'Selected Location';
+      toast.success(`Updated stock at ${locationName}: ${diff > 0 ? `+${diff}` : diff} → ${newQty} ${product.unit}. ${finalReason}`);
+      if (diff > 0) {
+        try {
+          const supplierId = product.supplierId || product.supplierIds?.[0] || undefined;
+          await createPurchaseForStockIncrease(storage, {
+            productId: product.id,
+            quantity: diff,
+            purchaseRate: product.purchaseRate || undefined,
+            supplierId,
+            supplierName: undefined,
+            notes: finalReason,
+          });
+        } catch (err) {
+          console.error('Failed to create purchase for location stock increase', err);
+          toast.error('Failed to create purchase for stock increase');
+        }
+      }
     } else {
       updateProduct(product.id, { quantity: newQty });
       if (onAdjust) {
@@ -337,6 +403,22 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
                           {` - Current: ${b.quantity} ${product.unit}`}
                         </span>
                       </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {shouldShowLocationSelector && (
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Location</Label>
+                <Select value={selectedLocationId} onValueChange={setSelectedLocationId}>
+                  <SelectTrigger className="w-full bg-card">
+                    <SelectValue placeholder="Select location" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {locationOptions.map((location: any) => (
+                      <SelectItem key={location.id} value={location.id}>{location.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
