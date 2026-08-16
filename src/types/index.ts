@@ -119,6 +119,48 @@ export interface ConsumptionTransaction extends StorageRecord {
   reversedById?: string | null; // if reversed, links to reversal transaction
 }
 
+/** A single raw material input item within a production transaction */
+export interface ProductionInputItem {
+  productId: string;
+  productName: string;
+  quantity: number;
+  unit: ProductUnit;
+  locationId: string;           // where the input is consumed from
+  supplierId: string;           // which supplier provided this stock (for batch-tracked: from batch; for non-batched: if determinable)
+  batchId?: string | null;      // which batch is consumed (null for non-batched)
+  batchNumber?: string | null;  // batch identifier for audit
+  unitCost: number;             // cost per unit at time of production (historical)
+  totalCost: number;            // quantity * unitCost
+}
+
+/** A single finished-goods output item within a production transaction */
+export interface ProductionOutputItem {
+  productId: string;
+  productName: string;
+  quantity: number;
+  unit: ProductUnit;
+  locationId: string;           // where the output is stored
+  batchId?: string | null;      // optional: created batch for this output
+  batchNumber?: string | null;  // optional: batch identifier if batch-tracked
+  unitCost: number;             // output unit cost = totalInputCost / totalOutputQuantity
+  totalCost: number;            // quantity * unitCost
+}
+
+/** Transaction representing production/transformation: raw materials → finished goods */
+export interface ProductionTransaction extends StorageRecord {
+  referenceNumber: string;      // e.g., PROD-2024-001
+  date: string;                 // ISO 8601 date
+  locationId: string;           // primary location for production
+  inputItems: ProductionInputItem[];   // raw materials consumed
+  outputItems: ProductionOutputItem[]; // finished goods created
+  totalInputCost: number;       // sum of all input costs
+  totalOutputCost: number;      // sum of all output costs
+  notes?: string;               // additional production notes
+  status: 'completed' | 'reversed'; // production status
+  reversalOfId?: string | null; // if this is a reversal, links to original transaction
+  reversedById?: string | null; // if reversed, links to reversal transaction
+}
+
 export type BatchFormData = Omit<
   ProductBatch,
   "id" | "createdAt" | "updatedAt" | "deletedAt" | "version"
