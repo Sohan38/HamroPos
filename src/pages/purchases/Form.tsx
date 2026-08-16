@@ -20,6 +20,7 @@ import { ProductSearchPicker } from '@/components/ProductSearchPicker';
 import { SupplierSearchPicker } from '@/components/SupplierSearchPicker';
 import { SupplierFormDialog } from '@/components/SupplierFormDialog';
 import { generateBatchNumber, generateSupplierInvoiceNumber } from '@/utils/numbering';
+import { isProductPurchasable } from '@/lib/productCapabilities';
 
 type DraftItem = PurchaseItem & {
   initialPurchaseRate?: number | null;
@@ -115,6 +116,7 @@ export default function PurchaseForm() {
     inventory
       .filter(product => {
         if (!supplierId) return false;
+        if (!isProductPurchasable(product)) return false;
         const productSuppliers = product.supplierIds ?? (product.supplierId ? [product.supplierId] : []);
         return productSuppliers.includes(supplierId);
       })
@@ -144,6 +146,11 @@ export default function PurchaseForm() {
   }
 
   function addItem(product: typeof inventory[number]) {
+    if (!isProductPurchasable(product)) {
+      toast.error(`${product.name} is not enabled for purchases.`);
+      return;
+    }
+
     const existingIndex = items.findIndex(item => item.productId === product.id);
     if (existingIndex >= 0) {
       updateItem(existingIndex, 'quantity', Number(items[existingIndex].quantity) + 1);

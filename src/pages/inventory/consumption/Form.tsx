@@ -29,6 +29,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { ArrowLeft, Plus, Trash2, ChevronDown } from 'lucide-react';
 import { ProductSearchPicker } from '@/components/ProductSearchPicker';
 import { SupplierSearchPicker } from '@/components/SupplierSearchPicker';
+import { isProductConsumable } from '@/lib/productCapabilities';
 
 interface LineItem {
     productId: string;
@@ -80,12 +81,7 @@ export function ConsumptionForm() {
 
     // Get consumable products
     const consumableProducts = useMemo(() => {
-        return products.filter(p => {
-            // Include products where consumable is explicitly true, OR undefined (legacy products before Phase 1)
-            // Only exclude if explicitly false
-            const isConsumable = p.consumable !== false;
-            return isConsumable;
-        });
+        return products.filter(isProductConsumable);
     }, [products]);
 
     // Get products available at selected location (with stock amounts)

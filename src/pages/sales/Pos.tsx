@@ -19,6 +19,7 @@ import { ProductCard } from '@/components/pos/ProductCard';
 import { CartPanel } from '@/components/pos/CartPanel';
 import { VariantPicker } from '@/components/pos/VariantPicker';
 import { CartItem, Product } from '@/types';
+import { isProductAvailableForPOS } from '@/lib/productCapabilities';
 
 interface VariantDraft {
   productId: string;
@@ -141,7 +142,7 @@ export default function SalesPos() {
 
   const availableProducts = useMemo(() => {
     return inventory
-      .filter(p => p.quantity > 0)
+      .filter(p => p.quantity > 0 && isProductAvailableForPOS(p))
       .map(product => ({
         ...product,
         _search:
