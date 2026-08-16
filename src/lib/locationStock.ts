@@ -42,14 +42,22 @@ export function getProductLocationStockSummary(
 
     const byLocation = new Map<string, number>();
 
+    // Collect location IDs that have explicit InventoryLocationStock records
+    const hasExplicitRecord = new Set<string>();
+
     for (const stock of locationStocks) {
         if (stock.productId !== product.id) continue;
         const normalizedLocationId = normalizeLocationId(stock.locationId);
         byLocation.set(normalizedLocationId, Number(stock.quantity ?? 0));
+        hasExplicitRecord.add(normalizedLocationId);
     }
 
+    // Only use supplierStocks as a FALLBACK for locations without an InventoryLocationStock record.
+    // When both exist (e.g. after stock was moved between locations), the InventoryLocationStock
+    // record is the source of truth and supplierStocks must not be added on top.
     for (const stock of product.supplierStocks ?? []) {
         const locationId = normalizeLocationId(stock.locationId);
+        if (hasExplicitRecord.has(locationId)) continue; // already tracked — skip to avoid double-count
         const current = byLocation.get(locationId) ?? 0;
         byLocation.set(locationId, current + Number(stock.stock ?? 0));
     }

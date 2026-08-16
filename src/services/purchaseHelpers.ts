@@ -18,6 +18,7 @@ export type CreatePurchaseForStockOpts = {
     expiryMonths?: number | null;
     expiryDate?: string | null;
     locationId?: string | null;
+    variantName?: string | null;
 };
 
 export async function createPurchaseForStockIncrease(storage: IStorageProvider, opts: CreatePurchaseForStockOpts) {
@@ -52,6 +53,7 @@ export async function createPurchaseForStockIncrease(storage: IStorageProvider, 
         manufacturingDate: opts.manufacturingDate ?? undefined,
         expiryMonths: opts.expiryMonths ?? undefined,
         expiryDate: opts.expiryDate ?? undefined,
+        variantName: opts.variantName ?? undefined,
     } as any;
 
     const payload = {

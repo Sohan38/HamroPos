@@ -161,17 +161,20 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
 
     const finalReason = reason || `Manual ${mode === 'add' ? 'increase' : mode === 'remove' ? 'decrease' : 'set'}`;
 
-    if (hasVariants) {
-      const updatedVariants = product.variants?.map(v =>
-        v.name === selectedVariantName ? { ...v, quantity: newQty } : v
-      ) || [];
-      const newTotalQty = updatedVariants.reduce((sum, v) => sum + v.quantity, 0);
+    // ──────────────────────────────────────────────────────────────────────
+    // IMPORTANT: When diff > 0 we create a purchase via createPurchaseForStockIncrease.
+    // The purchase pipeline (applyPurchase) already updates product.quantity,
+    // supplierStocks, InventoryLocationStock, batch quantities, and variant
+    // quantities.  We must NOT manually update those same values here or stock
+    // will be counted twice (or more).
+    //
+    // Manual stock updates are only performed when diff <= 0 (removal /
+    // set-to-lower), because no purchase is created in that case.
+    // ──────────────────────────────────────────────────────────────────────
 
-      updateProduct(product.id, {
-        variants: updatedVariants,
-        quantity: newTotalQty
-      });
+    if (hasVariants) {
       if (diff > 0) {
+        // Let the purchase pipeline handle product.quantity and variant quantity
         try {
           await createPurchaseForStockIncrease(storage, {
             productId: product.id,
@@ -180,27 +183,28 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
             supplierId: product.supplierId || product.supplierIds?.[0] || undefined,
             supplierName: undefined,
             notes: finalReason,
+            variantName: selectedVariantName,
           });
         } catch (err) {
           console.error('Failed to create purchase for variant stock increase', err);
           toast.error('Failed to create purchase for stock increase');
         }
+      } else {
+        // Reduction: manually update variants and product total
+        const updatedVariants = product.variants?.map(v =>
+          v.name === selectedVariantName ? { ...v, quantity: newQty } : v
+        ) || [];
+        const newTotalQty = updatedVariants.reduce((sum, v) => sum + v.quantity, 0);
+        updateProduct(product.id, {
+          variants: updatedVariants,
+          quantity: newTotalQty
+        });
       }
       toast.success(`Updated variant "${selectedVariantName}": ${diff > 0 ? `+${diff}` : diff} → ${newQty} ${product.unit}. ${finalReason}`);
     } else if (hasExpiry) {
-      updateBatch(selectedBatchId, { quantity: newQty });
-
-      const updatedBatches = productBatches.map(b =>
-        b.id === selectedBatchId ? { ...b, quantity: newQty } : b
-      );
-      const newTotalQty = updatedBatches.reduce((sum, b) => sum + b.quantity, 0);
-
-      updateProduct(product.id, {
-        quantity: newTotalQty
-      });
       const batch = productBatches.find(b => b.id === selectedBatchId);
-      toast.success(`Updated batch "${batch?.batchNumber}": ${diff > 0 ? `+${diff}` : diff} → ${newQty} ${product.unit}. ${finalReason}`);
       if (diff > 0) {
+        // Let the purchase pipeline handle batch quantity, product.quantity, and location stock
         try {
           await createPurchaseForStockIncrease(storage, {
             productId: product.id,
@@ -219,43 +223,29 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
           console.error('Failed to create purchase for batch stock increase', err);
           toast.error('Failed to create purchase for stock increase');
         }
+      } else {
+        // Reduction: manually update batch and product total
+        updateBatch(selectedBatchId, { quantity: newQty });
+        const updatedBatches = productBatches.map(b =>
+          b.id === selectedBatchId ? { ...b, quantity: newQty } : b
+        );
+        const newTotalQty = updatedBatches.reduce((sum, b) => sum + b.quantity, 0);
+        updateProduct(product.id, { quantity: newTotalQty });
       }
+      toast.success(`Updated batch "${batch?.batchNumber}": ${diff > 0 ? `+${diff}` : diff} → ${newQty} ${product.unit}. ${finalReason}`);
     } else if (isMultiSupplier) {
-      const currentStocks = product.supplierStocks || [];
       const currentLocation = selectedLocationId || 'loc-default';
-      const updatedStocks = product.supplierIds?.map(sid => {
-        const existing = currentStocks.find(ss => ss.supplierId === sid && (ss.locationId || 'loc-default') === currentLocation);
-        if (existing) {
-          return sid === selectedSupplierId ? { ...existing, stock: newQty, locationId: currentLocation } : existing;
-        }
-
-        const stockVal = sid === selectedSupplierId ? newQty : 0;
-        return {
-          supplierId: sid,
-          locationId: currentLocation,
-          cost: product.purchaseRate || 0,
-          stock: stockVal,
-          supplierSku: '',
-          reorderLevel: undefined
-        };
-      }) || [];
-
-      const newTotalQty = updatedStocks.reduce((sum, ss) => sum + (ss.stock || 0), 0);
-
-      updateProduct(product.id, {
-        supplierStocks: updatedStocks,
-        quantity: newTotalQty
-      });
       const supplier = suppliers.find(s => s.id === selectedSupplierId);
       const locationName = locationOptions.find(loc => loc.id === currentLocation)?.name ?? 'Main Location';
-      toast.success(`Updated stock for supplier "${supplier?.name}" at ${locationName}: ${diff > 0 ? `+${diff}` : diff} → ${newQty} ${product.unit}. ${finalReason}`);
+
       if (diff > 0) {
-        const updatedRecord = updatedStocks.find(ss => ss.supplierId === selectedSupplierId && (ss.locationId || 'loc-default') === currentLocation);
+        // Let the purchase pipeline handle supplierStocks, product.quantity, and location stock
+        const currentRecord = (product.supplierStocks || []).find(ss => ss.supplierId === selectedSupplierId && (ss.locationId || 'loc-default') === currentLocation);
         try {
           await createPurchaseForStockIncrease(storage, {
             productId: product.id,
             quantity: diff,
-            purchaseRate: updatedRecord?.cost ?? product.purchaseRate ?? undefined,
+            purchaseRate: currentRecord?.cost ?? product.purchaseRate ?? undefined,
             supplierId: selectedSupplierId,
             supplierName: supplier?.name ?? undefined,
             notes: finalReason,
@@ -264,31 +254,36 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
           console.error('Failed to create purchase for supplier stock increase', err);
           toast.error('Failed to create purchase for stock increase');
         }
-      }
-    } else if (shouldShowLocationSelector) {
-      const currentLocationQty = getLocationStockForProduct(product, selectedLocationId, locationStocks);
-      const nextLocationQty = Math.max(0, newQty);
-      const updatedQuantity = Math.max(0, product.quantity + (nextLocationQty - currentLocationQty));
-      const existingLocationStock = locationStocks.find(stock => stock.productId === product.id && stock.locationId === selectedLocationId);
-
-      if (existingLocationStock) {
-        await updateLocationStock(existingLocationStock.id, {
-          quantity: nextLocationQty,
-          lastMovementAt: new Date().toISOString(),
-        });
       } else {
-        await addLocationStock({
-          productId: product.id,
-          locationId: selectedLocationId,
-          quantity: nextLocationQty,
-          lastMovementAt: new Date().toISOString(),
+        // Reduction: manually update supplierStocks and product total
+        const currentStocks = product.supplierStocks || [];
+        const updatedStocks = product.supplierIds?.map(sid => {
+          const existing = currentStocks.find(ss => ss.supplierId === sid && (ss.locationId || 'loc-default') === currentLocation);
+          if (existing) {
+            return sid === selectedSupplierId ? { ...existing, stock: newQty, locationId: currentLocation } : existing;
+          }
+          const stockVal = sid === selectedSupplierId ? newQty : 0;
+          return {
+            supplierId: sid,
+            locationId: currentLocation,
+            cost: product.purchaseRate || 0,
+            stock: stockVal,
+            supplierSku: '',
+            reorderLevel: undefined
+          };
+        }) || [];
+        const newTotalQty = updatedStocks.reduce((sum, ss) => sum + (ss.stock || 0), 0);
+        updateProduct(product.id, {
+          supplierStocks: updatedStocks,
+          quantity: newTotalQty
         });
       }
-
-      updateProduct(product.id, { quantity: updatedQuantity });
+      toast.success(`Updated stock for supplier "${supplier?.name}" at ${locationName}: ${diff > 0 ? `+${diff}` : diff} → ${newQty} ${product.unit}. ${finalReason}`);
+    } else if (shouldShowLocationSelector) {
       const locationName = locationOptions.find(loc => loc.id === selectedLocationId)?.name ?? 'Selected Location';
-      toast.success(`Updated stock at ${locationName}: ${diff > 0 ? `+${diff}` : diff} → ${newQty} ${product.unit}. ${finalReason}`);
+
       if (diff > 0) {
+        // Let the purchase pipeline handle product.quantity, supplierStocks, and location stock
         try {
           const supplierId = product.supplierId || product.supplierIds?.[0] || undefined;
           await createPurchaseForStockIncrease(storage, {
@@ -303,15 +298,32 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
           console.error('Failed to create purchase for location stock increase', err);
           toast.error('Failed to create purchase for stock increase');
         }
-      }
-    } else {
-      updateProduct(product.id, { quantity: newQty });
-      if (onAdjust) {
-        onAdjust(product.id, newQty, finalReason);
       } else {
-        toast.success(`Updated product stock: ${diff > 0 ? `+${diff}` : diff} → ${newQty} ${product.unit}. ${finalReason}`);
+        // Reduction: manually update location stock and product total
+        const currentLocationQty = getLocationStockForProduct(product, selectedLocationId, locationStocks);
+        const nextLocationQty = Math.max(0, newQty);
+        const updatedQuantity = Math.max(0, product.quantity + (nextLocationQty - currentLocationQty));
+        const existingLocationStock = locationStocks.find(stock => stock.productId === product.id && stock.locationId === selectedLocationId);
+
+        if (existingLocationStock) {
+          await updateLocationStock(existingLocationStock.id, {
+            quantity: nextLocationQty,
+            lastMovementAt: new Date().toISOString(),
+          });
+        } else {
+          await addLocationStock({
+            productId: product.id,
+            locationId: selectedLocationId,
+            quantity: nextLocationQty,
+            lastMovementAt: new Date().toISOString(),
+          });
+        }
+        updateProduct(product.id, { quantity: updatedQuantity });
       }
+      toast.success(`Updated stock at ${locationName}: ${diff > 0 ? `+${diff}` : diff} → ${newQty} ${product.unit}. ${finalReason}`);
+    } else {
       if (diff > 0) {
+        // Let the purchase pipeline handle product.quantity, supplierStocks, and location stock
         try {
           const supplierId = product.supplierId || product.supplierIds?.[0] || undefined;
           await createPurchaseForStockIncrease(storage, {
@@ -326,6 +338,13 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
           console.error('Failed to create purchase for stock increase', err);
           toast.error('Failed to create purchase for stock increase');
         }
+      } else {
+        updateProduct(product.id, { quantity: newQty });
+      }
+      if (onAdjust) {
+        onAdjust(product.id, newQty, finalReason);
+      } else {
+        toast.success(`Updated product stock: ${diff > 0 ? `+${diff}` : diff} → ${newQty} ${product.unit}. ${finalReason}`);
       }
     }
     onClose();
