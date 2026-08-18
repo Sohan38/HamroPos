@@ -15,7 +15,6 @@ import {
 } from '@/contexts/GlobalProviders';
 import { getLocationStockForProduct } from '@/lib/locationStock';
 import {
-    getActiveRecipeForOutputProduct,
     getActiveRecipesForOutputProduct,
     getExpectedProductionIngredients,
     getProductionVarianceRows,
@@ -27,9 +26,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ArrowLeft, Plus, Trash2, Factory, MapPin, Package, BarChart3 } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Factory, MapPin, Package, BarChart3, AlertCircle, Check, Info } from 'lucide-react';
 import { ProductSearchPicker } from '@/components/ProductSearchPicker';
 import { SupplierSearchPicker } from '@/components/SupplierSearchPicker';
+import { TooltipProvider } from '@/components/ui/tooltip';
 
 interface InputRow {
     id: string;
@@ -239,6 +239,30 @@ export function ProductionForm() {
         }
     }, [productionEnabled, selectedLocationId, activeLocations]);
 
+    // AUTO-POPULATE Ingredients if recipe changes or output quantity changes
+    useEffect(() => {
+        if (expectedRecipeIngredients.length > 0 && selectedLocationId) {
+            const mappedInputs = expectedRecipeIngredients.map((ingredient) => {
+                const available = getLocationStockForProduct(
+                    products.find(p => p.id === ingredient.inputProductId),
+                    selectedLocationId,
+                    locationStocks
+                );
+                const idealQty = Number(ingredient.quantity);
+                const maxQty = Math.min(idealQty, available);
+                
+                return {
+                    id: crypto.randomUUID(),
+                    productId: ingredient.inputProductId,
+                    quantity: String(maxQty || idealQty || 1),
+                    supplierId: '',
+                    batchId: '',
+                };
+            });
+            setInputRows(mappedInputs);
+        }
+    }, [expectedRecipeIngredients, selectedLocationId]);
+
     const updateInputRow = (rowId: string, updates: Partial<InputRow>) => {
         setInputRows((current) =>
             current.map((row) => {
@@ -401,9 +425,12 @@ export function ProductionForm() {
     if (!productionEnabled) {
         return (
             <div className="flex min-h-screen items-center justify-center p-4">
-                <Card className="max-w-md w-full">
+                <Card className="max-w-md w-full border-none shadow-xl bg-card/65 backdrop-blur-md">
                     <CardHeader>
-                        <CardTitle>Access Denied</CardTitle>
+                        <CardTitle className="text-xl font-bold flex items-center gap-2">
+                            <AlertCircle className="h-5 w-5 text-destructive animate-pulse" />
+                            Access Denied
+                        </CardTitle>
                         <CardDescription>Production is not enabled in your current license configuration.</CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -415,225 +442,381 @@ export function ProductionForm() {
     }
 
     return (
-        <div className="mx-auto w-full max-w-6xl space-y-6 p-4 pb-28 md:p-6">
-            <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                    <Button type="button" variant="outline" size="icon" onClick={() => setLocation('/inventory')} aria-label="Back">
-                        <ArrowLeft className="h-4 w-4" />
-                    </Button>
-                    <div>
-                        <p className="text-xs uppercase tracking-wider text-muted-foreground">Production</p>
-                        <h1 className="text-2xl font-bold tracking-tight">Create Production</h1>
-                    </div>
-                </div>
-                <div className="hidden items-center gap-2 rounded-full border bg-muted/30 px-3 py-1.5 text-sm text-muted-foreground md:flex">
-                    <Factory className="h-4 w-4" />
-                    <span>Stock-safe workflow</span>
-                </div>
-            </div>
-
-            <Card>
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                        <MapPin className="h-5 w-5" />
-                        Production Location
-                    </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    <div className="space-y-2">
-                        <Label htmlFor="location">Production location</Label>
-                        <Select value={selectedLocationId} onValueChange={setSelectedLocationId}>
-                            <SelectTrigger id="location" className="w-full">
-                                <SelectValue placeholder="Select production location" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {activeLocations.map((location) => (
-                                    <SelectItem key={location.id} value={location.id}>
-                                        {location.name}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-                </CardContent>
-            </Card>
-
-            <div className="grid gap-6 lg:grid-cols-[1.35fr_0.95fr]">
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <Package className="h-5 w-5" />
-                            Output and Recipe
-                        </CardTitle>
-                        <CardDescription>Start with what is being produced, then confirm the actual inputs.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        <div className="space-y-2">
-                            <Label>Recipe</Label>
-                            {activeRecipesForSelectedOutput.length === 0 ? (
-                                <div className="rounded-xl border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
-                                    No active recipe for this output.
-                                </div>
-                            ) : activeRecipesForSelectedOutput.length === 1 ? (
-                                <div className="rounded-xl border bg-muted/20 px-3 py-2 text-sm font-medium">
-                                    {activeRecipesForSelectedOutput[0].name}
-                                </div>
-                            ) : (
-                                <Select value={selectedRecipeId || 'none'} onValueChange={(value) => setSelectedRecipeId(value === 'none' ? '' : value)}>
-                                    <SelectTrigger className="w-full">
-                                        <SelectValue placeholder="Select a recipe" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="none">None</SelectItem>
-                                        {activeRecipesForSelectedOutput.map((recipe) => (
-                                            <SelectItem key={recipe.id} value={recipe.id}>{recipe.name}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            )}
+        <TooltipProvider>
+            <div className="mx-auto w-full max-w-full overflow-x-hidden space-y-6 px-3 py-4 pb-28 md:px-6 md:py-6 transition-all duration-300">
+                
+                {/* Header Section */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-4 border-border/40">
+                    <div className="flex items-center gap-3">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            onClick={() => setLocation('/inventory')}
+                            aria-label="Back"
+                            className="rounded-full shrink-0 shadow-sm hover:scale-105 transition-transform"
+                        >
+                            <ArrowLeft className="h-4 w-4" />
+                        </Button>
+                        <div>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-[10px] md:text-xs uppercase tracking-widest text-muted-foreground font-semibold">Inventory</span>
+                                <span className="h-1 w-1 rounded-full bg-primary/40" />
+                                <span className="text-[10px] md:text-xs text-primary font-medium flex items-center gap-1">
+                                    <Check className="h-3 w-3" /> Production Enabled
+                                </span>
+                            </div>
+                            <h1 className="text-xl md:text-3xl font-extrabold tracking-tight bg-gradient-to-r from-foreground via-foreground/90 to-foreground/75 bg-clip-text text-transparent">
+                                Create Production
+                            </h1>
                         </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-2 self-start sm:self-auto bg-primary/5 border border-primary/10 rounded-full px-3 py-1.5 text-xs text-primary font-medium backdrop-blur-sm shadow-xs shrink-0">
+                        <Factory className="h-3.5 w-3.5" />
+                        <span>Stock-safe transaction layer</span>
+                    </div>
+                </div>
 
-                        {!activeProductionRecipe && activeRecipesForSelectedOutput.length === 0 && (
-                            <div className="rounded-xl border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
-                                Manual Production
-                            </div>
-                        )}
-
-                        {activeProductionRecipe && expectedRecipeIngredients.length > 0 && (
-                            <div className="mt-4 space-y-4 rounded-xl border bg-muted/20 p-3">
-                                <div className="flex items-center justify-between gap-2">
-                                    <p className="text-sm font-semibold">Expected materials</p>
-                                    <span className="rounded-full border bg-background px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                                        {activeProductionRecipe.name}
-                                    </span>
-                                </div>
-                                <div className="space-y-1 text-sm text-muted-foreground">
-                                    {expectedRecipeIngredients.map((ingredient) => (
-                                        <div key={`${ingredient.recipeId}-${ingredient.inputProductId}`} className="flex items-center justify-between gap-3">
-                                            <span>{products.find((product) => product.id === ingredient.inputProductId)?.name ?? ingredient.inputProductId}</span>
-                                            <span className="font-medium text-foreground">{Number(ingredient.quantity).toLocaleString()} {ingredient.unit}</span>
-                                        </div>
+                {/* Primary Config Bar */}
+                <Card className="border-none shadow-sm bg-card/65 backdrop-blur-md ring-1 ring-border/20">
+                    <CardContent className="p-4 md:p-5 flex flex-col gap-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="location" className="font-semibold text-foreground/80 flex items-center gap-1.5">
+                                <MapPin className="h-4 w-4 text-primary shrink-0" />
+                                Source & Target Location
+                            </Label>
+                            <Select value={selectedLocationId} onValueChange={setSelectedLocationId}>
+                                <SelectTrigger id="location" className="w-full h-11 bg-background/50 border-border/40 rounded-xl transition-all focus:ring-2 focus:ring-primary/25">
+                                    <SelectValue placeholder="Select production location" />
+                                </SelectTrigger>
+                                <SelectContent className="rounded-xl">
+                                    {activeLocations.map((location) => (
+                                        <SelectItem key={location.id} value={location.id} className="rounded-lg">
+                                            {location.name}
+                                        </SelectItem>
                                     ))}
-                                </div>
-
-                                <div className="rounded-xl border bg-background/50 p-3">
-                                    <div className="mb-2 flex items-center justify-between gap-2">
-                                        <p className="text-sm font-semibold">Actual vs Expected Review</p>
-                                        <span className="text-xs text-muted-foreground">Informational only</span>
-                                    </div>
-                                    <Table>
-                                        <TableHeader>
-                                            <TableRow>
-                                                <TableHead>Material</TableHead>
-                                                <TableHead>Expected</TableHead>
-                                                <TableHead>Actual</TableHead>
-                                                <TableHead>Variance</TableHead>
-                                            </TableRow>
-                                        </TableHeader>
-                                        <TableBody>
-                                            {productionVarianceRows.map((row) => (
-                                                <TableRow key={`${row.recipeId}-${row.inputProductId}`}>
-                                                    <TableCell>{row.productName}</TableCell>
-                                                    <TableCell>{row.expectedQuantity.toLocaleString()} {row.unit}</TableCell>
-                                                    <TableCell>{row.actualQuantity.toLocaleString()} {row.unit}</TableCell>
-                                                    <TableCell className={row.variance !== null && row.variance < 0 ? 'text-destructive' : row.variance !== null && row.variance > 0 ? 'text-emerald-600' : 'text-muted-foreground'}>
-                                                        {row.compatible && row.variance !== null ? `${row.variance.toLocaleString()} ${row.unit}` : '—'}
-                                                    </TableCell>
-                                                </TableRow>
-                                            ))}
-                                        </TableBody>
-                                    </Table>
-                                </div>
-                            </div>
-                        )}
+                                </SelectContent>
+                            </Select>
+                        </div>
                     </CardContent>
                 </Card>
 
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <Package className="h-5 w-5" />
-                            Raw Material Inputs
-                        </CardTitle>
-                        <CardDescription>Use the selected location stock as the source of truth. Actual quantities are submitted to production.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        {inputRows.map((row, index) => {
-                            const product = products.find((p) => p.id === row.productId && !p.deletedAt);
-                            const available = getAvailableForInputRow(row);
-                            const supplierOptions = product ? getSupplierOptionsForInput(product.id) : [];
-                            const batchOptions = product ? getProductBatchesAtLocation(product.id, row.supplierId || undefined) : [];
-
-                            return (
-                                <div key={row.id} className="rounded-2xl border bg-muted/20 p-3 sm:p-4">
-                                    <div className="mb-3 flex items-center justify-between gap-2">
-                                        <p className="text-sm font-semibold">Input {index + 1}</p>
-                                        {inputRows.length > 1 && (
-                                            <Button type="button" variant="ghost" size="icon" onClick={() => removeInputRow(row.id)} className="text-destructive hover:text-destructive">
+                {/* Layout Grid (Stacks on Mobile, Grid on large screens) */}
+                <div className="grid gap-6 grid-cols-1 lg:grid-cols-12">
+                    
+                    {/* Left Column: Target Finished Goods (lg:col-span-7) */}
+                    <div className="space-y-6 lg:col-span-7">
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between">
+                                <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+                                    <BarChart3 className="h-5 w-5 text-primary shrink-0" />
+                                    Finished Goods Output
+                                </h2>
+                            </div>
+                            
+                            {outputRows.map((row, index) => (
+                                <Card key={row.id} className="border-none shadow-sm bg-card/65 backdrop-blur-md ring-1 ring-border/20 overflow-hidden hover:ring-primary/25 transition-all duration-200">
+                                    <CardHeader className="p-4 border-b border-border/10 pb-3 flex flex-row items-center justify-between space-y-0">
+                                        <div className="flex items-center gap-2">
+                                            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-[10px] text-primary font-bold shrink-0">{index + 1}</span>
+                                            <CardTitle className="text-sm font-bold">Target Output Item</CardTitle>
+                                        </div>
+                                        {outputRows.length > 1 && (
+                                            <Button 
+                                                type="button" 
+                                                variant="ghost" 
+                                                size="icon" 
+                                                onClick={() => removeOutputRow(row.id)} 
+                                                className="h-8 w-8 rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10 shrink-0"
+                                            >
                                                 <Trash2 className="h-4 w-4" />
                                             </Button>
                                         )}
+                                    </CardHeader>
+                                    <CardContent className="p-4 space-y-4">
+                                        <div className="grid gap-4 grid-cols-1 sm:grid-cols-12">
+                                            <div className="space-y-1.5 sm:col-span-8">
+                                                <Label className="text-xs text-muted-foreground">Product to Produce</Label>
+                                                {row.productId ? (
+                                                    <div className="flex items-center justify-between p-2.5 rounded-xl border border-primary/25 bg-primary/5 shadow-xs animate-fade-in">
+                                                        <div className="flex items-center gap-2.5 min-w-0">
+                                                            <Package className="h-5 w-5 text-primary shrink-0" />
+                                                            <div className="min-w-0">
+                                                                <p className="text-sm font-semibold truncate text-foreground">
+                                                                    {products.find(p => p.id === row.productId)?.name || 'Unknown Product'}
+                                                                </p>
+                                                                <p className="text-[10px] text-muted-foreground truncate">
+                                                                    {products.find(p => p.id === row.productId)?.category || 'General'} · Barcode: {products.find(p => p.id === row.productId)?.barcode || 'N/A'}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            onClick={() => updateOutputRow(row.id, { productId: '' })}
+                                                            className="h-7 w-7 rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10 shrink-0"
+                                                        >
+                                                            <Trash2 className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                    </div>
+                                                ) : (
+                                                    <ProductSearchPicker
+                                                        label="Select output product"
+                                                        items={getOutputProductOptions.map((product) => ({
+                                                            id: product.id,
+                                                            name: product.name,
+                                                            barcode: product.barcode,
+                                                            category: product.category,
+                                                            sublabel: `${product.unit}`,
+                                                        }))}
+                                                        onSelect={(productId) => updateOutputRow(row.id, { productId })}
+                                                        emptyMessage="No finished-goods products available."
+                                                    />
+                                                )}
+                                            </div>
+
+                                            <div className="space-y-1.5 sm:col-span-4">
+                                                <Label htmlFor={`output-qty-${row.id}`} className="text-xs text-muted-foreground">Target Quantity</Label>
+                                                <Input
+                                                    id={`output-qty-${row.id}`}
+                                                    type="number"
+                                                    min="1"
+                                                    className="h-10 bg-background/50 rounded-xl"
+                                                    value={row.quantity}
+                                                    onChange={(e) => updateOutputRow(row.id, { quantity: String(Math.max(0, Number(e.target.value || 0))) })}
+                                                />
+                                            </div>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            ))}
+
+                            {outputRows.length < 3 && (
+                                <Button 
+                                    type="button" 
+                                    variant="outline" 
+                                    onClick={addOutputRow} 
+                                    className="w-full gap-2 border-dashed border-border/60 rounded-xl hover:border-primary/45 hover:text-primary transition-all h-11"
+                                >
+                                    <Plus className="h-4 w-4" /> Add Another Output
+                                </Button>
+                            )}
+                        </div>
+
+                        {/* Recipe Selector Block */}
+                        <Card className="border-none shadow-sm bg-card/65 backdrop-blur-md ring-1 ring-border/20 overflow-hidden">
+                            <CardContent className="p-4 md:p-5 space-y-3">
+                                <Label className="font-semibold text-foreground/80 flex items-center gap-1.5">Recipe Automation</Label>
+                                {activeRecipesForSelectedOutput.length === 0 ? (
+                                    <div className="rounded-xl border border-border/30 bg-muted/10 px-3.5 py-3 text-xs text-muted-foreground flex items-center gap-2">
+                                        <Info className="h-4 w-4 text-muted-foreground/80 shrink-0" />
+                                        Select an output product that has an active recipe.
+                                    </div>
+                                ) : activeRecipesForSelectedOutput.length === 1 ? (
+                                    <div className="rounded-xl border border-primary/20 bg-primary/5 px-3.5 py-3 text-sm font-medium text-primary flex items-center justify-between">
+                                        <span className="flex items-center gap-1.5 text-xs md:text-sm">
+                                            <Check className="h-4 w-4 shrink-0" />
+                                            Active Recipe: {activeRecipesForSelectedOutput[0].name}
+                                        </span>
+                                        <span className="text-[10px] text-primary/80 font-normal shrink-0">Auto-filled</span>
+                                    </div>
+                                ) : (
+                                    <Select value={selectedRecipeId || 'none'} onValueChange={(value) => setSelectedRecipeId(value === 'none' ? '' : value)}>
+                                        <SelectTrigger className="w-full h-10 bg-background/50 border-border/40 rounded-xl">
+                                            <SelectValue placeholder="Select a recipe" />
+                                        </SelectTrigger>
+                                        <SelectContent className="rounded-xl">
+                                            <SelectItem value="none" className="rounded-lg">None (Manual Production)</SelectItem>
+                                            {activeRecipesForSelectedOutput.map((recipe) => (
+                                                <SelectItem key={recipe.id} value={recipe.id} className="rounded-lg">{recipe.name}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                )}
+                            </CardContent>
+                        </Card>
+
+                        {/* Recipe Blueprint Variance Review */}
+                        {activeProductionRecipe && expectedRecipeIngredients.length > 0 && (
+                            <Card className="border-none shadow-sm bg-card/65 backdrop-blur-md ring-1 ring-border/20 overflow-hidden">
+                                <CardHeader className="p-4 border-b border-border/10 pb-3 bg-muted/5">
+                                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                                        <CardTitle className="text-sm font-bold">Recipe Blueprint</CardTitle>
+                                        <span className="rounded-full bg-primary/10 border border-primary/20 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                                            {activeProductionRecipe.name}
+                                        </span>
+                                    </div>
+                                </CardHeader>
+                                <CardContent className="p-4 space-y-4">
+                                    <div className="space-y-1.5 text-xs text-muted-foreground">
+                                        {expectedRecipeIngredients.map((ingredient) => (
+                                            <div key={`${ingredient.recipeId}-${ingredient.inputProductId}`} className="flex items-center justify-between gap-3 p-1 hover:bg-muted/10 rounded-lg">
+                                                <span className="truncate">{products.find((product) => product.id === ingredient.inputProductId)?.name ?? ingredient.inputProductId}</span>
+                                                <span className="font-semibold text-foreground shrink-0">{Number(ingredient.quantity).toLocaleString()} {ingredient.unit}</span>
+                                            </div>
+                                        ))}
                                     </div>
 
-                                    <div className="space-y-3">
-                                        <div className="space-y-2">
-                                            <Label>Material</Label>
-                                            <ProductSearchPicker
-                                                label="Select material"
-                                                items={locationProducts.map(({ product, stock }) => ({
-                                                    id: product.id,
-                                                    name: product.name,
-                                                    barcode: product.barcode,
-                                                    category: product.category,
-                                                    sublabel: `Available: ${stock} ${product.unit}`,
-                                                }))}
-                                                onSelect={(productId) => updateInputRow(row.id, { productId })}
-                                                emptyMessage="No materials available at this location."
-                                            />
+                                    <div className="pt-3 border-t border-border/10 overflow-x-auto">
+                                        <div className="mb-2 flex items-center justify-between">
+                                            <p className="text-xs font-bold text-foreground">Variance Review</p>
                                         </div>
+                                        <div className="rounded-xl border border-border/40 overflow-hidden bg-background/50 min-w-[320px]">
+                                            <Table className="text-xs">
+                                                <TableHeader className="bg-muted/10">
+                                                    <TableRow>
+                                                        <TableHead className="py-2 h-auto">Material</TableHead>
+                                                        <TableHead className="py-2 h-auto text-right">Expected</TableHead>
+                                                        <TableHead className="py-2 h-auto text-right">Actual</TableHead>
+                                                        <TableHead className="py-2 h-auto text-right">Variance</TableHead>
+                                                    </TableRow>
+                                                </TableHeader>
+                                                <TableBody>
+                                                    {productionVarianceRows.map((row) => (
+                                                        <TableRow key={`${row.recipeId}-${row.inputProductId}`} className="hover:bg-muted/10">
+                                                            <TableCell className="font-medium py-2 truncate max-w-[120px]">{row.productName}</TableCell>
+                                                            <TableCell className="text-right py-2">{row.expectedQuantity.toLocaleString()} {row.unit}</TableCell>
+                                                            <TableCell className="text-right py-2 font-semibold">{row.actualQuantity.toLocaleString()} {row.unit}</TableCell>
+                                                            <TableCell className={`text-right py-2 font-bold ${row.variance !== null && row.variance < 0 ? 'text-destructive' : row.variance !== null && row.variance > 0 ? 'text-emerald-600' : 'text-muted-foreground'}`}>
+                                                                {row.compatible && row.variance !== null ? `${row.variance > 0 ? '+' : ''}${row.variance.toLocaleString()} ${row.unit}` : '—'}
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    ))}
+                                                </TableBody>
+                                            </Table>
+                                        </div>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        )}
+                    </div>
 
-                                        {product && (
-                                            <>
-                                                {supplierOptions.length > 0 && (
-                                                    <div className="space-y-2">
-                                                        <Label>Supplier</Label>
-                                                        <SupplierSearchPicker
-                                                            suppliers={supplierOptions}
-                                                            selectedSupplierId={row.supplierId || ''}
-                                                            onSelect={(supplierId) => updateInputRow(row.id, { supplierId })}
-                                                            onRemove={() => updateInputRow(row.id, { supplierId: '', batchId: '' })}
-                                                            emptyMessage="No supplier stock found at this location."
-                                                        />
+                    {/* Right Column: Dynamic Cards for Product Inputs (lg:col-span-5) */}
+                    <div className="space-y-6 lg:col-span-5">
+                        <div className="space-y-4">
+                            <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+                                <Package className="h-5 w-5 text-primary shrink-0" />
+                                Raw Material Inputs
+                            </h2>
+                            
+                            {inputRows.map((row, index) => {
+                                const product = products.find((p) => p.id === row.productId && !p.deletedAt);
+                                const available = getAvailableForInputRow(row);
+                                const supplierOptions = product ? getSupplierOptionsForInput(product.id) : [];
+                                const batchOptions = product ? getProductBatchesAtLocation(product.id, row.supplierId || undefined) : [];
+
+                                return (
+                                    <Card key={row.id} className="border-none shadow-sm bg-card/65 backdrop-blur-md ring-1 ring-border/20 overflow-hidden hover:ring-primary/20 transition-all duration-200">
+                                        <CardHeader className="p-4 border-b border-border/10 pb-3 flex flex-row items-center justify-between space-y-0">
+                                            <div className="flex items-center gap-2">
+                                                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-[10px] text-primary font-bold shrink-0">{index + 1}</span>
+                                                <CardTitle className="text-sm font-bold">Input Material Row</CardTitle>
+                                            </div>
+                                            {inputRows.length > 1 && (
+                                                <Button 
+                                                    type="button" 
+                                                    variant="ghost" 
+                                                    size="icon" 
+                                                    onClick={() => removeInputRow(row.id)} 
+                                                    className="h-8 w-8 rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10 shrink-0"
+                                                >
+                                                    <Trash2 className="h-4 w-4" />
+                                                </Button>
+                                            )}
+                                        </CardHeader>
+                                        <CardContent className="p-4 space-y-4">
+                                            <div className="space-y-1.5">
+                                                <Label className="text-xs text-muted-foreground">Select Material</Label>
+                                                {row.productId ? (
+                                                    <div className="flex items-center justify-between p-2.5 rounded-xl border border-primary/25 bg-primary/5 shadow-xs animate-fade-in">
+                                                        <div className="flex items-center gap-2.5 min-w-0">
+                                                            <Package className="h-5 w-5 text-primary shrink-0" />
+                                                            <div className="min-w-0">
+                                                                <p className="text-sm font-semibold truncate text-foreground">
+                                                                    {products.find(p => p.id === row.productId)?.name || 'Unknown Material'}
+                                                                </p>
+                                                                <p className="text-[10px] text-muted-foreground truncate">
+                                                                    {products.find(p => p.id === row.productId)?.category || 'General'} · Barcode: {products.find(p => p.id === row.productId)?.barcode || 'N/A'}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            onClick={() => updateInputRow(row.id, { productId: '' })}
+                                                            className="h-7 w-7 rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10 shrink-0"
+                                                        >
+                                                            <Trash2 className="h-3.5 w-3.5" />
+                                                        </Button>
                                                     </div>
+                                                ) : (
+                                                    <ProductSearchPicker
+                                                        label="Select material"
+                                                        items={locationProducts.map(({ product, stock }) => ({
+                                                            id: product.id,
+                                                            name: product.name,
+                                                            barcode: product.barcode,
+                                                            category: product.category,
+                                                            sublabel: `Available: ${stock} ${product.unit}`,
+                                                        }))}
+                                                        onSelect={(productId) => updateInputRow(row.id, { productId })}
+                                                        emptyMessage="No materials available at this location."
+                                                    />
                                                 )}
+                                            </div>
 
-                                                {batchOptions.length > 0 && (
-                                                    <div className="space-y-2">
-                                                        <Label>Batch</Label>
-                                                        <Select value={row.batchId || 'auto'} onValueChange={(value) => updateInputRow(row.id, { batchId: value === 'auto' ? '' : value })}>
-                                                            <SelectTrigger className="w-full">
-                                                                <SelectValue placeholder="Select batch" />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                <SelectItem value="auto">Auto-select by FEFO</SelectItem>
-                                                                {batchOptions.map((entry) => (
-                                                                    <SelectItem key={entry.batch.id} value={entry.batch.id}>
-                                                                        {entry.batch.batchNumber || 'Batch'} · {entry.available} {product.unit} · {entry.batch.expiryDate ? new Date(entry.batch.expiryDate).toLocaleDateString() : 'No expiry'}
-                                                                    </SelectItem>
-                                                                ))}
-                                                            </SelectContent>
-                                                        </Select>
+                                            {product && (
+                                                <div className="space-y-4">
+                                                    <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
+                                                        {supplierOptions.length > 0 && (
+                                                            <div className="space-y-1.5">
+                                                                <Label className="text-xs text-muted-foreground">Supplier Filter</Label>
+                                                                <SupplierSearchPicker
+                                                                    suppliers={supplierOptions}
+                                                                    selectedSupplierId={row.supplierId || ''}
+                                                                    onSelect={(supplierId) => updateInputRow(row.id, { supplierId })}
+                                                                    onRemove={() => updateInputRow(row.id, { supplierId: '', batchId: '' })}
+                                                                    emptyMessage="No supplier stock found at this location."
+                                                                />
+                                                            </div>
+                                                        )}
+
+                                                        {batchOptions.length > 0 && (
+                                                            <div className="space-y-1.5">
+                                                                <Label className="text-xs text-muted-foreground">Select Batch</Label>
+                                                                <Select value={row.batchId || 'auto'} onValueChange={(value) => updateInputRow(row.id, { batchId: value === 'auto' ? '' : value })}>
+                                                                    <SelectTrigger className="w-full h-10 bg-background/50 border-border/40 rounded-xl">
+                                                                        <SelectValue placeholder="Select batch" />
+                                                                    </SelectTrigger>
+                                                                    <SelectContent className="rounded-xl">
+                                                                        <SelectItem value="auto" className="rounded-lg">Auto FEFO</SelectItem>
+                                                                        {batchOptions.map((entry) => (
+                                                                            <SelectItem key={entry.batch.id} value={entry.batch.id} className="rounded-lg text-xs">
+                                                                                {entry.batch.batchNumber || 'Batch'} · {entry.available} {product.unit}
+                                                                            </SelectItem>
+                                                                        ))}
+                                                                    </SelectContent>
+                                                                </Select>
+                                                            </div>
+                                                        )}
                                                     </div>
-                                                )}
 
-                                                <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
-                                                    <div className="space-y-2">
-                                                        <Label htmlFor={`qty-${row.id}`}>Quantity</Label>
+                                                    <div className="space-y-1.5 pt-1">
+                                                        <div className="flex items-center justify-between mb-1 flex-wrap gap-1">
+                                                            <Label htmlFor={`qty-${row.id}`} className="text-xs text-muted-foreground font-medium">Quantity to Deduct</Label>
+                                                            <span className="text-[10px] text-primary font-semibold bg-primary/10 rounded-md px-1.5 py-0.5">
+                                                                Available: {available} {product.unit}
+                                                            </span>
+                                                        </div>
                                                         <Input
                                                             id={`qty-${row.id}`}
                                                             type="number"
                                                             min="1"
                                                             max={available}
+                                                            className="h-10 bg-background/50 rounded-xl w-full"
                                                             value={row.quantity}
                                                             onChange={(e) => {
                                                                 const nextValue = Number(e.target.value || 0);
@@ -641,111 +824,85 @@ export function ProductionForm() {
                                                             }}
                                                         />
                                                     </div>
-
-                                                    <div className="rounded-xl border bg-background px-3 py-2 text-right sm:min-w-[140px]">
-                                                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Available</div>
-                                                        <div className="text-base font-bold text-foreground">{available}</div>
-                                                    </div>
                                                 </div>
-                                            </>
-                                        )}
-                                    </div>
-                                </div>
-                            );
-                        })}
+                                            )}
+                                        </CardContent>
+                                    </Card>
+                                );
+                            })}
 
-                        <Button type="button" variant="outline" onClick={addInputRow} className="w-full gap-2">
-                            <Plus className="h-4 w-4" /> Add Input
-                        </Button>
-                    </CardContent>
-                </Card>
+                            <Button 
+                                type="button" 
+                                variant="outline" 
+                                onClick={addInputRow} 
+                                className="w-full gap-2 border-dashed border-border/60 rounded-xl hover:border-primary/45 hover:text-primary transition-all h-11"
+                            >
+                                <Plus className="h-4 w-4" /> Add Input Material
+                            </Button>
+                        </div>
 
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <BarChart3 className="h-5 w-5" />
-                            Finished Goods Output
-                        </CardTitle>
-                        <CardDescription>Resulting stock created at the selected production location.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        {outputRows.map((row, index) => (
-                            <div key={row.id} className="rounded-2xl border bg-muted/20 p-3 sm:p-4">
-                                <div className="mb-3 flex items-center justify-between gap-2">
-                                    <p className="text-sm font-semibold">Output {index + 1}</p>
-                                    {outputRows.length > 1 && (
-                                        <Button type="button" variant="ghost" size="icon" onClick={() => removeOutputRow(row.id)} className="text-destructive hover:text-destructive">
-                                            <Trash2 className="h-4 w-4" />
-                                        </Button>
-                                    )}
-                                </div>
+                        {/* Notes Section */}
+                        <Card className="border-none shadow-sm bg-card/65 backdrop-blur-md ring-1 ring-border/20">
+                            <CardContent className="p-4 md:p-5">
+                                <Label htmlFor="production-notes" className="font-semibold text-foreground/80">Batch Transaction Notes</Label>
+                                <textarea
+                                    id="production-notes"
+                                    className="mt-2 min-h-[90px] w-full rounded-xl border border-border/40 bg-background/40 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all placeholder:text-muted-foreground/60 resize-none"
+                                    value={notes}
+                                    onChange={(e) => setNotes(e.target.value)}
+                                    placeholder="Add notes for this production batch..."
+                                />
+                            </CardContent>
+                        </Card>
+                    </div>
 
-                                <div className="space-y-3">
-                                    <div className="space-y-2">
-                                        <Label>Output product</Label>
-                                        <ProductSearchPicker
-                                            label="Select output product"
-                                            items={getOutputProductOptions.map((product) => ({
-                                                id: product.id,
-                                                name: product.name,
-                                                barcode: product.barcode,
-                                                category: product.category,
-                                                sublabel: `${product.unit}`,
-                                            }))}
-                                            onSelect={(productId) => updateOutputRow(row.id, { productId })}
-                                            emptyMessage="No finished-goods products available."
-                                        />
-                                    </div>
+                </div>
 
-                                    <div className="space-y-2">
-                                        <Label>Quantity</Label>
-                                        <Input
-                                            type="number"
-                                            min="1"
-                                            value={row.quantity}
-                                            onChange={(e) => updateOutputRow(row.id, { quantity: String(Math.max(0, Number(e.target.value || 0))) })}
-                                        />
-                                    </div>
+                {/* Footer validation and action drawer */}
+                <Card className="border-none shadow-md bg-card/75 backdrop-blur-lg ring-1 ring-border/25 rounded-2xl">
+                    <CardContent className="p-4 md:p-6">
+                        {hasValidationErrors && (
+                            <div className="mb-5 rounded-xl border border-destructive/20 bg-destructive/5 p-4 text-xs text-destructive space-y-1.5 flex gap-2">
+                                <AlertCircle className="h-5 w-5 shrink-0 text-destructive/80" />
+                                <div>
+                                    <p className="font-bold text-destructive/90 mb-1">Please fix the following validation parameters:</p>
+                                    {Array.from(new Set([...inputValidationErrors, ...outputValidationErrors])).map((message) => (
+                                        <div key={message} className="flex items-center gap-1.5">
+                                            <span className="h-1 w-1 rounded-full bg-destructive shrink-0" />
+                                            {message}
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
-                        ))}
+                        )}
 
-                        <Button type="button" variant="outline" onClick={addOutputRow} className="w-full gap-2">
-                            <Plus className="h-4 w-4" /> Add Output
-                        </Button>
-
-                        <div className="rounded-xl border bg-muted/20 p-3">
-                            <Label htmlFor="production-notes">Notes</Label>
-                            <textarea
-                                id="production-notes"
-                                className="mt-2 min-h-[90px] w-full rounded-xl border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                                value={notes}
-                                onChange={(e) => setNotes(e.target.value)}
-                                placeholder="Optional production notes"
-                            />
+                        <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+                            <div className="text-muted-foreground text-xs text-center sm:text-left flex items-center gap-2">
+                                <Info className="h-4 w-4 text-primary shrink-0" />
+                                Submitting records atomic adjustments to Inventory Ledger.
+                            </div>
+                            <div className="flex flex-col-reverse sm:flex-row gap-3 w-full sm:w-auto">
+                                <Button 
+                                    type="button" 
+                                    variant="outline" 
+                                    className="rounded-xl h-11 px-6 bg-background/50 hover:bg-background transition-colors w-full sm:w-auto"
+                                    onClick={() => setLocation('/inventory')}
+                                >
+                                    Cancel
+                                </Button>
+                                <Button 
+                                    type="button" 
+                                    className="rounded-xl h-11 px-8 font-bold shadow-md hover:shadow-lg hover:scale-[1.01] active:scale-100 transition-all cursor-pointer bg-primary text-primary-foreground hover:bg-primary/95 w-full sm:w-auto"
+                                    onClick={handleSubmit} 
+                                    disabled={isSubmitting}
+                                >
+                                    {isSubmitting ? 'Processing Ledger...' : 'Submit Batch Production'}
+                                </Button>
+                            </div>
                         </div>
                     </CardContent>
                 </Card>
             </div>
-
-            <Card>
-                <CardContent className="pt-6">
-                    {hasValidationErrors && (
-                        <div className="mb-4 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-                            {Array.from(new Set([...inputValidationErrors, ...outputValidationErrors])).map((message) => (
-                                <div key={message}>• {message}</div>
-                            ))}
-                        </div>
-                    )}
-
-                    <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
-                        <Button type="button" variant="outline" onClick={() => setLocation('/inventory')}>Cancel</Button>
-                        <Button type="button" onClick={handleSubmit} disabled={isSubmitting}>
-                            {isSubmitting ? 'Submitting...' : 'Submit Production'}
-                        </Button>
-                    </div>
-                </CardContent>
-            </Card>
-        </div>
+        </TooltipProvider>
     );
 }

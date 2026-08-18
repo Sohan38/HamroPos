@@ -463,10 +463,17 @@ describe('ProductionMutationService duplicate input safety', () => {
             [],
         );
 
-        // Verify NEW:: location stock record was created for the output product
-        const newLocStockKey = `NEW::prod-new-loc::loc-2`;
-        const newLocStock = result.stockUpdates.get(newLocStockKey);
-        expect(newLocStock).toBeDefined();
+        const newLocStockEntries = Array.from(result.stockUpdates.entries()).filter(([, value]) =>
+            (value as any)?.productId === 'prod-new-loc' &&
+            (value as any)?.locationId === 'loc-2'
+        );
+
+        expect(newLocStockEntries).toHaveLength(1);
+
+        const [newLocStockKey, newLocStock] = newLocStockEntries[0];
+        expect(newLocStockKey).not.toContain('NEW::');
+        expect(newLocStockKey).toBe(newLocStock.id);
+        expect(newLocStock?.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
         expect(newLocStock?.productId).toBe('prod-new-loc');
         expect(newLocStock?.locationId).toBe('loc-2');
         expect(newLocStock?.quantity).toBe(4);

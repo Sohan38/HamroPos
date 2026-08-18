@@ -353,12 +353,14 @@ export class ProductionMutationService {
                     // Use product's primary supplier if available
                     inputSupplierId = product.supplierId ?? '';
                 } else {
-                    // Multiple suppliers have stock at this location
-                    // Cannot determine which one was consumed without additional context
-                    throw new Error(
-                        `Cannot determine supplier provenance for ${product.name} at location. ` +
-                        `Multiple suppliers have stock at this location. Please use batch-tracked inventory or resolve supplier ambiguity.`
+                    // Multiple suppliers have stock at this location.
+                    // Fall back to the product's primary supplier if they have stock here,
+                    // otherwise just use the first supplier that has stock at this location
+                    // instead of throwing an error.
+                    const primarySupplierAtLocation = suppliersAtLocation.find(
+                        ss => ss.supplierId === product.supplierId
                     );
+                    inputSupplierId = primarySupplierAtLocation?.supplierId ?? suppliersAtLocation[0].supplierId;
                 }
 
                 // Create input item record for non-batched product
@@ -374,6 +376,24 @@ export class ProductionMutationService {
                     unitCost: totalAllocationCost / input.quantity,
                     totalCost: totalAllocationCost,
                 });
+
+                // Deduct from supplierStocks on product
+                if (inputSupplierId && product.supplierStocks && product.supplierStocks.length > 0) {
+                    const normalizedLocationId = (params.locationId ?? 'loc-default').trim() || 'loc-default';
+                    const currentProductUpdate = productUpdates.get(product.id) || {};
+                    const workingSupplierStocks = JSON.parse(JSON.stringify(currentProductUpdate.supplierStocks ?? product.supplierStocks));
+                    const supplierRecord = workingSupplierStocks.find(
+                        (ss: any) => ss.supplierId === inputSupplierId && 
+                        ((ss.locationId || 'loc-default').trim() || 'loc-default') === normalizedLocationId
+                    );
+                    if (supplierRecord) {
+                        supplierRecord.stock = Math.max(0, (supplierRecord.stock ?? 0) - input.quantity);
+                        productUpdates.set(product.id, {
+                            ...currentProductUpdate,
+                            supplierStocks: workingSupplierStocks,
+                        });
+                    }
+                }
             }
 
             // UPDATE Product.quantity (single update regardless of batch count)
@@ -381,13 +401,14 @@ export class ProductionMutationService {
                 quantity: product.quantity,
             };
             productUpdates.set(product.id, {
+                ...(productUpdates.get(product.id) ?? {}),
                 ...(existingProductUpdate as any),
                 quantity: Math.max(0, (existingProductUpdate.quantity ?? product.quantity) - input.quantity),
                 updatedAt: new Date().toISOString(),
                 version: (product.version || 0) + 1,
             });
 
-            // UPDATE InventoryLocationStock.quantity (single update regardless of batch count)
+            // UPDATE/CREATE InventoryLocationStock.quantity (single update regardless of batch count)
             const locStock = locationStocks.find(
                 ls => ls.productId === product.id &&
                     ls.locationId === params.locationId &&
@@ -404,6 +425,22 @@ export class ProductionMutationService {
                     updatedAt: new Date().toISOString(),
                     version: (locStock.version || 0) + 1,
                 });
+            } else {
+                // If location stock doesn't exist, compute remaining starting stock using getLocationStockForProduct
+                const baseStock = getLocationStockForProduct(product, params.locationId, locationStocks);
+                const now = new Date().toISOString();
+                const newLocStockId = uuidv4();
+                stockUpdates.set(newLocStockId, {
+                    id: newLocStockId,
+                    productId: product.id,
+                    locationId: params.locationId,
+                    quantity: Math.max(0, baseStock - input.quantity),
+                    lastMovementAt: now,
+                    createdAt: now,
+                    updatedAt: now,
+                    deletedAt: null,
+                    version: 1,
+                } as any);
             }
 
             // Create movement record (input)
@@ -506,9 +543,11 @@ export class ProductionMutationService {
                     version: (locStock.version || 0) + 1,
                 });
             } else {
-                // Location stock doesn't exist yet — will be created in persistence layer
+                // Location stock doesn't exist yet — create a real Dexie-safe record id
                 const now = new Date().toISOString();
-                stockUpdates.set(`NEW::${product.id}::${params.locationId}`, {
+                const newLocStockId = uuidv4();
+                const newLocStock = {
+                    id: newLocStockId,
                     productId: product.id,
                     locationId: params.locationId,
                     quantity: output.quantity,
@@ -517,7 +556,9 @@ export class ProductionMutationService {
                     updatedAt: now,
                     deletedAt: null,
                     version: 1,
-                } as any);
+                } as any;
+
+                stockUpdates.set(newLocStockId, newLocStock);
             }
 
             // UPDATE/CREATE ProductBatch and ProductBatchLocation (if batch-tracked output)
@@ -652,6 +693,7 @@ export async function persistProductionTransaction(
         'inventoryLocationStocks',
         'productBatchLocations',
         'inventoryMovements',
+        'locations',
     ];
 
     const performPersist = async () => {
@@ -671,16 +713,19 @@ export async function persistProductionTransaction(
             }
         }
 
-        // Update all location stocks
+        // Update all location stocks. New records are persisted by their real UUID id,
+        // while existing rows are merged by their current storage id.
         for (const [stockKey, updates] of prepared.stockUpdates) {
-            if (stockKey.startsWith('NEW::')) {
-                // New location stock record (doesn't exist yet)
-                await storage.save('inventoryLocationStocks', updates as any);
+            const recordId = updates?.id ?? stockKey;
+            if (!recordId || typeof recordId !== 'string') {
+                continue;
+            }
+
+            const locStock = allLocationStocks.find(ls => ls.id === recordId || ls.id === stockKey);
+            if (locStock) {
+                await storage.save('inventoryLocationStocks', { ...locStock, ...updates });
             } else {
-                const locStock = allLocationStocks.find(ls => ls.id === stockKey);
-                if (locStock) {
-                    await storage.save('inventoryLocationStocks', { ...locStock, ...updates });
-                }
+                await storage.save('inventoryLocationStocks', updates as any);
             }
         }
 

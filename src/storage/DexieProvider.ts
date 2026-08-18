@@ -132,6 +132,10 @@ export class DexieProvider implements IStorageProvider {
     const now = new Date().toISOString();
     let saved: T;
 
+    if (!record || !record.id || typeof record.id !== 'string') {
+      throw new TypeError(`DexieProvider.save("${key}") requires a valid record id`);
+    }
+
     try {
       const existing = await this.table(key).get(record.id);
       if (existing) {
