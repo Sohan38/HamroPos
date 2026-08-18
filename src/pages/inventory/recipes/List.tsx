@@ -20,7 +20,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 
 export function RecipeList() {
   const [, setLocation] = useLocation();
-  const { items: recipes, update: updateRecipe, delete: deleteRecipe } = useProductionRecipes();
+  const { items: recipes, update: updateRecipe, remove: deleteRecipe } = useProductionRecipes();
   const { items: products } = useInventory();
   const storage = useStorageProvider();
   const [deletingRecipeId, setDeletingRecipeId] = useState<string | null>(null);

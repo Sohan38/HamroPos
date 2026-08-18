@@ -37,6 +37,8 @@ export interface CreateProductionParams {
     locationId: string;
     inputs: ProductionInputSpec[];
     outputs: ProductionOutputSpec[];
+    recipeId?: string | null;
+    recipeName?: string | null;
     notes?: string;
     date?: string; // ISO 8601, defaults to today
 }
@@ -575,6 +577,8 @@ export class ProductionMutationService {
             referenceNumber,
             date,
             locationId: params.locationId,
+            recipeId: params.recipeId ?? null,
+            recipeName: params.recipeName ?? null,
             inputItems,
             outputItems,
             totalInputCost,

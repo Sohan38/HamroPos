@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useLocation, useRoute } from 'wouter';
+import { useLocation } from 'wouter';
 import { ArrowLeft, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { v4 as uuidv4 } from 'uuid';
@@ -50,13 +50,16 @@ const makeItemRow = (): RecipeItemForm => ({
 });
 
 export function RecipeForm() {
-  const [, setLocation] = useLocation();
-  const [isEdit, , params] = useRoute('/inventory/recipes/:id/edit');
-  const isEditMode = isEdit && params?.id;
+  const [location, setLocation] = useLocation();
+  const recipeIdFromPath = useMemo(() => {
+    const match = location.match(/^\/inventory\/recipes\/([^/]+)\/edit$/);
+    return match ? match[1] : null;
+  }, [location]);
+  const isEditMode = !!recipeIdFromPath;
 
   const storage = useStorageProvider();
   const { items: recipes, add: addRecipe, update: updateRecipe } = useProductionRecipes();
-  const { items: recipeItems, add: addRecipeItem, update: updateRecipeItem, delete: deleteRecipeItem } = useProductionRecipeItems();
+  const { items: recipeItems, add: addRecipeItem, update: updateRecipeItem, remove: deleteRecipeItem } = useProductionRecipeItems();
   const { items: products } = useInventory();
 
   const [outputProductId, setOutputProductId] = useState('');
@@ -67,8 +70,8 @@ export function RecipeForm() {
 
   const editingRecipe = useMemo(() => {
     if (!isEditMode) return null;
-    return recipes.find((r) => r.id === params?.id && !r.deletedAt);
-  }, [isEditMode, params?.id, recipes]);
+    return recipes.find((r) => r.id === recipeIdFromPath && !r.deletedAt);
+  }, [isEditMode, recipeIdFromPath, recipes]);
 
   // Load recipe and items if editing
   useEffect(() => {
@@ -173,7 +176,7 @@ export function RecipeForm() {
           updatedAt: new Date().toISOString(),
           version: (editingRecipe.version ?? 0) + 1,
         };
-        await updateRecipe(recipe);
+        await updateRecipe(editingRecipe.id, recipe);
 
         // Delete old recipe items and create new ones
         const oldItems = recipeItems.filter((ri) => ri.recipeId === editingRecipe.id && !ri.deletedAt);

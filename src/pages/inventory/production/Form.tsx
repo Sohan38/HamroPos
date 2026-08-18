@@ -10,8 +10,14 @@ import {
     useProductBatchLocations,
     useInventoryLocationStocks,
     useSuppliers,
+    useProductionRecipes,
+    useProductionRecipeItems,
 } from '@/contexts/GlobalProviders';
 import { getLocationStockForProduct } from '@/lib/locationStock';
+import {
+    getActiveRecipeForOutputProduct,
+    getExpectedProductionIngredients,
+} from '@/lib/productionRecipe';
 import { ProductionMutationService, persistProductionTransaction } from '@/services/productionMutationService';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -61,6 +67,8 @@ export function ProductionForm() {
     const { items: batchLocations } = useProductBatchLocations();
     const { items: locationStocks } = useInventoryLocationStocks();
     const { items: suppliers } = useSuppliers();
+    const { items: recipes } = useProductionRecipes();
+    const { items: recipeItems } = useProductionRecipeItems();
 
     const [selectedLocationId, setSelectedLocationId] = useState('');
     const [notes, setNotes] = useState('');
@@ -168,6 +176,27 @@ export function ProductionForm() {
     const getOutputProductOptions = useMemo(() => {
         return products.filter((product) => !product.deletedAt && product.productionOutput);
     }, [products]);
+
+    const activeProductionRecipe = useMemo(() => {
+        const outputProductId = outputRows.find((row) => row.productId)?.productId;
+        if (!outputProductId) return null;
+        return getActiveRecipeForOutputProduct(outputProductId, recipes);
+    }, [outputRows, recipes]);
+
+    const productionOutputQuantity = useMemo(() => {
+        return outputRows.reduce((sum, row) => {
+            const quantity = Number(row.quantity || 0);
+            return sum + (row.productId ? quantity : 0);
+        }, 0);
+    }, [outputRows]);
+
+    const expectedRecipeIngredients = useMemo(() => {
+        return getExpectedProductionIngredients(
+            activeProductionRecipe,
+            recipeItems,
+            productionOutputQuantity,
+        );
+    }, [activeProductionRecipe, recipeItems, productionOutputQuantity]);
 
     useEffect(() => {
         if (!productionEnabled) return;
@@ -284,6 +313,10 @@ export function ProductionForm() {
             quantity: Number(row.quantity),
         }));
 
+        const selectedRecipe = outputRows.find((row) => row.productId)
+            ? getActiveRecipeForOutputProduct(outputRows.find((row) => row.productId)?.productId ?? '', recipes)
+            : null;
+
         setIsSubmitting(true);
 
         try {
@@ -298,6 +331,8 @@ export function ProductionForm() {
                     locationId: selectedLocationId,
                     inputs: normalizedInputs,
                     outputs: normalizedOutputs,
+                    recipeId: selectedRecipe?.id ?? null,
+                    recipeName: selectedRecipe?.name ?? null,
                     notes,
                 },
                 allProducts,
@@ -552,6 +587,25 @@ export function ProductionForm() {
                         <Button type="button" variant="outline" onClick={addOutputRow} className="w-full gap-2">
                             <Plus className="h-4 w-4" /> Add Output
                         </Button>
+
+                        {activeProductionRecipe && expectedRecipeIngredients.length > 0 && (
+                            <div className="rounded-xl border bg-muted/20 p-3">
+                                <div className="mb-2 flex items-center justify-between gap-2">
+                                    <p className="text-sm font-semibold">Recipe expectation</p>
+                                    <span className="rounded-full border bg-background px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                                        {activeProductionRecipe.name}
+                                    </span>
+                                </div>
+                                <div className="space-y-1 text-sm text-muted-foreground">
+                                    {expectedRecipeIngredients.map((ingredient) => (
+                                        <div key={`${ingredient.recipeId}-${ingredient.inputProductId}`} className="flex items-center justify-between gap-3">
+                                            <span>{products.find((product) => product.id === ingredient.inputProductId)?.name ?? ingredient.inputProductId}</span>
+                                            <span className="font-medium text-foreground">{Number(ingredient.quantity).toLocaleString()} {ingredient.unit}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
 
                         <div className="rounded-xl border bg-muted/20 p-3">
                             <Label htmlFor="production-notes">Notes</Label>
