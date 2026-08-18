@@ -20,6 +20,7 @@ import {
     getSuppliersForProductAtLocation,
     getAvailableStockForSelector,
 } from '@/lib/locationStock';
+import { InventoryLedgerService } from '@/services/inventoryLedgerService';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -53,12 +54,12 @@ export function ConsumptionForm() {
     const { items: products, update: updateInventory } = useInventory();
     const { items: locations } = useLocations();
     const { items: batches } = useProductBatches();
-    const { items: locationStocks, update: updateInventoryLocationStocks } = useInventoryLocationStocks();
+    const { items: locationStocks, update: updateInventoryLocationStocks, add: addLocationStock } = useInventoryLocationStocks();
     const { items: consumptions, add: addConsumption } = useConsumptions();
     const { add: addMovement } = useInventoryMovements();
     const { update: updateProductBatches } = useProductBatches();
     const { items: suppliers } = useSuppliers();
-    const { items: batchLocations } = useProductBatchLocations();
+    const { items: batchLocations, update: updateBatchLocation, add: addBatchLocation } = useProductBatchLocations();
 
     // Form state
     const [selectedLocationId, setSelectedLocationId] = useState<string>('');
@@ -299,19 +300,22 @@ export function ConsumptionForm() {
                 await addMovement(movement);
             }
 
-            // STEP 3: Apply location stock mutations
-            for (const [stockId, stockUpdates] of result.stockUpdates) {
-                await updateInventoryLocationStocks(stockId, stockUpdates);
-            }
+            // STEP 3: Apply stock mutations using central Ledger Service
+            const mutations = {
+                inventory: { items: products, update: updateInventory },
+                locationStocks: { items: locationStocks, update: updateInventoryLocationStocks, add: addLocationStock },
+                batches: { items: batches, update: updateProductBatches },
+                batchLocations: { items: batchLocations, update: updateBatchLocation, add: addBatchLocation },
+            };
 
-            // STEP 4: Apply batch stock mutations
-            for (const [batchId, batchUpdates] of result.batchUpdates) {
-                await updateProductBatches(batchId, batchUpdates);
-            }
-
-            // STEP 5: Apply product quantity mutations
-            for (const [productId, productUpdates] of result.productUpdates) {
-                await updateInventory(productId, productUpdates);
+            for (const item of validItems) {
+                await InventoryLedgerService.adjustStock(
+                    item.productId,
+                    selectedLocationId,
+                    -item.quantity,
+                    mutations,
+                    { batchId: item.batchId }
+                );
             }
 
             toast.success(

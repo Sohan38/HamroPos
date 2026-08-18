@@ -10,7 +10,7 @@ import { FeatureConfig } from '@/types';
 import LicenseCard from './License';
 import { LocationsTab } from './Locations';
 import { useLicense } from '@/license/LicenseContext';
-import { Save, Upload, Download, AlertTriangle, Monitor, Moon, Sun, Trash2, Database, Building, Globe, Key, Settings as SettingsIcon, Lock } from 'lucide-react';
+import { Save, Upload, Download, AlertTriangle, Monitor, Moon, Sun, Trash2, Database, Building, Globe, Key, Settings as SettingsIcon, Lock, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Spinner } from '@/components/ui/spinner';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -24,7 +24,7 @@ export default function Settings() {
   const [activeTab, setActiveTab] = useState(() => {
     if (typeof window !== 'undefined') {
       const tab = new URLSearchParams(window.location.search).get('tab');
-      if (tab && ['profile', 'preferences', 'locations', 'license', 'data'].includes(tab)) {
+    if (tab && ['profile', 'preferences', 'locations', 'license', 'data', 'diagnostics'].includes(tab)) {
         return tab;
       }
     }
@@ -48,6 +48,8 @@ export default function Settings() {
   const [isImporting, setIsImporting] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [showImportConfirm, setShowImportConfirm] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showSeedConfirm, setShowSeedConfirm] = useState(false);
@@ -57,6 +59,23 @@ export default function Settings() {
   const handleSave = () => {
     updateSettings(formData);
     toast.success('Settings saved successfully');
+  };
+
+  const handleStockSync = async () => {
+    setIsSyncing(true);
+    setSyncResult(null);
+    try {
+      // Force a fresh read of inventoryLocationStocks — this triggers ensureDefaultLocationStocks
+      await storage.get('inventoryLocationStocks');
+      await storage.get('productBatchLocations');
+      setSyncResult({ ok: true, message: 'Stock levels are now synchronized across all locations.' });
+      toast.success('Stock sync complete!');
+    } catch (err) {
+      setSyncResult({ ok: false, message: 'Sync failed. Please try again or reload the app.' });
+      toast.error('Stock sync failed');
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const handleExport = async () => {
@@ -223,6 +242,9 @@ export default function Settings() {
             </TabsTrigger>
             <TabsTrigger value="data" className="flex-1 min-w-21.25 sm:min-w-0 flex items-center justify-center gap-1.5 text-xs py-2 px-3">
               <Database className="h-3.5 w-3.5" /> Database
+            </TabsTrigger>
+            <TabsTrigger value="diagnostics" className="flex-1 min-w-24 sm:min-w-0 flex items-center justify-center gap-1.5 text-xs py-2 px-3">
+              <RefreshCw className="h-3.5 w-3.5" /> Diagnostics
             </TabsTrigger>
           </TabsList>
         </div>
@@ -453,6 +475,51 @@ export default function Settings() {
                   {isResetting ? 'Resetting Database...' : 'Factory Reset Database'}
                 </Button>
               </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Tab: Diagnostics */}
+        <TabsContent value="diagnostics" className="outline-none space-y-4">
+          <Card className="border border-border shadow-sm">
+            <CardHeader className="p-4 sm:p-6">
+              <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+                <RefreshCw className="h-4 w-4 text-primary" />
+                Stock Synchronization
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Detect and repair any drift between global product quantities and per-location stock records.
+                This runs automatically on startup, but you can trigger it manually here.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-4 sm:p-6 pt-0 sm:pt-0 space-y-4">
+              {syncResult && (
+                <div className={`flex items-start gap-3 rounded-lg border p-3 text-sm ${
+                  syncResult.ok
+                    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+                    : 'border-destructive/30 bg-destructive/10 text-destructive'
+                }`}>
+                  {syncResult.ok
+                    ? <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0" />
+                    : <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />}
+                  <span>{syncResult.message}</span>
+                </div>
+              )}
+              <div className="flex flex-col sm:flex-row gap-3">
+                <Button
+                  onClick={handleStockSync}
+                  disabled={isSyncing}
+                  className="w-full sm:w-auto h-11 text-xs gap-2"
+                >
+                  {isSyncing
+                    ? <Spinner className="h-4 w-4" />
+                    : <RefreshCw className="h-4 w-4" />}
+                  {isSyncing ? 'Syncing Stock...' : 'Rebuild Stock Sync'}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground pt-1">
+                Safe to run at any time. No data will be deleted — only location quantities are adjusted to match the global total.
+              </p>
             </CardContent>
           </Card>
         </TabsContent>

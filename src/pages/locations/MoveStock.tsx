@@ -7,6 +7,7 @@ import {
     getSuppliersForProductAtLocation,
     getAvailableStockForSelector,
 } from '@/lib/locationStock';
+import { InventoryLedgerService } from '@/services/inventoryLedgerService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -176,68 +177,20 @@ export default function MoveStockPage() {
                 batchSupplierId = selectedBatch.supplierId;
             }
 
-            // 1. Get or create location stock records for source and destination
-            let sourceStock = locationStocks.find(
-                (s) => s.productId === productId && s.locationId === sourceLocationId,
+            // Use InventoryLedgerService to move stock atomically
+            await InventoryLedgerService.moveStock(
+                productId,
+                sourceLocationId,
+                destinationLocationId,
+                qty,
+                {
+                    inventory: { items: inventory, update: () => Promise.resolve() },
+                    locationStocks: { items: locationStocks, update: updateLocationStock, add: addLocationStock },
+                    batches: { items: batches, update: () => Promise.resolve() },
+                    batchLocations: { items: batchLocations, update: updateBatchLocation, add: addBatchLocation },
+                },
+                { batchId: batchId || undefined, notes: notes || undefined }
             );
-            let destStock = locationStocks.find(
-                (s) => s.productId === productId && s.locationId === destinationLocationId,
-            );
-
-            // 2. Reduce source and increase destination
-            if (sourceStock) {
-                await updateLocationStock(sourceStock.id, {
-                    quantity: Math.max(0, Number(sourceStock.quantity ?? 0) - qty),
-                    lastMovementAt: now,
-                });
-            }
-
-            if (destStock) {
-                await updateLocationStock(destStock.id, {
-                    quantity: Number(destStock.quantity ?? 0) + qty,
-                    lastMovementAt: now,
-                });
-            } else {
-                await addLocationStock({
-                    productId,
-                    locationId: destinationLocationId,
-                    quantity: qty,
-                    lastMovementAt: now,
-                });
-            }
-
-            // 3. Update batch location allocation if a batch was moved
-            if (selectedBatch && batchId) {
-                const sourceBatchAllocation = batchLocations.find(
-                    (bl) => bl.batchId === batchId && bl.locationId === sourceLocationId,
-                );
-                const destBatchAllocation = batchLocations.find(
-                    (bl) => bl.batchId === batchId && bl.locationId === destinationLocationId,
-                );
-
-                // Reduce batch quantity at source
-                if (sourceBatchAllocation) {
-                    await updateBatchLocation(sourceBatchAllocation.id, {
-                        quantity: Math.max(0, Number(sourceBatchAllocation.quantity ?? 0) - qty),
-                    });
-                }
-
-                // Increase batch quantity at destination (or create new allocation)
-                if (destBatchAllocation) {
-                    await updateBatchLocation(destBatchAllocation.id, {
-                        quantity: Number(destBatchAllocation.quantity ?? 0) + qty,
-                        dateReceived: destBatchAllocation.dateReceived || now,
-                    });
-                } else {
-                    // Create new batch location allocation for destination
-                    await addBatchLocation({
-                        batchId: batchId,
-                        locationId: destinationLocationId,
-                        quantity: qty,
-                        dateReceived: now,
-                    });
-                }
-            }
 
             // 4. Create movement record with batch and supplier info
             await addMovement({

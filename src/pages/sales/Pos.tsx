@@ -20,6 +20,7 @@ import { CartPanel } from '@/components/pos/CartPanel';
 import { VariantPicker } from '@/components/pos/VariantPicker';
 import { CartItem, Product } from '@/types';
 import { isProductAvailableForPOS } from '@/lib/productCapabilities';
+import { InventoryLedgerService } from '@/services/inventoryLedgerService';
 
 interface VariantDraft {
   productId: string;
@@ -84,8 +85,8 @@ export default function SalesPos() {
   const { add: addCredit } = useCredit();
   const { items: customers } = useCustomers();
   const { items: batches, update: updateBatch } = useProductBatches();
-  const { items: locationStocks, update: updateLocationStock } = useInventoryLocationStocks();
-  const { items: batchLocations, update: updateBatchLocation } = useProductBatchLocations();
+  const { items: locationStocks, update: updateLocationStock, add: addLocationStock } = useInventoryLocationStocks();
+  const { items: batchLocations, update: updateBatchLocation, add: addBatchLocation } = useProductBatchLocations();
   const { format, symbol } = useCurrency();
   const { settings } = useApp();
 
@@ -575,44 +576,35 @@ export default function SalesPos() {
         const p = inventoryById.get(productId);
         if (!p) continue;
 
-        const productBatches = batchesByProduct.get(productId) ?? [];
         const productBatchDeductions = batchDeductionsByProduct.get(productId) ?? new Map<string, number>();
-
-        for (const [batchId, deductionQuantity] of productBatchDeductions) {
-          const match = productBatches.find(batch => batch.id === batchId);
-          if (!match) continue;
-          updateBatch(batchId, { quantity: Math.max(0, match.quantity - deductionQuantity) });
-
-          // Deduct from batch allocation at default location
-          const batchLoc = batchLocations.find(
-            bl => bl.batchId === batchId && bl.locationId === 'loc-default' && !bl.deletedAt
-          );
-          if (batchLoc) {
-            updateBatchLocation(batchLoc.id, {
-              quantity: Math.max(0, Number(batchLoc.quantity ?? 0) - deductionQuantity),
-            });
-          }
-        }
-
-        // Deduct from default location stock
-        const locStock = locationStocks.find(
-          s => s.productId === productId && s.locationId === 'loc-default' && !s.deletedAt
-        );
-        if (locStock) {
-          updateLocationStock(locStock.id, {
-            quantity: Math.max(0, Number(locStock.quantity ?? 0) - requestedQuantity),
-            lastMovementAt: new Date().toISOString(),
-          });
-        }
 
         const updatedVariants = p.variants?.map(variant => ({
           ...variant,
           quantity: Math.max(0, variant.quantity - (requestedByVariant.get(`${p.id}::${variant.name}`) ?? 0)),
         }));
-        updateInventory(p.id, {
-          quantity: p.quantity - requestedQuantity,
-          ...(p.hasVariants && updatedVariants ? { variants: updatedVariants } : {}),
-        });
+
+        const mutations = {
+          inventory: { items: inventory, update: updateInventory },
+          locationStocks: { items: locationStocks, update: updateLocationStock, add: addLocationStock as any },
+          batches: { items: batches, update: updateBatch },
+          batchLocations: { items: batchLocations, update: updateBatchLocation, add: addBatchLocation as any },
+        };
+
+        if (productBatchDeductions.size > 0) {
+          for (const [batchId, deductionQuantity] of productBatchDeductions) {
+            await InventoryLedgerService.adjustStock(productId, 'loc-default', -deductionQuantity, mutations, {
+              batchId,
+            });
+          }
+        } else {
+          await InventoryLedgerService.adjustStock(productId, 'loc-default', -requestedQuantity, mutations);
+        }
+
+        if (p.hasVariants && updatedVariants) {
+          await updateInventory(p.id, {
+            variants: updatedVariants,
+          });
+        }
       }
 
       toast.success(paymentMethod === 'credit'

@@ -385,9 +385,35 @@ export class DexieProvider implements IStorageProvider {
         for (const product of products) {
           if (product.deletedAt) continue;
 
-          const productStocks = stocks.filter((s: any) => s.productId === product.id && !s.deletedAt);
-          const otherLocationStocks = productStocks.filter((s: any) => s.locationId !== defaultLocation.id);
+          let productStocks = stocks.filter((s: any) => s.productId === product.id && !s.deletedAt);
 
+          // 1. Clean up duplicate default location records first if they exist
+          const defaultRecords = productStocks.filter((s: any) => s.locationId === defaultLocation.id);
+          if (defaultRecords.length > 1) {
+            const keepRecord = defaultRecords[0];
+            const sumDefaultQty = defaultRecords.reduce((sum: number, s: any) => sum + Number(s.quantity ?? 0), 0);
+            
+            // Consolidate quantity into the first record
+            keepRecord.quantity = sumDefaultQty;
+            keepRecord.updatedAt = now;
+            keepRecord.version = (keepRecord.version || 1) + 1;
+            await this.save('inventoryLocationStocks', keepRecord);
+
+            // Mark the other duplicates as deleted
+            for (let i = 1; i < defaultRecords.length; i++) {
+              const extraRecord = defaultRecords[i];
+              extraRecord.deletedAt = now;
+              extraRecord.updatedAt = now;
+              extraRecord.version = (extraRecord.version || 1) + 1;
+              await this.save('inventoryLocationStocks', extraRecord);
+            }
+
+            // Refresh productStocks list after cleanup
+            productStocks = (await this.table('inventoryLocationStocks').toArray()) as any[];
+            productStocks = productStocks.filter((s: any) => s.productId === product.id && !s.deletedAt);
+          }
+
+          // 2. Perform drift reconciliation
           if (productStocks.length === 0) {
             const defaultStock = {
               id: `ils-${product.id}`,
@@ -401,21 +427,32 @@ export class DexieProvider implements IStorageProvider {
               version: 1,
             };
             await this.save('inventoryLocationStocks', defaultStock as any);
-          } else if (otherLocationStocks.length === 0) {
-            const totalMainQty = productStocks.reduce((sum: number, s: any) => sum + Number(s.quantity ?? 0), 0);
-            if (productStocks.length > 1 || totalMainQty !== Number(product.quantity ?? 0)) {
-              const mainRecord = productStocks[0];
-              mainRecord.quantity = Number(product.quantity ?? 0);
-              mainRecord.updatedAt = now;
-              mainRecord.version = (mainRecord.version || 1) + 1;
-              await this.save('inventoryLocationStocks', mainRecord);
+          } else {
+            const totalLocationQty = productStocks.reduce((sum: number, s: any) => sum + Number(s.quantity ?? 0), 0);
+            const expectedQty = Number(product.quantity ?? 0);
+            const drift = expectedQty - totalLocationQty;
 
-              for (let i = 1; i < productStocks.length; i++) {
-                const extraRecord = productStocks[i];
-                extraRecord.deletedAt = now;
-                extraRecord.updatedAt = now;
-                extraRecord.version = (extraRecord.version || 1) + 1;
-                await this.save('inventoryLocationStocks', extraRecord);
+            if (drift !== 0) {
+              const defaultRecord = productStocks.find((s: any) => s.locationId === defaultLocation.id);
+              if (defaultRecord) {
+                defaultRecord.quantity = Math.max(0, Number(defaultRecord.quantity ?? 0) + drift);
+                defaultRecord.updatedAt = now;
+                defaultRecord.version = (defaultRecord.version || 1) + 1;
+                await this.save('inventoryLocationStocks', defaultRecord);
+              } else {
+                // Main Location record is missing, but other locations exist. Create it with the drift amount.
+                const defaultStock = {
+                  id: `ils-${product.id}`,
+                  productId: product.id,
+                  locationId: defaultLocation.id,
+                  quantity: Math.max(0, drift),
+                  lastMovementAt: now,
+                  createdAt: now,
+                  updatedAt: now,
+                  deletedAt: null,
+                  version: 1,
+                };
+                await this.save('inventoryLocationStocks', defaultStock as any);
               }
             }
           }

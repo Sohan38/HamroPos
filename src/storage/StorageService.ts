@@ -383,9 +383,36 @@ export class LocalStorageProvider implements IStorageProvider {
     for (const product of productList) {
       if (product.deletedAt) continue;
 
-      const productStocks = stocks.filter((s: any) => s.productId === product.id && !s.deletedAt);
-      const otherLocationStocks = productStocks.filter((s: any) => s.locationId !== defaultLocation.id);
+      let productStocks = stocks.filter((s: any) => s.productId === product.id && !s.deletedAt);
 
+      // 1. Clean up duplicate default location records first if they exist
+      const defaultRecords = productStocks.filter((s: any) => s.locationId === defaultLocation.id);
+      if (defaultRecords.length > 1) {
+        const keepRecord = defaultRecords[0];
+        const sumDefaultQty = defaultRecords.reduce((sum: number, s: any) => sum + Number(s.quantity ?? 0), 0);
+        
+        // Consolidate quantity into the first record
+        const keepIdx = stocks.findIndex((s: any) => s.id === keepRecord.id);
+        if (keepIdx >= 0) {
+          stocks[keepIdx].quantity = sumDefaultQty;
+          stocks[keepIdx].updatedAt = now;
+          stocks[keepIdx].version = (stocks[keepIdx].version || 1) + 1;
+        }
+
+        // Mark the other duplicates as deleted
+        for (let i = 1; i < defaultRecords.length; i++) {
+          const extraIdx = stocks.findIndex((s: any) => s.id === defaultRecords[i].id);
+          if (extraIdx >= 0) {
+            stocks[extraIdx].deletedAt = now;
+            stocks[extraIdx].updatedAt = now;
+          }
+        }
+        changed = true;
+        // Refresh productStocks list after cleanup
+        productStocks = stocks.filter((s: any) => s.productId === product.id && !s.deletedAt);
+      }
+
+      // 2. Perform drift reconciliation
       if (productStocks.length === 0) {
         stocks.push({
           id: `ils-${product.id}`,
@@ -399,31 +426,36 @@ export class LocalStorageProvider implements IStorageProvider {
           version: 1,
         });
         changed = true;
-      } else if (otherLocationStocks.length === 0) {
-        const totalMainQty = productStocks.reduce((sum: number, s: any) => sum + Number(s.quantity ?? 0), 0);
-        if (productStocks.length > 1 || totalMainQty !== Number(product.quantity ?? 0)) {
-          const mainRecord = productStocks[0];
-          
-          const idx = stocks.findIndex((s: any) => s.id === mainRecord.id);
-          if (idx >= 0) {
-            stocks[idx] = {
-              ...stocks[idx],
-              quantity: Number(product.quantity ?? 0),
-              updatedAt: now,
-              version: (stocks[idx].version || 1) + 1,
-            };
-          }
+      } else {
+        const totalLocationQty = productStocks.reduce((sum: number, s: any) => sum + Number(s.quantity ?? 0), 0);
+        const expectedQty = Number(product.quantity ?? 0);
+        const drift = expectedQty - totalLocationQty;
 
-          for (let i = 1; i < productStocks.length; i++) {
-            const extraRecord = productStocks[i];
-            const extraIdx = stocks.findIndex((s: any) => s.id === extraRecord.id);
-            if (extraIdx >= 0) {
-              stocks[extraIdx].deletedAt = now;
-              stocks[extraIdx].updatedAt = now;
-              stocks[extraIdx].version = (stocks[extraIdx].version || 1) + 1;
+        if (drift !== 0) {
+          const defaultRecord = productStocks.find((s: any) => s.locationId === defaultLocation.id);
+          if (defaultRecord) {
+            const idx = stocks.findIndex((s: any) => s.id === defaultRecord.id);
+            if (idx >= 0) {
+              stocks[idx].quantity = Math.max(0, Number(stocks[idx].quantity ?? 0) + drift);
+              stocks[idx].updatedAt = now;
+              stocks[idx].version = (stocks[idx].version || 1) + 1;
+              changed = true;
             }
+          } else {
+            // Main Location record is missing, but other locations exist. Create it with the drift amount.
+            stocks.push({
+              id: `ils-${product.id}`,
+              productId: product.id,
+              locationId: defaultLocation.id,
+              quantity: Math.max(0, drift),
+              lastMovementAt: now,
+              createdAt: now,
+              updatedAt: now,
+              deletedAt: null,
+              version: 1,
+            });
+            changed = true;
           }
-          changed = true;
         }
       }
     }

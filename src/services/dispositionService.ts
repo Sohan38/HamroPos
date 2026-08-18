@@ -1,4 +1,4 @@
-﻿import { v4 as uuidv4 } from 'uuid';
+import { v4 as uuidv4 } from 'uuid';
 import { IStorageProvider } from '@/storage/IStorageProvider';
 import { createPurchase, PurchaseInput } from './purchaseService';
 import {
@@ -212,14 +212,33 @@ export async function createInventoryDisposition(
         input.performedByName ?? null,
     );
 
-    const transactionKeys = ['inventory', 'dispositions'] as string[];
-    if (batch) transactionKeys.push('productBatches');
+    const transactionKeys = ['inventory', 'dispositions', 'inventoryLocationStocks'] as string[];
+    if (batch) transactionKeys.push('productBatches', 'productBatchLocations');
     if (input.resolution === 'supplier_replacement') transactionKeys.push('purchases');
 
     const saveDisposition = async () => {
         if (batch) {
             batch.quantity = Math.max(0, batch.quantity - quantity);
             await storage.save('productBatches', batch);
+
+            // Deduct batch location allocation at default location
+            const batchLocations = await storage.get<any>('productBatchLocations');
+            const batchLoc = batchLocations.find((bl: any) => bl.batchId === batch!.id && bl.locationId === 'loc-default' && !bl.deletedAt);
+            if (batchLoc) {
+                batchLoc.quantity = Math.max(0, Number(batchLoc.quantity ?? 0) - quantity);
+                batchLoc.updatedAt = new Date().toISOString();
+                await storage.save('productBatchLocations', batchLoc);
+            }
+        }
+
+        // Deduct from default location stock
+        const locationStocks = await storage.get<any>('inventoryLocationStocks');
+        const locStock = locationStocks.find((s: any) => s.productId === product.id && s.locationId === 'loc-default' && !s.deletedAt);
+        if (locStock) {
+            locStock.quantity = Math.max(0, Number(locStock.quantity ?? 0) - quantity);
+            locStock.lastMovementAt = new Date().toISOString();
+            locStock.updatedAt = new Date().toISOString();
+            await storage.save('inventoryLocationStocks', locStock);
         }
 
         product.quantity = Math.max(0, product.quantity - quantity);
@@ -335,10 +354,32 @@ export async function reverseInventoryDisposition(
         input.performedByName ?? null,
     );
 
+    const transactionKeysReversal = ['inventory', 'dispositions', 'inventoryLocationStocks'] as string[];
+    if (batch) transactionKeysReversal.push('productBatches', 'productBatchLocations');
+
     const saveReversal = async () => {
         if (batch) {
             batch.quantity += original.quantity;
             await storage.save('productBatches', batch);
+
+            // Restore batch location allocation at default location
+            const batchLocations = await storage.get<any>('productBatchLocations');
+            const batchLoc = batchLocations.find((bl: any) => bl.batchId === batch!.id && bl.locationId === 'loc-default' && !bl.deletedAt);
+            if (batchLoc) {
+                batchLoc.quantity = Number(batchLoc.quantity ?? 0) + original.quantity;
+                batchLoc.updatedAt = new Date().toISOString();
+                await storage.save('productBatchLocations', batchLoc);
+            }
+        }
+
+        // Restore default location stock
+        const locationStocks = await storage.get<any>('inventoryLocationStocks');
+        const locStock = locationStocks.find((s: any) => s.productId === product.id && s.locationId === 'loc-default' && !s.deletedAt);
+        if (locStock) {
+            locStock.quantity = Number(locStock.quantity ?? 0) + original.quantity;
+            locStock.lastMovementAt = new Date().toISOString();
+            locStock.updatedAt = new Date().toISOString();
+            await storage.save('inventoryLocationStocks', locStock);
         }
 
         product.quantity += original.quantity;
@@ -356,11 +397,8 @@ export async function reverseInventoryDisposition(
         return storage.save('dispositions', reversalRecord);
     };
 
-    const transactionKeys = ['inventory', 'dispositions'] as string[];
-    if (batch) transactionKeys.push('productBatches');
-
     if (storage.transaction) {
-        return storage.transaction(transactionKeys, 'rw', saveReversal);
+        return storage.transaction(transactionKeysReversal, 'rw', saveReversal);
     }
 
     return saveReversal();
