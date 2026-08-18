@@ -78,12 +78,14 @@ export function BarcodeScanner({ onScan, className, autoClose = true }: BarcodeS
     // --- Capacitor native path (MLKit) ---
     if (activeProvider === 'capacitor') {
       try {
+        setScanning(true);
         const barcode = await BarcodeService.scan();
         if (barcode) {
           await processScan(barcode);
           return;
         }
       } catch (err: any) {
+        setScanning(false);
         if (/cancel|stopped/i.test(err?.message ?? '')) {
           startingRef.current = false;
           return;
@@ -199,14 +201,18 @@ export function BarcodeScanner({ onScan, className, autoClose = true }: BarcodeS
 
             {/* ── Scanner viewport with blur surround ── */}
             <div
-              className="relative w-full overflow-hidden rounded-xl bg-black"
+              className={`relative w-full overflow-hidden rounded-xl ${
+                BarcodeService.getActiveProviderName() === 'capacitor' ? 'bg-transparent' : 'bg-black'
+              }`}
               style={{ aspectRatio: '4/3' }}
             >
-              {/* Camera feed container — ZXing injects <video> here */}
-              <div
-                id={containerId}
-                className="absolute inset-0 w-full h-full"
-              />
+              {/* Camera feed container — ZXing injects <video> here on Web/Desktop */}
+              {BarcodeService.getActiveProviderName() !== 'capacitor' && (
+                <div
+                  id={containerId}
+                  className="absolute inset-0 w-full h-full"
+                />
+              )}
 
               {/* Dark blur overlay — four strips leaving a clear centre window */}
               {scanning && (

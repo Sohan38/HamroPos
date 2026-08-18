@@ -239,8 +239,7 @@
     pointer-events: none;
   }
 
-  .no-default-hover-elevate {}
-  .no-default-active-elevate {}
+  /* Placeholders for CSS classes without custom overrides */
 
   .toggle-elevate::before,
   .toggle-elevate-2::before {
@@ -302,4 +301,17 @@
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
+}
+
+/* Make WebView transparent during native Capacitor MLKit scanning overlays */
+body.barcode-scanner-active,
+body.barcode-scanner-active #root,
+body.barcode-scanner-active main,
+body.barcode-scanner-active div {
+  background-color: transparent !important;
+  --background: transparent !important;
+}
+body.barcode-scanner-active [role="dialog"],
+body.barcode-scanner-active .bg-background {
+  background-color: transparent !important;
 }

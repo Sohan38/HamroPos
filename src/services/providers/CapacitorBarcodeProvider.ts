@@ -1,17 +1,5 @@
 import { BarcodeProvider, BarcodeScannerOptions } from '../IBarcodeProvider';
 
-/**
- * CapacitorBarcodeProvider — Capacitor 8 / MLKit edition.
- *
- * On Android it uses Google ML Kit (native, <100ms decode).
- * On iOS it uses Apple Vision Framework.
- *
- * Plugin: @capacitor-mlkit/barcode-scanning
- * Docs:   https://capawesome.io/plugins/mlkit/barcode-scanning/
- *
- * The plugin is imported via npm so TypeScript gets full types,
- * but it is resolved natively at runtime via Capacitor's bridge.
- */
 export class CapacitorBarcodeProvider implements BarcodeProvider {
   supported(): boolean {
     return (
@@ -20,13 +8,12 @@ export class CapacitorBarcodeProvider implements BarcodeProvider {
     );
   }
 
-  async scan(_options?: BarcodeScannerOptions): Promise<string> {
+  async scan(options?: BarcodeScannerOptions): Promise<string> {
     if (!this.supported()) {
       throw new Error('Capacitor native platform not detected.');
     }
 
     try {
-      // Dynamic import — only resolves inside the native Capacitor shell.
       const { BarcodeScanner, BarcodeFormat } =
         await import('@capacitor-mlkit/barcode-scanning');
 
@@ -40,44 +27,70 @@ export class CapacitorBarcodeProvider implements BarcodeProvider {
         throw new Error('Camera permission was denied. Please enable it in device Settings.');
       }
 
-      // 2. Scan — opens native full-screen viewfinder
-      const { barcodes } = await BarcodeScanner.scan({
-        formats: [
-          BarcodeFormat.Ean13,
-          BarcodeFormat.Ean8,
-          BarcodeFormat.Code128,
-          BarcodeFormat.Code39,
-          BarcodeFormat.Code93,
-          BarcodeFormat.UpcA,
-          BarcodeFormat.UpcE,
-          BarcodeFormat.Itf,
-          BarcodeFormat.DataMatrix,
-          BarcodeFormat.QrCode,
-        ],
+      // 2. Hide WebView background to show camera beneath
+      document.body.classList.add('barcode-scanner-active');
+
+      return new Promise<string>(async (resolve, reject) => {
+        let listener: any = null;
+        
+        const cleanup = async () => {
+          document.body.classList.remove('barcode-scanner-active');
+          if (listener) {
+            await listener.remove().catch(() => {});
+          }
+          await BarcodeScanner.stopScan().catch(() => {});
+        };
+
+        try {
+          // Listen for detected barcodes (using 'barcodesScanned' for version compatibility)
+          listener = await BarcodeScanner.addListener('barcodesScanned', async (event) => {
+            const barcodes = event.barcodes || [];
+            if (barcodes.length > 0) {
+              const firstBarcode = barcodes[0];
+              const val = firstBarcode.rawValue || firstBarcode.displayValue || '';
+              if (val) {
+                await cleanup();
+                if (options?.onScan) options.onScan(val);
+                resolve(val);
+              }
+            }
+          });
+
+          // Start scanning
+          await BarcodeScanner.startScan({
+            formats: [
+              BarcodeFormat.Ean13,
+              BarcodeFormat.Ean8,
+              BarcodeFormat.Code128,
+              BarcodeFormat.Code39,
+              BarcodeFormat.Code93,
+              BarcodeFormat.UpcA,
+              BarcodeFormat.UpcE,
+              BarcodeFormat.Itf,
+              BarcodeFormat.QrCode,
+            ],
+          });
+        } catch (err) {
+          await cleanup();
+          reject(err);
+        }
       });
-
-      if (!barcodes || barcodes.length === 0) {
-        throw new Error('No barcode detected.');
-      }
-
-      const value = barcodes[0].rawValue ?? barcodes[0].displayValue ?? '';
-      if (!value) throw new Error('Barcode had no readable value.');
-
-      if (_options?.onScan) _options.onScan(value);
-      return value;
     } catch (err: any) {
-      // If the user cancelled (back button), throw a clean message
+      document.body.classList.remove('barcode-scanner-active');
       const msg: string = err?.message ?? String(err);
-      if (/cancel|user dismiss/i.test(msg)) {
+      if (/cancel|stopped/i.test(msg)) {
         throw new Error('Scan cancelled.');
       }
-      console.warn('[CapacitorBarcodeProvider] scan failed:', msg);
       throw err;
     }
   }
 
   async stop(): Promise<void> {
-    // Native viewfinder is self-managed; nothing to tear down from JS side.
+    try {
+      const { BarcodeScanner } = await import('@capacitor-mlkit/barcode-scanning');
+      document.body.classList.remove('barcode-scanner-active');
+      await BarcodeScanner.stopScan().catch(() => {});
+    } catch {}
   }
 }
 
