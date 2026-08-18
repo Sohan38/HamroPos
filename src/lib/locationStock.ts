@@ -30,7 +30,8 @@ export function getLocationStockForProduct(
         return sum;
     }, 0);
 
-    return Number(legacyLocationStock ?? 0);
+    const legacy = Number(legacyLocationStock ?? 0);
+    return Math.min(legacy, product.quantity);
 }
 
 export function getProductLocationStockSummary(
@@ -60,6 +61,20 @@ export function getProductLocationStockSummary(
         if (hasExplicitRecord.has(locationId)) continue; // already tracked — skip to avoid double-count
         const current = byLocation.get(locationId) ?? 0;
         byLocation.set(locationId, current + Number(stock.stock ?? 0));
+    }
+
+    // Cap legacy fallback totals to product.quantity.
+    // When no InventoryLocationStock records exist, the sum of supplierStocks
+    // may exceed the current product.quantity (sales/consumption only deducted
+    // from product.quantity, not from supplierStocks).
+    if (hasExplicitRecord.size === 0 && byLocation.size > 0) {
+        const totalLegacy = Array.from(byLocation.values()).reduce((a, b) => a + b, 0);
+        if (totalLegacy > product.quantity) {
+            const ratio = product.quantity / totalLegacy;
+            for (const [key, value] of byLocation) {
+                byLocation.set(key, Math.round(value * ratio));
+            }
+        }
     }
 
     const knownLocations = locations.length > 0 ? locations : [{ id: 'loc-default', name: 'Main Location' } as Location];

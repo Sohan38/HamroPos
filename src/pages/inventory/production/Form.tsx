@@ -26,7 +26,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ArrowLeft, Plus, Trash2, Factory, MapPin, Package, BarChart3, AlertCircle, Check, Info } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Factory, MapPin, Package, BarChart3, AlertCircle, Check, Info, FileText } from 'lucide-react';
 import { ProductSearchPicker } from '@/components/ProductSearchPicker';
 import { SupplierSearchPicker } from '@/components/SupplierSearchPicker';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -443,51 +443,40 @@ export function ProductionForm() {
 
     return (
         <TooltipProvider>
-            <div className="mx-auto w-full max-w-full overflow-x-hidden space-y-6 px-3 py-4 pb-28 md:px-6 md:py-6 transition-all duration-300">
+            <div className="max-w-4xl mx-auto p-4 md:p-6 pb-28 md:pb-8 space-y-6">
                 
                 {/* Header Section */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-4 border-border/40">
-                    <div className="flex items-center gap-3">
-                        <Button
-                            type="button"
-                            variant="outline"
-                            size="icon"
-                            onClick={() => setLocation('/inventory')}
-                            aria-label="Back"
-                            className="rounded-full shrink-0 shadow-sm hover:scale-105 transition-transform"
-                        >
-                            <ArrowLeft className="h-4 w-4" />
-                        </Button>
-                        <div>
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className="text-[10px] md:text-xs uppercase tracking-widest text-muted-foreground font-semibold">Inventory</span>
-                                <span className="h-1 w-1 rounded-full bg-primary/40" />
-                                <span className="text-[10px] md:text-xs text-primary font-medium flex items-center gap-1">
-                                    <Check className="h-3 w-3" /> Production Enabled
-                                </span>
-                            </div>
-                            <h1 className="text-xl md:text-3xl font-extrabold tracking-tight bg-gradient-to-r from-foreground via-foreground/90 to-foreground/75 bg-clip-text text-transparent">
-                                Create Production
-                            </h1>
-                        </div>
-                    </div>
-                    
-                    <div className="flex items-center gap-2 self-start sm:self-auto bg-primary/5 border border-primary/10 rounded-full px-3 py-1.5 text-xs text-primary font-medium backdrop-blur-sm shadow-xs shrink-0">
-                        <Factory className="h-3.5 w-3.5" />
-                        <span>Stock-safe transaction layer</span>
+                <div className="flex items-center gap-3">
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setLocation('/inventory')}
+                        aria-label="Back"
+                        className="rounded-full hover:bg-muted shrink-0"
+                    >
+                        <ArrowLeft className="h-5 w-5" />
+                    </Button>
+                    <div>
+                        <h1 className="text-2xl font-bold tracking-tight text-foreground">Create Production</h1>
+                        <p className="text-xs text-muted-foreground mt-0.5">Record production batches, raw materials, and finished goods.</p>
                     </div>
                 </div>
 
-                {/* Primary Config Bar */}
-                <Card className="border-none shadow-sm bg-card/65 backdrop-blur-md ring-1 ring-border/20">
-                    <CardContent className="p-4 md:p-5 flex flex-col gap-4">
+                {/* Primary Location Config */}
+                <Card className="border border-muted-foreground/10 bg-card/60 backdrop-blur-sm shadow-sm overflow-hidden">
+                    <CardHeader className="pb-4 border-b border-muted-foreground/10 bg-muted/20">
+                        <CardTitle className="text-base font-semibold text-foreground flex items-center gap-2">
+                            <MapPin className="h-4.5 w-4.5 text-primary" /> Location Configuration
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-5 sm:p-6">
                         <div className="space-y-2">
-                            <Label htmlFor="location" className="font-semibold text-foreground/80 flex items-center gap-1.5">
-                                <MapPin className="h-4 w-4 text-primary shrink-0" />
+                            <Label htmlFor="location" className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                                 Source & Target Location
                             </Label>
                             <Select value={selectedLocationId} onValueChange={setSelectedLocationId}>
-                                <SelectTrigger id="location" className="w-full h-11 bg-background/50 border-border/40 rounded-xl transition-all focus:ring-2 focus:ring-primary/25">
+                                <SelectTrigger id="location" className="h-11 rounded-xl border-muted-foreground/20 focus-visible:ring-primary shadow-sm">
                                     <SelectValue placeholder="Select production location" />
                                 </SelectTrigger>
                                 <SelectContent className="rounded-xl">
@@ -516,8 +505,8 @@ export function ProductionForm() {
                             </div>
                             
                             {outputRows.map((row, index) => (
-                                <Card key={row.id} className="border-none shadow-sm bg-card/65 backdrop-blur-md ring-1 ring-border/20 overflow-hidden hover:ring-primary/25 transition-all duration-200">
-                                    <CardHeader className="p-4 border-b border-border/10 pb-3 flex flex-row items-center justify-between space-y-0">
+                                <Card key={row.id} className="border border-muted-foreground/10 bg-card/60 backdrop-blur-sm shadow-sm overflow-hidden hover:border-primary/40 transition-colors">
+                                    <CardHeader className="p-4 border-b border-muted-foreground/10 pb-3 bg-muted/20 flex flex-row items-center justify-between space-y-0">
                                         <div className="flex items-center gap-2">
                                             <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-[10px] text-primary font-bold shrink-0">{index + 1}</span>
                                             <CardTitle className="text-sm font-bold">Target Output Item</CardTitle>
@@ -539,7 +528,7 @@ export function ProductionForm() {
                                             <div className="space-y-1.5 sm:col-span-8">
                                                 <Label className="text-xs text-muted-foreground">Product to Produce</Label>
                                                 {row.productId ? (
-                                                    <div className="flex items-center justify-between p-2.5 rounded-xl border border-primary/25 bg-primary/5 shadow-xs animate-fade-in">
+                                                    <div className="flex items-center justify-between p-2.5 rounded-xl border border-primary/25 bg-primary/5 shadow-xs">
                                                         <div className="flex items-center gap-2.5 min-w-0">
                                                             <Package className="h-5 w-5 text-primary shrink-0" />
                                                             <div className="min-w-0">
@@ -606,9 +595,11 @@ export function ProductionForm() {
                         </div>
 
                         {/* Recipe Selector Block */}
-                        <Card className="border-none shadow-sm bg-card/65 backdrop-blur-md ring-1 ring-border/20 overflow-hidden">
-                            <CardContent className="p-4 md:p-5 space-y-3">
-                                <Label className="font-semibold text-foreground/80 flex items-center gap-1.5">Recipe Automation</Label>
+                        <Card className="border border-muted-foreground/10 bg-card/60 backdrop-blur-sm shadow-sm overflow-hidden">
+                            <CardHeader className="p-4 border-b border-muted-foreground/10 pb-3 bg-muted/20">
+                                <CardTitle className="text-sm font-bold flex items-center gap-1.5">Recipe Automation</CardTitle>
+                            </CardHeader>
+                            <CardContent className="p-4 space-y-3">
                                 {activeRecipesForSelectedOutput.length === 0 ? (
                                     <div className="rounded-xl border border-border/30 bg-muted/10 px-3.5 py-3 text-xs text-muted-foreground flex items-center gap-2">
                                         <Info className="h-4 w-4 text-muted-foreground/80 shrink-0" />
@@ -640,8 +631,8 @@ export function ProductionForm() {
 
                         {/* Recipe Blueprint Variance Review */}
                         {activeProductionRecipe && expectedRecipeIngredients.length > 0 && (
-                            <Card className="border-none shadow-sm bg-card/65 backdrop-blur-md ring-1 ring-border/20 overflow-hidden">
-                                <CardHeader className="p-4 border-b border-border/10 pb-3 bg-muted/5">
+                            <Card className="border border-muted-foreground/10 bg-card/60 backdrop-blur-sm shadow-sm overflow-hidden">
+                                <CardHeader className="p-4 border-b border-muted-foreground/10 pb-3 bg-muted/20">
                                     <div className="flex items-center justify-between gap-3 flex-wrap">
                                         <CardTitle className="text-sm font-bold">Recipe Blueprint</CardTitle>
                                         <span className="rounded-full bg-primary/10 border border-primary/20 px-2 py-0.5 text-[10px] font-semibold text-primary">
@@ -708,8 +699,8 @@ export function ProductionForm() {
                                 const batchOptions = product ? getProductBatchesAtLocation(product.id, row.supplierId || undefined) : [];
 
                                 return (
-                                    <Card key={row.id} className="border-none shadow-sm bg-card/65 backdrop-blur-md ring-1 ring-border/20 overflow-hidden hover:ring-primary/20 transition-all duration-200">
-                                        <CardHeader className="p-4 border-b border-border/10 pb-3 flex flex-row items-center justify-between space-y-0">
+                                    <Card key={row.id} className="border border-muted-foreground/10 bg-card/60 backdrop-blur-sm shadow-sm overflow-hidden hover:border-primary/40 transition-colors">
+                                        <CardHeader className="p-4 border-b border-muted-foreground/10 pb-3 bg-muted/20 flex flex-row items-center justify-between space-y-0">
                                             <div className="flex items-center gap-2">
                                                 <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-[10px] text-primary font-bold shrink-0">{index + 1}</span>
                                                 <CardTitle className="text-sm font-bold">Input Material Row</CardTitle>
@@ -730,7 +721,7 @@ export function ProductionForm() {
                                             <div className="space-y-1.5">
                                                 <Label className="text-xs text-muted-foreground">Select Material</Label>
                                                 {row.productId ? (
-                                                    <div className="flex items-center justify-between p-2.5 rounded-xl border border-primary/25 bg-primary/5 shadow-xs animate-fade-in">
+                                                    <div className="flex items-center justify-between p-2.5 rounded-xl border border-primary/25 bg-primary/5 shadow-xs">
                                                         <div className="flex items-center gap-2.5 min-w-0">
                                                             <Package className="h-5 w-5 text-primary shrink-0" />
                                                             <div className="min-w-0">
@@ -819,8 +810,8 @@ export function ProductionForm() {
                                                             className="h-10 bg-background/50 rounded-xl w-full"
                                                             value={row.quantity}
                                                             onChange={(e) => {
-                                                                const nextValue = Number(e.target.value || 0);
-                                                                updateInputRow(row.id, { quantity: String(Math.max(0, nextValue)) });
+                                                                 const nextValue = Number(e.target.value || 0);
+                                                                 updateInputRow(row.id, { quantity: String(Math.max(0, nextValue)) });
                                                             }}
                                                         />
                                                     </div>
@@ -842,12 +833,16 @@ export function ProductionForm() {
                         </div>
 
                         {/* Notes Section */}
-                        <Card className="border-none shadow-sm bg-card/65 backdrop-blur-md ring-1 ring-border/20">
-                            <CardContent className="p-4 md:p-5">
-                                <Label htmlFor="production-notes" className="font-semibold text-foreground/80">Batch Transaction Notes</Label>
+                        <Card className="border border-muted-foreground/10 bg-card/60 backdrop-blur-sm shadow-sm overflow-hidden">
+                            <CardHeader className="p-4 border-b border-muted-foreground/10 pb-3 bg-muted/20">
+                                <CardTitle className="text-sm font-bold flex items-center gap-1.5">
+                                    <FileText className="h-4 w-4 text-muted-foreground" /> Production Notes / Remarks
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent className="p-4">
                                 <textarea
                                     id="production-notes"
-                                    className="mt-2 min-h-[90px] w-full rounded-xl border border-border/40 bg-background/40 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all placeholder:text-muted-foreground/60 resize-none"
+                                    className="min-h-[90px] w-full rounded-xl border border-border/40 bg-background/40 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all placeholder:text-muted-foreground/60 resize-none"
                                     value={notes}
                                     onChange={(e) => setNotes(e.target.value)}
                                     placeholder="Add notes for this production batch..."
@@ -859,7 +854,7 @@ export function ProductionForm() {
                 </div>
 
                 {/* Footer validation and action drawer */}
-                <Card className="border-none shadow-md bg-card/75 backdrop-blur-lg ring-1 ring-border/25 rounded-2xl">
+                <Card className="border border-muted-foreground/10 bg-card/60 backdrop-blur-sm shadow-sm overflow-hidden">
                     <CardContent className="p-4 md:p-6">
                         {hasValidationErrors && (
                             <div className="mb-5 rounded-xl border border-destructive/20 bg-destructive/5 p-4 text-xs text-destructive space-y-1.5 flex gap-2">
