@@ -435,6 +435,16 @@ export class ProductionMutationService {
             throw new Error('At least one output is required for production');
         }
 
+        // Pre-calculate total output quantity for consistent unit cost allocation
+        for (const output of params.outputs) {
+            if (output.quantity > 0) {
+                totalOutputQuantity += output.quantity;
+            }
+        }
+
+        // Calculate output unit cost once based on total output quantity
+        const outputUnitCost = totalOutputQuantity > 0 ? totalInputCost / totalOutputQuantity : 0;
+
         for (const output of params.outputs) {
             const product = products.find(p => p.id === output.productId && !p.deletedAt);
             if (!product) {
@@ -450,10 +460,7 @@ export class ProductionMutationService {
                 console.warn(`Product ${product.name} is not marked as productionOutput`);
             }
 
-            totalOutputQuantity += output.quantity;
-
-            // Calculate output unit cost
-            const outputUnitCost = totalInputCost / totalOutputQuantity;
+            // Calculate this row's total cost using the consistent unit cost
             const outputTotalCost = output.quantity * outputUnitCost;
 
             // Create output item record
