@@ -79,8 +79,13 @@ export function BarcodeScanner({ onScan, className, autoClose = true }: BarcodeS
     if (activeProvider === 'capacitor') {
       try {
         setScanning(true);
-        const barcode = await BarcodeService.scan();
-        if (barcode) {
+        // Pass scanner options (containerId, autoClose, onScan callback) directly to the native wrapper
+        const barcode = await BarcodeService.scan({
+          containerId,
+          autoClose,
+          onScan: async (val) => { await processScan(val); }
+        });
+        if (barcode && autoClose) {
           await processScan(barcode);
           return;
         }

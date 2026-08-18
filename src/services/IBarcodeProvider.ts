@@ -2,6 +2,7 @@ export interface BarcodeScannerOptions {
   containerId?: string;
   onScan?: (text: string) => void;
   onError?: (err: string) => void;
+  autoClose?: boolean;
 }
 
 export interface BarcodeProvider {

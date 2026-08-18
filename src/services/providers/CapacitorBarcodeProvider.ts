@@ -27,7 +27,7 @@ export class CapacitorBarcodeProvider implements BarcodeProvider {
         throw new Error('Camera permission was denied. Please enable it in device Settings.');
       }
 
-      // 2. Hide WebView background to show camera beneath
+      // 2. Hide WebView backgrounds to show native camera view behind it
       document.body.classList.add('barcode-scanner-active');
 
       return new Promise<string>(async (resolve, reject) => {
@@ -42,16 +42,22 @@ export class CapacitorBarcodeProvider implements BarcodeProvider {
         };
 
         try {
-          // Listen for detected barcodes (using 'barcodesScanned' for version compatibility)
+          // Listen for detected barcodes
           listener = await BarcodeScanner.addListener('barcodesScanned', async (event) => {
             const barcodes = event.barcodes || [];
             if (barcodes.length > 0) {
               const firstBarcode = barcodes[0];
               const val = firstBarcode.rawValue || firstBarcode.displayValue || '';
               if (val) {
-                await cleanup();
-                if (options?.onScan) options.onScan(val);
-                resolve(val);
+                if (options?.onScan) {
+                  options.onScan(val);
+                }
+                
+                // If autoClose is false, do not call cleanup() to support continuous scanning
+                if (options?.autoClose !== false) {
+                  await cleanup();
+                  resolve(val);
+                }
               }
             }
           });
