@@ -1,12 +1,30 @@
 import { BarcodeProvider, BarcodeScannerOptions } from '../IBarcodeProvider';
-import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
+import {
+  BrowserMultiFormatReader,
+  BarcodeFormat,
+  DecodeHintType,
+  NotFoundException,
+} from '@zxing/library';
 
+/**
+ * WebBarcodeProvider — Highly optimized @zxing/library edition.
+ *
+ * Scans efficiently by throttling frame rate checks (~4 FPS) and disabling
+ * CPU-heavy hints like TRY_HARDER to prevent UI lagging.
+ * Stop operations are made fully non-blocking to prevent UI lockups on close.
+ */
 export class WebBarcodeProvider implements BarcodeProvider {
-  private html5QrcodeScanner: Html5Qrcode | null = null;
-  private transitionMutex: Promise<any> = Promise.resolve();
-  private activeScanOptions: BarcodeScannerOptions | null = null;
-  private activeResolve: ((val: string) => void) | null = null;
-  private activeReject: ((err: any) => void) | null = null;
+  private reader: BrowserMultiFormatReader | null = null;
+  private videoEl: HTMLVideoElement | null = null;
+  private stopped = false;
+
+  // Mutex so concurrent scan() / stop() calls don't race
+  private mutex: Promise<any> = Promise.resolve();
+  private runLocked<T>(fn: () => Promise<T>): Promise<T> {
+    const next = this.mutex.then(fn);
+    this.mutex = next.then(() => {}, () => {});
+    return next;
+  }
 
   supported(): boolean {
     return (
@@ -16,226 +34,191 @@ export class WebBarcodeProvider implements BarcodeProvider {
     );
   }
 
-  private async runLocked<T>(action: () => Promise<T>): Promise<T> {
-    const next = this.transitionMutex.then(action);
-    this.transitionMutex = next.then(
-      () => {},
-      () => {}
-    );
-    return next;
-  }
+  private activeStream: MediaStream | null = null;
 
   async scan(options?: BarcodeScannerOptions): Promise<string> {
-    if (!options || !options.containerId) {
-      throw new Error('Container ID required for web barcode scanner.');
+    if (!options?.containerId) {
+      throw new Error('WebBarcodeProvider: containerId is required.');
     }
-    const containerId = options.containerId;
 
-    // 1. Stop any existing scan first (runs in lock).
-    // This correctly rejects the PREVIOUS activeResolve/activeReject.
-    await this.runLocked(async () => {
-      if (this.html5QrcodeScanner) {
-        try {
-          const state = this.html5QrcodeScanner.getState();
-          if (state === 2) { // SCANNING
-            // Already scanning, we will reuse it.
-            return;
+    return this.runLocked(async () => {
+      await this.teardown();
+
+      return new Promise<string>(async (resolve, reject) => {
+        this.stopped = false;
+
+        const container = document.getElementById(options.containerId!);
+        if (!container) {
+          return reject(new Error('Scanner container not found.'));
+        }
+
+        // Keep a reference to reject so stop() can reject it immediately
+        (this as any)._activeReject = reject;
+
+        // Wait for container to have real dimensions (dialog animation)
+        let tries = 0;
+        while (tries++ < 40) {
+          if (this.stopped) {
+            delete (this as any)._activeReject;
+            return reject(new Error('Scanner stopped.'));
           }
-        } catch {
-          // Proceed to clean restart if state check fails
+          const r = container.getBoundingClientRect();
+          if (r.width > 0 && r.height > 0) break;
+          await new Promise(r => setTimeout(r, 75));
         }
-      }
-      await this.stopInternal();
-    });
 
-    // 2. Now that the previous scan is completely cleaned up,
-    // register the new options and create the new result promise.
-    this.activeScanOptions = options;
-    const scanResultPromise = new Promise<string>((resolve, reject) => {
-      this.activeResolve = resolve;
-      this.activeReject = reject;
-    });
-
-    // 3. Start the camera under the lock
-    await this.runLocked(async () => {
-      // Double check if another scan call already started it
-      if (this.html5QrcodeScanner) {
-        try {
-          const state = this.html5QrcodeScanner.getState();
-          if (state === 2) {
-            return;
-          }
-        } catch {}
-      }
-
-      // Ensure the container element exists in the DOM
-      const containerEl = document.getElementById(containerId);
-      if (!containerEl) {
-        const errorMsg = 'Scanner container not ready. Please close and try again.';
-        if (this.activeReject) this.activeReject(new Error(errorMsg));
-        throw new Error(errorMsg);
-      }
-
-      // Wait until the container has actual dimensions (dialog animation may still be running)
-      let dimensionRetries = 0;
-      while (dimensionRetries < 30) {
-        const rect = containerEl.getBoundingClientRect();
-        if (rect.width > 0 && rect.height > 0) break;
-        await new Promise(r => setTimeout(r, 100));
-        dimensionRetries++;
-      }
-
-      // Probe camera access up-front to trigger permission dialog and catch specific errors
-      try {
-        const probeStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment' },
-        });
-        probeStream.getTracks().forEach(t => t.stop());
-      } catch (probeErr: any) {
-        const name = probeErr?.name || '';
-        let errorMsg = `Camera error: ${probeErr?.message || probeErr}`;
-        if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
-          errorMsg = 'Camera permission was denied. Please allow camera access in settings and try again.';
-        } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
-          errorMsg = 'No camera found on this device.';
-        } else if (name === 'NotReadableError' || name === 'TrackStartError') {
-          errorMsg = 'Camera is already in use by another app. Please close other camera apps and try again.';
-        } else if (name === 'OverconstrainedError') {
-          try {
-            const fallbackStream = await navigator.mediaDevices.getUserMedia({ video: true });
-            fallbackStream.getTracks().forEach(t => t.stop());
-          } catch {
-            errorMsg = 'Could not access any camera on this device.';
-            if (this.activeReject) this.activeReject(new Error(errorMsg));
-            throw new Error(errorMsg);
-          }
-        }
-        if (name !== 'OverconstrainedError') {
-          if (this.activeReject) this.activeReject(new Error(errorMsg));
-          throw new Error(errorMsg);
-        }
-      }
-
-      // Fetch cameras first to choose the correct back/rear camera directly
-      let cameras: Array<{ id: string; label: string }> = [];
-      try {
-        cameras = await Html5Qrcode.getCameras();
-      } catch (camErr: any) {
-        const errorMsg = 'Camera access denied. Please grant camera permission in settings and try again.';
-        if (this.activeReject) this.activeReject(new Error(errorMsg));
-        throw new Error(errorMsg);
-      }
-
-      if (!cameras || cameras.length === 0) {
-        const errorMsg = 'No camera found on this device.';
-        if (this.activeReject) this.activeReject(new Error(errorMsg));
-        throw new Error(errorMsg);
-      }
-
-      const backCamera =
-        cameras.find(
-          c =>
-            c.label.toLowerCase().includes('back') ||
-            c.label.toLowerCase().includes('rear') ||
-            c.label.toLowerCase().includes('environment') ||
-            c.label.toLowerCase().includes('facing exterior')
-        ) || cameras[0];
-
-      // Clear any leftover content
-      containerEl.innerHTML = '';
-
-      const supportedFormats = [
-        Html5QrcodeSupportedFormats.QR_CODE,
-        Html5QrcodeSupportedFormats.EAN_13,
-        Html5QrcodeSupportedFormats.EAN_8,
-        Html5QrcodeSupportedFormats.CODE_128,
-        Html5QrcodeSupportedFormats.CODE_39,
-        Html5QrcodeSupportedFormats.UPC_A,
-        Html5QrcodeSupportedFormats.UPC_E,
-      ];
-
-      this.html5QrcodeScanner = new Html5Qrcode(containerId, {
-        formatsToSupport: supportedFormats,
-        verbose: false,
-      });
-
-      const config = {
-        fps: 24,
-        qrbox: { width: 250, height: 250 },
-        aspectRatio: 1.0,
-        disableFlip: true,
-      };
-
-      let lastCode = '';
-      let lastTime = 0;
-
-      const onSuccess = (decodedText: string) => {
-        const trimmed = decodedText.trim();
-        if (!trimmed) return;
-
-        const now = Date.now();
-        if (trimmed === lastCode && now - lastTime < 1500) {
-          return;
-        }
+        // --- Build the ZXing reader with barcode-optimised hints ---
+        const hints = new Map<DecodeHintType, any>();
+        hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+          BarcodeFormat.EAN_13,
+          BarcodeFormat.EAN_8,
+          BarcodeFormat.CODE_128,
+          BarcodeFormat.CODE_39,
+          BarcodeFormat.CODE_93,
+          BarcodeFormat.UPC_A,
+          BarcodeFormat.UPC_E,
+          BarcodeFormat.ITF,
+          BarcodeFormat.CODABAR,
+          BarcodeFormat.QR_CODE,
+          BarcodeFormat.DATA_MATRIX,
+        ]);
         
-        lastCode = trimmed;
-        lastTime = now;
+        // Disabled TRY_HARDER to prevent CPU lagging and thermal throttling on mobile
+        hints.set(DecodeHintType.TRY_HARDER, false);
 
-        if (this.activeScanOptions?.onScan) {
-          this.activeScanOptions.onScan(trimmed);
-        }
-        if (this.activeResolve) {
-          this.activeResolve(trimmed);
-        }
-      };
+        this.reader = new BrowserMultiFormatReader(hints);
 
-      try {
-        await this.html5QrcodeScanner.start(
-          backCamera.id,
-          config,
-          onSuccess,
-          () => {}
-        );
-      } catch (startErr: any) {
-        console.error('[BarcodeScanner] Camera start failed:', startErr);
-        const errorMsg = `Could not start camera "${backCamera.label || backCamera.id}": ${startErr?.message || startErr}`;
-        if (this.activeReject) this.activeReject(new Error(errorMsg));
-        throw new Error(errorMsg);
-      }
+        // --- Video element ---
+        const video = document.createElement('video');
+        video.playsInline = true;
+        video.muted = true;
+        video.setAttribute('playsinline', '');
+        video.style.cssText =
+          'position:absolute;width:100%;height:100%;object-fit:cover;left:0;top:0;border-radius:inherit;';
+        container.style.position = 'relative';
+        container.innerHTML = '';
+        container.appendChild(video);
+        this.videoEl = video;
+
+        let lastCode = '';
+        let lastTime = 0;
+
+        try {
+          const constraints: MediaStreamConstraints = {
+            video: {
+              facingMode: { ideal: 'environment' },
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+            },
+          };
+
+          // Capture the stream to track and stop it when teardown is called
+          const stream = await navigator.mediaDevices.getUserMedia(constraints).catch(() =>
+            navigator.mediaDevices.getUserMedia({ video: true })
+          );
+          
+          if (this.stopped) {
+            stream.getTracks().forEach(t => t.stop());
+            return reject(new Error('Scanner stopped.'));
+          }
+          
+          this.activeStream = stream;
+          video.srcObject = stream;
+          await video.play().catch(() => {});
+
+          // Throttle decode loops: only decode every ~250ms (4 FPS) to reduce CPU overhead
+          let lastDecodeTime = 0;
+
+          this.reader.decodeFromVideoElementContinuously(video, (result, error) => {
+            if (this.stopped) return;
+
+            const nowTime = Date.now();
+            if (nowTime - lastDecodeTime < 250) {
+              return;
+            }
+            lastDecodeTime = nowTime;
+
+            if (result) {
+              const text = result.getText().trim();
+              const now = Date.now();
+
+              // Debounce: skip same code within 1.5s
+              if (text && !(text === lastCode && now - lastTime < 1500)) {
+                lastCode = text;
+                lastTime = now;
+                if (options?.onScan) options.onScan(text);
+                resolve(text);
+              }
+            }
+
+            if (error && !(error instanceof NotFoundException)) {
+              // Ignore routine NotFoundException frame errors
+            }
+          });
+        } catch (err: any) {
+          const n = err?.name ?? '';
+          if (n === 'NotAllowedError' || n === 'PermissionDeniedError') {
+            return reject(new Error('Camera permission denied. Please allow camera access and try again.'));
+          }
+          if (n === 'NotFoundError') {
+            return reject(new Error('No camera found on this device.'));
+          }
+          if (n === 'NotReadableError') {
+            return reject(new Error('Camera is in use by another app. Close it and try again.'));
+          }
+          return reject(new Error(`Camera error: ${err?.message ?? err}`));
+        }
+      });
     });
-
-    return scanResultPromise;
   }
 
-  private async stopInternal(): Promise<void> {
-    if (this.activeReject) {
-      this.activeReject(new Error('Scanner stopped.'));
+  private async teardown(): Promise<void> {
+    this.stopped = true;
+
+    if ((this as any)._activeReject) {
+      try {
+        (this as any)._activeReject(new Error('Scanner stopped.'));
+      } catch {}
+      delete (this as any)._activeReject;
     }
 
-    if (!this.html5QrcodeScanner) return;
+    if (this.reader) {
+      const activeReader = this.reader;
+      this.reader = null;
+      // Do reset asynchronously to prevent blocking the UI thread during teardown
+      setTimeout(() => {
+        try {
+          activeReader.reset();
+        } catch {}
+      }, 0);
+    }
 
-    try {
-      const state = this.html5QrcodeScanner.getState();
-      if (state === 2) { // SCANNING
-        await this.html5QrcodeScanner.stop();
+    if (this.activeStream) {
+      try {
+        this.activeStream.getTracks().forEach(t => t.stop());
+      } catch {}
+      this.activeStream = null;
+    }
+
+    if (this.videoEl) {
+      if (this.videoEl.srcObject) {
+        try {
+          const stream = this.videoEl.srcObject as MediaStream;
+          stream.getTracks().forEach(t => t.stop());
+        } catch {}
+        this.videoEl.srcObject = null;
       }
-    } catch (e) {
-      console.warn('[BarcodeScanner] Error stopping scanner:', e);
+      this.videoEl.remove();
+      this.videoEl = null;
     }
-
-    try {
-      this.html5QrcodeScanner.clear();
-    } catch {}
-
-    this.html5QrcodeScanner = null;
-    this.activeResolve = null;
-    this.activeReject = null;
   }
 
   async stop(): Promise<void> {
-    return this.runLocked(async () => {
-      await this.stopInternal();
-    });
+    this.stopped = true;
+    // Execute immediately without awaiting the queue lock to avoid UI deadlocks
+    this.teardown().catch(() => {});
+    return Promise.resolve();
   }
 }
+
 export default WebBarcodeProvider;
