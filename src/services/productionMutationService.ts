@@ -111,6 +111,8 @@ export class ProductionMutationService {
 
         let totalInputCost = 0;
         let totalOutputQuantity = 0;
+        const remainingLocationStockByProduct = new Map<string, number>();
+        const remainingBatchQuantityByBatch = new Map<string, number>();
 
         // ────────────────────────────────────────────────────────────────────
         // PHASE 1: VALIDATE LOCATION
@@ -137,14 +139,15 @@ export class ProductionMutationService {
                 throw new Error(`Input quantity for ${product.name} must be positive`);
             }
 
-            // ──────────────────────────────────────────────────────────────
-            // LOCATION-AWARE AVAILABILITY CHECK
-            // ──────────────────────────────────────────────────────────────
-            const availableAtLocation = getLocationStockForProduct(
+            const productLocationKey = `${params.locationId}:${product.id}`;
+            const baseAvailableAtLocation = getLocationStockForProduct(
                 product,
                 params.locationId,
                 locationStocks
             );
+            const availableAtLocation = remainingLocationStockByProduct.has(productLocationKey)
+                ? remainingLocationStockByProduct.get(productLocationKey)!
+                : baseAvailableAtLocation;
 
             if (availableAtLocation < input.quantity) {
                 throw new Error(
@@ -152,6 +155,8 @@ export class ProductionMutationService {
                     `Available: ${availableAtLocation} ${product.unit}, Needed: ${input.quantity} ${product.unit}`
                 );
             }
+
+            remainingLocationStockByProduct.set(productLocationKey, availableAtLocation - input.quantity);
 
             // ──────────────────────────────────────────────────────────────
             // BATCH ALLOCATION (if batch-tracked)
@@ -188,7 +193,9 @@ export class ProductionMutationService {
                             bl.locationId === params.locationId &&
                             !bl.deletedAt
                     );
-                    const batchQtyAtLocation = batchLocRec?.quantity ?? 0;
+                    const baseBatchQtyAtLocation = batchLocRec?.quantity ?? 0;
+                    const batchKey = `${params.locationId}:${allocatedBatch.id}`;
+                    const batchQtyAtLocation = Math.max(0, baseBatchQtyAtLocation - (remainingBatchQuantityByBatch.get(batchKey) ?? 0));
 
                     if (batchQtyAtLocation < input.quantity) {
                         throw new Error(
@@ -196,6 +203,8 @@ export class ProductionMutationService {
                             `Available: ${batchQtyAtLocation} ${product.unit}, Needed: ${input.quantity} ${product.unit}`
                         );
                     }
+
+                    remainingBatchQuantityByBatch.set(batchKey, (remainingBatchQuantityByBatch.get(batchKey) ?? 0) + input.quantity);
 
                     const allocationCost = input.quantity * (allocatedBatch.purchaseRate ?? product.purchaseRate ?? 0);
                     allocations.push({
@@ -217,7 +226,9 @@ export class ProductionMutationService {
                                 bl.locationId === params.locationId &&
                                 !bl.deletedAt
                         );
-                        return batchLocRec && batchLocRec.quantity > 0;
+                        const batchKey = `${params.locationId}:${batch.id}`;
+                        const remainingBatchQty = remainingBatchQuantityByBatch.get(batchKey) ?? 0;
+                        return batchLocRec && (batchLocRec.quantity - remainingBatchQty) > 0;
                     });
 
                     if (batchesAtLocation.length === 0) {
@@ -244,7 +255,9 @@ export class ProductionMutationService {
                                 bl.locationId === params.locationId &&
                                 !bl.deletedAt
                         );
-                        const batchQtyAtLocation = batchLocRec?.quantity ?? 0;
+                        const batchKey = `${params.locationId}:${batch.id}`;
+                        const baseBatchQtyAtLocation = batchLocRec?.quantity ?? 0;
+                        const batchQtyAtLocation = Math.max(0, baseBatchQtyAtLocation - (remainingBatchQuantityByBatch.get(batchKey) ?? 0));
                         const allocateQty = Math.min(remainingQuantity, batchQtyAtLocation);
 
                         const allocationCost = allocateQty * (batch.purchaseRate ?? product.purchaseRate ?? 0);
@@ -254,6 +267,7 @@ export class ProductionMutationService {
                             cost: allocationCost,
                         });
                         totalAllocationCost += allocationCost;
+                        remainingBatchQuantityByBatch.set(batchKey, (remainingBatchQuantityByBatch.get(batchKey) ?? 0) + allocateQty);
                         remainingQuantity -= allocateQty;
                     }
 
