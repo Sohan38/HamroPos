@@ -90,6 +90,7 @@ export class DexieProvider implements IStorageProvider {
 
   private defaultLocationInitPromise: Promise<void> | null = null;
   private defaultBatchAllocationsInitPromise: Promise<void> | null = null;
+  private defaultLocationStocksInitPromise: Promise<void> | null = null;
 
   private notifyStorageChanged(key?: string) {
     if (typeof window === 'undefined') return;
@@ -363,8 +364,6 @@ export class DexieProvider implements IStorageProvider {
     return this.defaultBatchAllocationsInitPromise;
   }
 
-  private defaultLocationStocksInitPromise: Promise<void> | null = null;
-
   private async ensureDefaultLocationStocks(): Promise<void> {
     if (this.defaultLocationStocksInitPromise) {
       return this.defaultLocationStocksInitPromise;
@@ -381,31 +380,45 @@ export class DexieProvider implements IStorageProvider {
 
         const stocks = (await this.table('inventoryLocationStocks').toArray()) as any[];
         const products = (await this.table('inventory').toArray()) as any[];
-        const used = new Set(stocks.filter((item: any) => item.productId).map((item: any) => `${item.productId}::${item.locationId}`));
+        const now = new Date().toISOString();
 
         for (const product of products) {
           if (product.deletedAt) continue;
-          const key = `${product.id}::${defaultLocation.id}`;
-          if (used.has(key)) continue;
 
-          const hasAnyStockRecord = stocks.some((item: any) => item.productId === product.id);
-          if (hasAnyStockRecord) continue;
+          const productStocks = stocks.filter((s: any) => s.productId === product.id && !s.deletedAt);
+          const otherLocationStocks = productStocks.filter((s: any) => s.locationId !== defaultLocation.id);
 
-          const createdAt = new Date().toISOString();
-          const defaultStock = {
-            id: `ils-${product.id}`,
-            productId: product.id,
-            locationId: defaultLocation.id,
-            quantity: Number(product.quantity ?? 0),
-            lastMovementAt: createdAt,
-            createdAt,
-            updatedAt: createdAt,
-            deletedAt: null,
-            version: 1,
-          };
+          if (productStocks.length === 0) {
+            const defaultStock = {
+              id: `ils-${product.id}`,
+              productId: product.id,
+              locationId: defaultLocation.id,
+              quantity: Number(product.quantity ?? 0),
+              lastMovementAt: now,
+              createdAt: now,
+              updatedAt: now,
+              deletedAt: null,
+              version: 1,
+            };
+            await this.save('inventoryLocationStocks', defaultStock as any);
+          } else if (otherLocationStocks.length === 0) {
+            const totalMainQty = productStocks.reduce((sum: number, s: any) => sum + Number(s.quantity ?? 0), 0);
+            if (productStocks.length > 1 || totalMainQty !== Number(product.quantity ?? 0)) {
+              const mainRecord = productStocks[0];
+              mainRecord.quantity = Number(product.quantity ?? 0);
+              mainRecord.updatedAt = now;
+              mainRecord.version = (mainRecord.version || 1) + 1;
+              await this.save('inventoryLocationStocks', mainRecord);
 
-          await this.save('inventoryLocationStocks', defaultStock as any);
-          used.add(key);
+              for (let i = 1; i < productStocks.length; i++) {
+                const extraRecord = productStocks[i];
+                extraRecord.deletedAt = now;
+                extraRecord.updatedAt = now;
+                extraRecord.version = (extraRecord.version || 1) + 1;
+                await this.save('inventoryLocationStocks', extraRecord);
+              }
+            }
+          }
         }
       } catch (error) {
         console.error('[DexieProvider] ensureDefaultLocationStocks failed:', error);

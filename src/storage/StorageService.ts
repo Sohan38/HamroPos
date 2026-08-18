@@ -373,34 +373,59 @@ export class LocalStorageProvider implements IStorageProvider {
     }
 
     const stockRows = JSON.parse(localStorage.getItem(`${this.KEY_PREFIX}inventoryLocationStocks`) || '[]');
-    const stocks = Array.isArray(stockRows) ? stockRows : [];
+    let stocks = Array.isArray(stockRows) ? stockRows : [];
     const products = JSON.parse(localStorage.getItem(`${this.KEY_PREFIX}inventory`) || '[]');
     const productList = Array.isArray(products) ? products : [];
-    const used = new Set(stocks.filter((item: any) => item.productId).map((item: any) => `${item.productId}::${item.locationId}`));
 
     let changed = false;
+    const now = new Date().toISOString();
+
     for (const product of productList) {
       if (product.deletedAt) continue;
-      const key = `${product.id}::${defaultLocation.id}`;
-      if (used.has(key)) continue;
 
-      const hasAnyStockRecord = stocks.some((item: any) => item.productId === product.id);
-      if (hasAnyStockRecord) continue;
+      const productStocks = stocks.filter((s: any) => s.productId === product.id && !s.deletedAt);
+      const otherLocationStocks = productStocks.filter((s: any) => s.locationId !== defaultLocation.id);
 
-      const createdAt = new Date().toISOString();
-      stocks.push({
-        id: `ils-${product.id}`,
-        productId: product.id,
-        locationId: defaultLocation.id,
-        quantity: Number(product.quantity ?? 0),
-        lastMovementAt: createdAt,
-        createdAt,
-        updatedAt: createdAt,
-        deletedAt: null,
-        version: 1,
-      });
-      used.add(key);
-      changed = true;
+      if (productStocks.length === 0) {
+        stocks.push({
+          id: `ils-${product.id}`,
+          productId: product.id,
+          locationId: defaultLocation.id,
+          quantity: Number(product.quantity ?? 0),
+          lastMovementAt: now,
+          createdAt: now,
+          updatedAt: now,
+          deletedAt: null,
+          version: 1,
+        });
+        changed = true;
+      } else if (otherLocationStocks.length === 0) {
+        const totalMainQty = productStocks.reduce((sum: number, s: any) => sum + Number(s.quantity ?? 0), 0);
+        if (productStocks.length > 1 || totalMainQty !== Number(product.quantity ?? 0)) {
+          const mainRecord = productStocks[0];
+          
+          const idx = stocks.findIndex((s: any) => s.id === mainRecord.id);
+          if (idx >= 0) {
+            stocks[idx] = {
+              ...stocks[idx],
+              quantity: Number(product.quantity ?? 0),
+              updatedAt: now,
+              version: (stocks[idx].version || 1) + 1,
+            };
+          }
+
+          for (let i = 1; i < productStocks.length; i++) {
+            const extraRecord = productStocks[i];
+            const extraIdx = stocks.findIndex((s: any) => s.id === extraRecord.id);
+            if (extraIdx >= 0) {
+              stocks[extraIdx].deletedAt = now;
+              stocks[extraIdx].updatedAt = now;
+              stocks[extraIdx].version = (stocks[extraIdx].version || 1) + 1;
+            }
+          }
+          changed = true;
+        }
+      }
     }
 
     if (changed) {
