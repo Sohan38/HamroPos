@@ -15,6 +15,8 @@ const COLLECTION_KEYS = [
   'inventoryMovements',
   'consumptions',
   'productions',
+  'productionRecipes',
+  'productionRecipeItems',
   'suppliers',
   'customers',
   'sales',

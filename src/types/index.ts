@@ -151,6 +151,8 @@ export interface ProductionTransaction extends StorageRecord {
   referenceNumber: string;      // e.g., PROD-2024-001
   date: string;                 // ISO 8601 date
   locationId: string;           // primary location for production
+  recipeId?: string | null;     // which recipe was used to calculate requirements
+  recipeName?: string | null;   // recipe name at time of production (for historical reference)
   inputItems: ProductionInputItem[];   // raw materials consumed
   outputItems: ProductionOutputItem[]; // finished goods created
   totalInputCost: number;       // sum of all input costs
@@ -159,6 +161,23 @@ export interface ProductionTransaction extends StorageRecord {
   status: 'completed' | 'reversed'; // production status
   reversalOfId?: string | null; // if this is a reversal, links to original transaction
   reversedById?: string | null; // if reversed, links to reversal transaction
+}
+
+/** Production recipe/bill of materials: defines what raw materials are needed per output unit */
+export interface ProductionRecipe extends StorageRecord {
+  outputProductId: string;      // which finished product this recipe creates
+  name: string;                 // human-readable recipe name (e.g., "Standard Cotton Shirt")
+  status: 'active' | 'inactive'; // only one active recipe per finished product
+  // createdAt, updatedAt, deletedAt, id, version inherited from StorageRecord
+}
+
+/** A single ingredient line in a production recipe */
+export interface ProductionRecipeItem extends StorageRecord {
+  recipeId: string;             // which recipe this ingredient belongs to
+  inputProductId: string;       // raw material product
+  quantityPerOutputUnit: number; // e.g., 1.5 = "1.5 kg per 1 unit of output"
+  unit: ProductUnit;            // e.g., 'kg', 'pcs', etc.
+  // createdAt, updatedAt, deletedAt, id, version inherited from StorageRecord
 }
 
 export type BatchFormData = Omit<
