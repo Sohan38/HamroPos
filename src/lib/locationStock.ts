@@ -64,3 +64,116 @@ export function getProductLocationStockSummary(
         }))
         .filter((entry) => entry.quantity > 0 || entry.locationId === 'loc-default');
 }
+
+/**
+ * Shared helper: Get active batches for a product at a specific location, optionally filtered by supplier.
+ */
+export function getProductBatchesAtLocation(
+    productId: string,
+    locationId: string | null | undefined,
+    batches: any[],
+    batchLocations: any[],
+    supplierId?: string,
+): Array<{ batch: any; available: number }> {
+    if (!productId || !locationId) return [];
+    const normalizedLocationId = normalizeLocationId(locationId);
+
+    return batches
+        .filter((batch) => {
+            if (batch.productId !== productId || batch.deletedAt) return false;
+            if (supplierId && batch.supplierId !== supplierId) return false;
+            return true;
+        })
+        .map((batch) => {
+            const locationAllocation = batchLocations.find(
+                (bl) => bl.batchId === batch.id && bl.locationId === normalizedLocationId && !bl.deletedAt,
+            );
+            return {
+                batch,
+                available: Number(locationAllocation?.quantity ?? 0),
+            };
+        })
+        .filter((entry) => entry.available > 0)
+        .sort((a, b) => {
+            const aExpiry = a.batch.expiryDate ? new Date(a.batch.expiryDate).getTime() : Infinity;
+            const bExpiry = b.batch.expiryDate ? new Date(b.batch.expiryDate).getTime() : Infinity;
+            return aExpiry - bExpiry;
+        });
+}
+
+/**
+ * Shared helper: Get list of suppliers that have stock for this product at a specific location.
+ */
+export function getSuppliersForProductAtLocation(
+    productId: string,
+    locationId: string | null | undefined,
+    product: Product | null | undefined,
+    suppliers: any[],
+    batches: any[],
+    batchLocations: any[],
+): any[] {
+    if (!productId || !locationId || !product) return [];
+    const normalizedLocationId = normalizeLocationId(locationId);
+
+    const ids = product.supplierIds?.length
+        ? product.supplierIds
+        : product.supplierId
+        ? [product.supplierId]
+        : [];
+    const allProductSuppliers = suppliers.filter((supplier) => ids.includes(supplier.id));
+
+    return allProductSuppliers.filter((supplier) => {
+        const supplierBatches = batches.filter(
+            (b) => b.productId === productId && b.supplierId === supplier.id && !b.deletedAt,
+        );
+        for (const batch of supplierBatches) {
+            const batchLocationAlloc = batchLocations.find(
+                (bl) => bl.batchId === batch.id && bl.locationId === normalizedLocationId && !bl.deletedAt,
+            );
+            if (batchLocationAlloc && Number(batchLocationAlloc.quantity ?? 0) > 0) {
+                return true;
+            }
+        }
+        return false;
+    });
+}
+
+/**
+ * Shared helper: Get available stock for a product at a location filtered by supplier and batch.
+ */
+export function getAvailableStockForSelector(
+    productId: string,
+    locationId: string | null | undefined,
+    supplierId: string | undefined,
+    batchId: string | undefined,
+    product: Product | null | undefined,
+    locationStocks: any[],
+    batches: any[],
+    batchLocations: any[],
+): number {
+    if (!productId || !locationId || !product) return 0;
+    const normalizedLocationId = normalizeLocationId(locationId);
+
+    if (batchId) {
+        const batchLocationAlloc = batchLocations.find(
+            (bl) => bl.batchId === batchId && bl.locationId === normalizedLocationId && !bl.deletedAt,
+        );
+        return Number(batchLocationAlloc?.quantity ?? 0);
+    }
+
+    if (supplierId) {
+        const supplierBatches = batches.filter(
+            (b) => b.productId === productId && b.supplierId === supplierId && !b.deletedAt,
+        );
+        let supplierStockAtLocation = 0;
+        for (const batch of supplierBatches) {
+            const batchLocationAlloc = batchLocations.find(
+                (bl) => bl.batchId === batch.id && bl.locationId === normalizedLocationId && !bl.deletedAt,
+            );
+            supplierStockAtLocation += Number(batchLocationAlloc?.quantity ?? 0);
+        }
+        return supplierStockAtLocation;
+    }
+
+    return getLocationStockForProduct(product, normalizedLocationId, locationStocks);
+}

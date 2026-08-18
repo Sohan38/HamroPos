@@ -13,7 +13,12 @@ import {
     useProductionRecipes,
     useProductionRecipeItems,
 } from '@/contexts/GlobalProviders';
-import { getLocationStockForProduct } from '@/lib/locationStock';
+import {
+    getLocationStockForProduct,
+    getProductBatchesAtLocation,
+    getSuppliersForProductAtLocation,
+    getAvailableStockForSelector,
+} from '@/lib/locationStock';
 import {
     getActiveRecipesForOutputProduct,
     getExpectedProductionIngredients,
@@ -117,64 +122,18 @@ export function ProductionForm() {
             .filter((item): item is { product: any; stock: number } => item !== null);
     }, [products, selectedLocationId, locationStocks]);
 
-    const getProductBatchesAtLocation = (productId: string, supplierId?: string) => {
-        if (!selectedLocationId) return [] as Array<{ batch: any; available: number }>;
-
-        return batches
-            .filter((batch) => {
-                if (batch.productId !== productId || batch.quantity <= 0 || batch.deletedAt) return false;
-                if (supplierId && batch.supplierId !== supplierId) return false;
-                return true;
-            })
-            .map((batch) => {
-                const locationAllocation = batchLocations.find(
-                    (bl) => bl.batchId === batch.id && bl.locationId === selectedLocationId && !bl.deletedAt,
-                );
-                return {
-                    batch,
-                    available: Number(locationAllocation?.quantity ?? 0),
-                };
-            })
-            .filter((entry) => entry.available > 0)
-            .sort((a, b) => {
-                const aExpiry = a.batch.expiryDate ? new Date(a.batch.expiryDate).getTime() : Infinity;
-                const bExpiry = b.batch.expiryDate ? new Date(b.batch.expiryDate).getTime() : Infinity;
-                return aExpiry - bExpiry;
-            });
+    const getBatchesAtLocation = (productId: string, supplierId?: string) => {
+        return getProductBatchesAtLocation(productId, selectedLocationId, batches, batchLocations, supplierId);
     };
 
     const getSupplierOptionsForInput = (productId: string) => {
         const product = products.find((p) => p.id === productId && !p.deletedAt);
-        if (!product) return [];
-
-        const ids = product.supplierIds?.length ? product.supplierIds : product.supplierId ? [product.supplierId] : [];
-        const options = suppliers.filter((supplier) => ids.includes(supplier.id));
-
-        if (product.hasExpiry || product.supplierIds?.length || product.supplierId) {
-            return options.filter((supplier) => getProductBatchesAtLocation(productId, supplier.id).length > 0 || !product.hasExpiry);
-        }
-
-        return options;
+        return getSuppliersForProductAtLocation(productId, selectedLocationId, product, suppliers, batches, batchLocations);
     };
 
     const getAvailableForInputRow = (row: InputRow) => {
-        if (!row.productId || !selectedLocationId) return 0;
         const product = products.find((p) => p.id === row.productId && !p.deletedAt);
-        if (!product) return 0;
-
-        if (product.hasExpiry || batches.some((b) => b.productId === product.id && !b.deletedAt)) {
-            const batchOptions = getProductBatchesAtLocation(product.id, row.supplierId || undefined);
-            if (row.batchId) {
-                const selected = batchOptions.find((entry) => entry.batch.id === row.batchId);
-                return selected?.available ?? 0;
-            }
-            if (row.supplierId) {
-                return batchOptions.reduce((sum, entry) => sum + entry.available, 0);
-            }
-            return batchOptions.reduce((sum, entry) => sum + entry.available, 0);
-        }
-
-        return getLocationStockForProduct(product, selectedLocationId, locationStocks);
+        return getAvailableStockForSelector(row.productId, selectedLocationId, row.supplierId || undefined, row.batchId || undefined, product, locationStocks, batches, batchLocations);
     };
 
     const getOutputProductOptions = useMemo(() => {
@@ -541,44 +500,59 @@ export function ProductionForm() {
                                             <div className="space-y-1.5 sm:col-span-8">
                                                 <Label className="text-xs text-muted-foreground">Product to Produce</Label>
                                                 {row.productId ? (
-                                                    <div className="flex items-center justify-between p-2.5 rounded-xl border border-primary/25 bg-primary/5 shadow-xs">
-                                                        <div className="flex items-center gap-2.5 min-w-0">
-                                                            <Package className="h-5 w-5 text-primary shrink-0" />
-                                                            <div className="min-w-0">
-                                                                <p className="text-sm font-semibold truncate text-foreground">
-                                                                    {products.find(p => p.id === row.productId)?.name || 'Unknown Product'}
-                                                                </p>
-                                                                <p className="text-[10px] text-muted-foreground truncate">
-                                                                    {products.find(p => p.id === row.productId)?.category || 'General'} · Barcode: {products.find(p => p.id === row.productId)?.barcode || 'N/A'}
-                                                                </p>
+                                                    (() => {
+                                                        const targetProd = products.find(p => p.id === row.productId);
+                                                        const currentStock = targetProd ? getLocationStockForProduct(targetProd, selectedLocationId, locationStocks) : 0;
+                                                        return (
+                                                            <div className="p-2.5 rounded-xl border border-primary/25 bg-primary/5 shadow-xs flex items-center justify-between">
+                                                                <div className="flex items-center gap-2.5 min-w-0">
+                                                                    <Package className="h-5 w-5 text-primary shrink-0" />
+                                                                    <div className="min-w-0">
+                                                                        <p className="text-sm font-semibold truncate text-foreground">
+                                                                            {targetProd?.name || 'Unknown Product'}
+                                                                        </p>
+                                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                                            <span className="text-[10px] text-muted-foreground">
+                                                                                {targetProd?.category || 'General'}
+                                                                            </span>
+                                                                            <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-md px-1.5 py-0.5 flex items-center gap-1 shrink-0">
+                                                                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                                                                                Stock: {currentStock} {targetProd?.unit || 'pcs'}
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                                <Button
+                                                                    type="button"
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    onClick={() => updateOutputRow(row.id, { productId: '' })}
+                                                                    className="h-7 w-7 rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10 shrink-0"
+                                                                >
+                                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                                </Button>
                                                             </div>
-                                                        </div>
-                                                        <Button
-                                                            type="button"
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            onClick={() => updateOutputRow(row.id, { productId: '' })}
-                                                            className="h-7 w-7 rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10 shrink-0"
-                                                        >
-                                                            <Trash2 className="h-3.5 w-3.5" />
-                                                        </Button>
-                                                    </div>
+                                                        );
+                                                    })()
                                                 ) : (
                                                     <ProductSearchPicker
                                                         label="Select output product"
-                                                        items={getOutputProductOptions.map((product) => ({
-                                                            id: product.id,
-                                                            name: product.name,
-                                                            barcode: product.barcode,
-                                                            category: product.category,
-                                                            sublabel: `${product.unit}`,
-                                                        }))}
+                                                        items={getOutputProductOptions.map((product) => {
+                                                            const stock = getLocationStockForProduct(product, selectedLocationId, locationStocks);
+                                                            return {
+                                                                id: product.id,
+                                                                name: product.name,
+                                                                barcode: product.barcode,
+                                                                category: product.category,
+                                                                sublabel: `Stock: ${stock} ${product.unit}`,
+                                                            };
+                                                        })}
                                                         onSelect={(productId) => updateOutputRow(row.id, { productId })}
                                                         emptyMessage="No finished-goods products available."
                                                     />
                                                 )}
                                             </div>
-
+ 
                                             <div className="space-y-1.5 sm:col-span-4">
                                                 <Label htmlFor={`output-qty-${row.id}`} className="text-xs text-muted-foreground">Target Quantity</Label>
                                                 <Input
@@ -709,7 +683,7 @@ export function ProductionForm() {
                                 const product = products.find((p) => p.id === row.productId && !p.deletedAt);
                                 const available = getAvailableForInputRow(row);
                                 const supplierOptions = product ? getSupplierOptionsForInput(product.id) : [];
-                                const batchOptions = product ? getProductBatchesAtLocation(product.id, row.supplierId || undefined) : [];
+                                const batchOptions = product ? getBatchesAtLocation(product.id, row.supplierId || undefined) : [];
 
                                 return (
                                     <Card key={row.id} className="border border-muted-foreground/10 bg-card/60 backdrop-blur-sm shadow-sm overflow-hidden hover:border-primary/40 transition-colors">

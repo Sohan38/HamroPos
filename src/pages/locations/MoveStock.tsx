@@ -1,7 +1,12 @@
 import { useLocation } from 'wouter';
 import { useState, useMemo, useEffect } from 'react';
 import { useLocations, useInventory, useInventoryLocationStocks, useInventoryMovements, useProductBatches, useProductBatchLocations, useSuppliers } from '@/contexts/GlobalProviders';
-import { getLocationStockForProduct } from '@/lib/locationStock';
+import {
+    getLocationStockForProduct,
+    getProductBatchesAtLocation,
+    getSuppliersForProductAtLocation,
+    getAvailableStockForSelector,
+} from '@/lib/locationStock';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -42,28 +47,8 @@ export default function MoveStockPage() {
 
     // Get suppliers for the selected product (filtered by those with stock at source location)
     const productSuppliers = useMemo(() => {
-        if (!productId || !sourceLocationId) return [];
         const product = inventory.find((p) => p.id === productId);
-        if (!product) return [];
-
-        const ids = product.supplierIds?.length ? product.supplierIds : product.supplierId ? [product.supplierId] : [];
-        const allProductSuppliers = suppliers.filter(supplier => ids.includes(supplier.id));
-
-        // Filter to only suppliers that have batches with stock at the source location
-        return allProductSuppliers.filter(supplier => {
-            const supplierBatches = batches.filter(
-                (b) => b.productId === productId && b.supplierId === supplier.id,
-            );
-            for (const batch of supplierBatches) {
-                const batchLocationAlloc = batchLocations.find(
-                    (bl) => bl.batchId === batch.id && bl.locationId === sourceLocationId,
-                );
-                if (batchLocationAlloc && batchLocationAlloc.quantity > 0) {
-                    return true;
-                }
-            }
-            return false;
-        });
+        return getSuppliersForProductAtLocation(productId, sourceLocationId, product, suppliers, batches, batchLocations);
     }, [productId, sourceLocationId, inventory, suppliers, batches, batchLocations]);
 
     // Get products at source location
@@ -131,32 +116,9 @@ export default function MoveStockPage() {
 
     // Calculate quantity available for the selected batch
     const quantityAvailable = useMemo(() => {
-        if (batchId && selectedBatch) {
-            // If batch selected, return quantity at that batch's location
-            const batchLocationAlloc = batchLocations.find(
-                (bl) => bl.batchId === batchId && bl.locationId === sourceLocationId,
-            );
-            return batchLocationAlloc?.quantity ?? 0;
-        }
-
-        if (supplierId && !batchId) {
-            // If supplier selected but no batch, calculate supplier's total stock at location
-            const supplierBatches = batches.filter(
-                (b) => b.productId === productId && b.supplierId === supplierId,
-            );
-            let supplierStockAtLocation = 0;
-            for (const batch of supplierBatches) {
-                const batchLocationAlloc = batchLocations.find(
-                    (bl) => bl.batchId === batch.id && bl.locationId === sourceLocationId,
-                );
-                supplierStockAtLocation += batchLocationAlloc?.quantity ?? 0;
-            }
-            return supplierStockAtLocation > 0 ? supplierStockAtLocation : 0;
-        }
-
-        // If no batch or supplier selected, return total stock at location
-        return currentStockAtSource;
-    }, [batchId, selectedBatch, supplierId, productId, sourceLocationId, currentStockAtSource, batches, batchLocations]);
+        const product = inventory.find((p) => p.id === productId);
+        return getAvailableStockForSelector(productId, sourceLocationId, supplierId || undefined, batchId || undefined, product, locationStocks, batches, batchLocations);
+    }, [batchId, supplierId, productId, sourceLocationId, inventory, locationStocks, batches, batchLocations]);
 
     // Auto-clamp quantity when available changes
     useEffect(() => {
@@ -168,25 +130,11 @@ export default function MoveStockPage() {
 
     // Get batches at source location for selected product (filtered by supplier if selected)
     const batchesAtSource = useMemo(() => {
-        if (!productId || !sourceLocationId) return [];
-
-        return batches
-            .filter((b) => {
-                if (b.productId !== productId || b.quantity <= 0) return false;
-                // If supplier selected, only show batches from that supplier
-                if (supplierId && b.supplierId !== supplierId) return false;
-                return true;
-            })
-            .map((batch) => {
-                const locationAllocation = batchLocations.find(
-                    (bl) => bl.batchId === batch.id && bl.locationId === sourceLocationId,
-                );
-                return {
-                    batch,
-                    quantityAtLocation: locationAllocation?.quantity ?? 0,
-                };
-            })
-            .filter((item) => item.quantityAtLocation > 0);
+        const results = getProductBatchesAtLocation(productId, sourceLocationId, batches, batchLocations, supplierId || undefined);
+        return results.map(({ batch, available }) => ({
+            batch,
+            quantityAtLocation: available,
+        }));
     }, [productId, sourceLocationId, supplierId, batches, batchLocations]);
 
     // Validation

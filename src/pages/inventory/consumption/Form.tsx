@@ -14,7 +14,12 @@ import {
     useSuppliers,
 } from '@/contexts/GlobalProviders';
 import { ConsumptionItemInput, ConsumptionService } from '@/services/consumptionService';
-import { getLocationStockForProduct } from '@/lib/locationStock';
+import {
+    getLocationStockForProduct,
+    getProductBatchesAtLocation,
+    getSuppliersForProductAtLocation,
+    getAvailableStockForSelector,
+} from '@/lib/locationStock';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -123,70 +128,25 @@ export function ConsumptionForm() {
 
     // Get batches for a product at the selected location, FEFO sorted
     const getBatchesForProduct = (productId: string, supplierId?: string): Array<{ id: string; number: string; available: number; purchaseRate: number }> => {
-        return batches
-            .filter(b => {
-                if (b.productId !== productId || b.quantity <= 0) return false;
-                // Filter by supplier if selected
-                if (supplierId && b.supplierId !== supplierId) return false;
-                return true;
-            })
-            .map(b => {
-                // Check batch quantity at the selected location via batchLocations
-                const locationAlloc = batchLocations.find(
-                    bl => bl.batchId === b.id && bl.locationId === selectedLocationId
-                );
-                const quantityAtLocation = locationAlloc ? locationAlloc.quantity : 0;
-                return {
-                    id: b.id,
-                    number: b.batchNumber || `Batch ${b.id.slice(0, 8)}`,
-                    available: quantityAtLocation,
-                    purchaseRate: b.purchaseRate ?? 0,
-                    expiryDate: b.expiryDate,
-                };
-            })
-            .filter(b => b.available > 0)
-            .sort((a, b) => {
-                // Sort by expiry date (FEFO)
-                const aExpiry = a.expiryDate ? new Date(a.expiryDate).getTime() : Infinity;
-                const bExpiry = b.expiryDate ? new Date(b.expiryDate).getTime() : Infinity;
-                return aExpiry - bExpiry;
-            })
-            .map(({ expiryDate, ...rest }) => rest);
+        const results = getProductBatchesAtLocation(productId, selectedLocationId, batches, batchLocations, supplierId);
+        return results.map(({ batch, available }) => ({
+            id: batch.id,
+            number: batch.batchNumber || `Batch ${batch.id.slice(0, 8)}`,
+            available,
+            purchaseRate: batch.purchaseRate ?? 0,
+        }));
     };
 
     // Get suppliers for a specific product (filtered by those with stock at selected location)
     const getSuppliersForProduct = (productId: string) => {
         const product = products.find(p => p.id === productId);
-        if (!product) return [];
-        const ids = product.supplierIds?.length ? product.supplierIds : product.supplierId ? [product.supplierId] : [];
-        const allProductSuppliers = suppliers.filter(s => ids.includes(s.id));
-
-        return allProductSuppliers.filter(supplier => {
-            const supplierBatches = getBatchesForProduct(productId, supplier.id);
-            return supplierBatches.length > 0;
-        });
+        return getSuppliersForProductAtLocation(productId, selectedLocationId, product, suppliers, batches, batchLocations);
     };
 
     // Get available stock for a line item (considering batch/supplier selection)
     const getAvailableForItem = (item: LineItem): number => {
-        if (!item.productId || !selectedLocationId) return 0;
-
-        if (item.batchId) {
-            // Specific batch selected — show that batch's available quantity
-            const batchData = getBatchesForProduct(item.productId, item.supplierId)
-                .find(b => b.id === item.batchId);
-            return batchData?.available ?? 0;
-        }
-
-        if (item.supplierId) {
-            // Supplier selected but no specific batch — sum available stock of all batches for this supplier
-            const supplierBatches = getBatchesForProduct(item.productId, item.supplierId);
-            return supplierBatches.reduce((sum, b) => sum + b.available, 0);
-        }
-
-        // No batch selected — show total stock at location
-        const entry = productsAtLocation.find(p => p.product.id === item.productId);
-        return entry?.stock ?? 0;
+        const product = products.find(p => p.id === item.productId);
+        return getAvailableStockForSelector(item.productId || '', selectedLocationId, item.supplierId, item.batchId, product, locationStocks, batches, batchLocations);
     };
 
     // Get unit cost for a line item (batch rate or product fallback)
@@ -200,10 +160,9 @@ export function ConsumptionForm() {
             return batch?.purchaseRate ?? product.purchaseRate ?? 0;
         }
 
-        // FEFO: use earliest-expiry batch's cost, or product.purchaseRate fallback
         const productBatches = getBatchesForProduct(item.productId, item.supplierId);
         if (productBatches.length > 0) {
-            return productBatches[0].purchaseRate ?? product.purchaseRate ?? 0;
+            return productBatches[0].purchaseRate ?? 0;
         }
         return product.purchaseRate ?? 0;
     };
