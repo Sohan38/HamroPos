@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useCallback } from 'react';
 import { useLocation } from 'wouter';
 import { useInventory, useSuppliers, useProductBatches, useLocations, useInventoryLocationStocks, useProductBatchLocations } from '@/contexts/GlobalProviders';
-import { getLocationStockForProduct } from '@/lib/locationStock';
+import { getLocationStockForProduct, getTotalStockAcrossLocations } from '@/lib/locationStock';
 import { useSort } from '@/hooks/useSort';
 import { useCurrency } from '@/hooks/useCurrency';
 import { useUndoDelete } from '@/hooks/useUndoDelete';
@@ -85,7 +85,7 @@ export default function InventoryList() {
   // Location-scoped quantity helper: returns quantity at a specific location or global total
   const getDisplayQuantity = useCallback((product: Product): number => {
     if (locationFilter === 'all') {
-      return product.quantity;
+      return getTotalStockAcrossLocations(product, locationStocks);
     }
     return getLocationStockForProduct(product, locationFilter, locationStocks);
   }, [locationFilter, locationStocks]);

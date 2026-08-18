@@ -22,7 +22,7 @@ import {
 import { ExpiryBadge, getBatchStatus } from '@/components/BatchFormDialog';
 import { InventoryDispositionDialog } from '@/components/InventoryDispositionDialog';
 import { useMemo, useState, useEffect } from 'react';
-import { getLocationStockForProduct } from '@/lib/locationStock';
+import { getLocationStockForProduct, getTotalStockAcrossLocations } from '@/lib/locationStock';
 
 import { useFeature } from '@/hooks/useFeature';
 
@@ -78,7 +78,7 @@ export default function InventoryDetail() {
   // Location-scoped stock quantity
   const displayQuantity = useMemo(() => {
     if (locationFilter === 'all') {
-      return product.quantity;
+      return getTotalStockAcrossLocations(product, locationStocks);
     }
     return getLocationStockForProduct(product, locationFilter, locationStocks);
   }, [product, locationFilter, locationStocks]);
