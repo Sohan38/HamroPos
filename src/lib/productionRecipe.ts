@@ -8,17 +8,24 @@ export interface ExpectedProductionIngredient {
     unit: ProductionRecipeItem['unit'];
 }
 
-export function getActiveRecipeForOutputProduct(
+export function getActiveRecipesForOutputProduct(
     outputProductId: string,
     recipes: ProductionRecipe[] = []
-): ProductionRecipe | undefined {
-    if (!outputProductId) return undefined;
+): ProductionRecipe[] {
+    if (!outputProductId) return [];
 
-    return recipes.find((recipe) => {
+    return recipes.filter((recipe) => {
         if (recipe.deletedAt) return false;
         if (recipe.outputProductId !== outputProductId) return false;
         return recipe.status === 'active';
     });
+}
+
+export function getActiveRecipeForOutputProduct(
+    outputProductId: string,
+    recipes: ProductionRecipe[] = []
+): ProductionRecipe | undefined {
+    return getActiveRecipesForOutputProduct(outputProductId, recipes)[0];
 }
 
 export function getExpectedProductionIngredients(

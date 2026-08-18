@@ -16,6 +16,7 @@ import {
 import { getLocationStockForProduct } from '@/lib/locationStock';
 import {
     getActiveRecipeForOutputProduct,
+    getActiveRecipesForOutputProduct,
     getExpectedProductionIngredients,
 } from '@/lib/productionRecipe';
 import { ProductionMutationService, persistProductionTransaction } from '@/services/productionMutationService';
@@ -74,6 +75,7 @@ export function ProductionForm() {
     const [notes, setNotes] = useState('');
     const [inputRows, setInputRows] = useState<InputRow[]>([makeInputRow()]);
     const [outputRows, setOutputRows] = useState<OutputRow[]>([makeOutputRow()]);
+    const [selectedRecipeId, setSelectedRecipeId] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     const activeLocations = useMemo(
@@ -177,26 +179,52 @@ export function ProductionForm() {
         return products.filter((product) => !product.deletedAt && product.productionOutput);
     }, [products]);
 
-    const activeProductionRecipe = useMemo(() => {
-        const outputProductId = outputRows.find((row) => row.productId)?.productId;
-        if (!outputProductId) return null;
-        return getActiveRecipeForOutputProduct(outputProductId, recipes);
-    }, [outputRows, recipes]);
-
-    const productionOutputQuantity = useMemo(() => {
-        return outputRows.reduce((sum, row) => {
-            const quantity = Number(row.quantity || 0);
-            return sum + (row.productId ? quantity : 0);
-        }, 0);
+    const selectedOutputProductId = useMemo(() => {
+        return outputRows.find((row) => row.productId)?.productId ?? '';
     }, [outputRows]);
+
+    const activeRecipesForSelectedOutput = useMemo(() => {
+        if (!selectedOutputProductId) return [];
+        return getActiveRecipesForOutputProduct(selectedOutputProductId, recipes);
+    }, [selectedOutputProductId, recipes]);
+
+    const activeProductionRecipe = useMemo(() => {
+        if (!selectedRecipeId && activeRecipesForSelectedOutput.length === 1) {
+            return activeRecipesForSelectedOutput[0];
+        }
+
+        if (!selectedRecipeId) return null;
+        return activeRecipesForSelectedOutput.find((recipe) => recipe.id === selectedRecipeId) ?? null;
+    }, [activeRecipesForSelectedOutput, selectedRecipeId]);
+
+    const selectedOutputQuantity = useMemo(() => {
+        const selectedOutput = outputRows.find((row) => row.productId === selectedOutputProductId);
+        return Number(selectedOutput?.quantity || 0);
+    }, [outputRows, selectedOutputProductId]);
 
     const expectedRecipeIngredients = useMemo(() => {
         return getExpectedProductionIngredients(
             activeProductionRecipe,
             recipeItems,
-            productionOutputQuantity,
+            selectedOutputQuantity,
         );
-    }, [activeProductionRecipe, recipeItems, productionOutputQuantity]);
+    }, [activeProductionRecipe, recipeItems, selectedOutputQuantity]);
+
+    useEffect(() => {
+        if (activeRecipesForSelectedOutput.length === 0) {
+            setSelectedRecipeId('');
+            return;
+        }
+
+        if (activeRecipesForSelectedOutput.length === 1) {
+            setSelectedRecipeId(activeRecipesForSelectedOutput[0].id);
+            return;
+        }
+
+        if (!selectedRecipeId || !activeRecipesForSelectedOutput.some((recipe) => recipe.id === selectedRecipeId)) {
+            setSelectedRecipeId('');
+        }
+    }, [activeRecipesForSelectedOutput, selectedRecipeId]);
 
     useEffect(() => {
         if (!productionEnabled) return;
@@ -313,9 +341,11 @@ export function ProductionForm() {
             quantity: Number(row.quantity),
         }));
 
-        const selectedRecipe = outputRows.find((row) => row.productId)
-            ? getActiveRecipeForOutputProduct(outputRows.find((row) => row.productId)?.productId ?? '', recipes)
-            : null;
+        const selectedRecipe = selectedRecipeId
+            ? activeRecipesForSelectedOutput.find((recipe) => recipe.id === selectedRecipeId) ?? null
+            : activeRecipesForSelectedOutput.length === 1
+                ? activeRecipesForSelectedOutput[0]
+                : null;
 
         setIsSubmitting(true);
 
@@ -427,9 +457,64 @@ export function ProductionForm() {
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
                             <Package className="h-5 w-5" />
+                            Output and Recipe
+                        </CardTitle>
+                        <CardDescription>Start with what is being produced, then confirm the actual inputs.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="space-y-2">
+                            <Label>Recipe</Label>
+                            {activeRecipesForSelectedOutput.length === 0 ? (
+                                <div className="rounded-xl border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
+                                    No active recipe for this output.
+                                </div>
+                            ) : activeRecipesForSelectedOutput.length === 1 ? (
+                                <div className="rounded-xl border bg-muted/20 px-3 py-2 text-sm font-medium">
+                                    {activeRecipesForSelectedOutput[0].name}
+                                </div>
+                            ) : (
+                                <Select value={selectedRecipeId || 'none'} onValueChange={(value) => setSelectedRecipeId(value === 'none' ? '' : value)}>
+                                    <SelectTrigger className="w-full">
+                                        <SelectValue placeholder="Select a recipe" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="none">None</SelectItem>
+                                        {activeRecipesForSelectedOutput.map((recipe) => (
+                                            <SelectItem key={recipe.id} value={recipe.id}>{recipe.name}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            )}
+                        </div>
+
+                        {activeProductionRecipe && expectedRecipeIngredients.length > 0 && (
+                            <div className="rounded-xl border bg-muted/20 p-3">
+                                <div className="mb-2 flex items-center justify-between gap-2">
+                                    <p className="text-sm font-semibold">Expected materials</p>
+                                    <span className="rounded-full border bg-background px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                                        {activeProductionRecipe.name}
+                                    </span>
+                                </div>
+                                <div className="space-y-1 text-sm text-muted-foreground">
+                                    {expectedRecipeIngredients.map((ingredient) => (
+                                        <div key={`${ingredient.recipeId}-${ingredient.inputProductId}`} className="flex items-center justify-between gap-3">
+                                            <span>{products.find((product) => product.id === ingredient.inputProductId)?.name ?? ingredient.inputProductId}</span>
+                                            <span className="font-medium text-foreground">{Number(ingredient.quantity).toLocaleString()} {ingredient.unit}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <Package className="h-5 w-5" />
                             Raw Material Inputs
                         </CardTitle>
-                        <CardDescription>Use the selected location stock as the source of truth.</CardDescription>
+                        <CardDescription>Use the selected location stock as the source of truth. Actual quantities are submitted to production.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
                         {inputRows.map((row, index) => {
@@ -587,25 +672,6 @@ export function ProductionForm() {
                         <Button type="button" variant="outline" onClick={addOutputRow} className="w-full gap-2">
                             <Plus className="h-4 w-4" /> Add Output
                         </Button>
-
-                        {activeProductionRecipe && expectedRecipeIngredients.length > 0 && (
-                            <div className="rounded-xl border bg-muted/20 p-3">
-                                <div className="mb-2 flex items-center justify-between gap-2">
-                                    <p className="text-sm font-semibold">Recipe expectation</p>
-                                    <span className="rounded-full border bg-background px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                                        {activeProductionRecipe.name}
-                                    </span>
-                                </div>
-                                <div className="space-y-1 text-sm text-muted-foreground">
-                                    {expectedRecipeIngredients.map((ingredient) => (
-                                        <div key={`${ingredient.recipeId}-${ingredient.inputProductId}`} className="flex items-center justify-between gap-3">
-                                            <span>{products.find((product) => product.id === ingredient.inputProductId)?.name ?? ingredient.inputProductId}</span>
-                                            <span className="font-medium text-foreground">{Number(ingredient.quantity).toLocaleString()} {ingredient.unit}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
 
                         <div className="rounded-xl border bg-muted/20 p-3">
                             <Label htmlFor="production-notes">Notes</Label>
