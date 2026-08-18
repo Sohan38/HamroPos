@@ -278,6 +278,19 @@ export function ProductionForm() {
                     next.batchId = '';
                 }
 
+                // If productId, supplierId, or batchId changed, check/cap quantity
+                if (
+                    updates.productId !== undefined ||
+                    updates.supplierId !== undefined ||
+                    updates.batchId !== undefined
+                ) {
+                    const available = getAvailableForInputRow(next);
+                    const currentQty = Number(next.quantity || 0);
+                    if (currentQty > available) {
+                        next.quantity = String(available);
+                    }
+                }
+
                 return next;
             }),
         );
@@ -762,7 +775,7 @@ export function ProductionForm() {
                                             {product && (
                                                 <div className="space-y-4">
                                                     <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
-                                                        {supplierOptions.length > 0 && (
+                                                        {supplierOptions.length > 1 && (
                                                             <div className="space-y-1.5">
                                                                 <Label className="text-xs text-muted-foreground">Supplier Filter</Label>
                                                                 <SupplierSearchPicker
@@ -776,7 +789,7 @@ export function ProductionForm() {
                                                         )}
 
                                                         {batchOptions.length > 0 && (
-                                                            <div className="space-y-1.5">
+                                                            <div className={`space-y-1.5 ${supplierOptions.length <= 1 ? 'sm:col-span-2' : ''}`}>
                                                                 <Label className="text-xs text-muted-foreground">Select Batch</Label>
                                                                 <Select value={row.batchId || 'auto'} onValueChange={(value) => updateInputRow(row.id, { batchId: value === 'auto' ? '' : value })}>
                                                                     <SelectTrigger className="w-full h-10 bg-background/50 border-border/40 rounded-xl">
@@ -811,7 +824,12 @@ export function ProductionForm() {
                                                             value={row.quantity}
                                                             onChange={(e) => {
                                                                  const nextValue = Number(e.target.value || 0);
-                                                                 updateInputRow(row.id, { quantity: String(Math.max(0, nextValue)) });
+                                                                 if (nextValue > available) {
+                                                                     toast.error(`Cannot select more than ${available}`);
+                                                                     updateInputRow(row.id, { quantity: String(available) });
+                                                                 } else {
+                                                                     updateInputRow(row.id, { quantity: String(Math.max(0, nextValue)) });
+                                                                 }
                                                             }}
                                                         />
                                                     </div>
