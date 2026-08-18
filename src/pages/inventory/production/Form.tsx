@@ -18,6 +18,7 @@ import {
     getActiveRecipeForOutputProduct,
     getActiveRecipesForOutputProduct,
     getExpectedProductionIngredients,
+    getProductionVarianceRows,
 } from '@/lib/productionRecipe';
 import { ProductionMutationService, persistProductionTransaction } from '@/services/productionMutationService';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,6 +26,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ArrowLeft, Plus, Trash2, Factory, MapPin, Package, BarChart3 } from 'lucide-react';
 import { ProductSearchPicker } from '@/components/ProductSearchPicker';
 import { SupplierSearchPicker } from '@/components/SupplierSearchPicker';
@@ -209,6 +211,10 @@ export function ProductionForm() {
             selectedOutputQuantity,
         );
     }, [activeProductionRecipe, recipeItems, selectedOutputQuantity]);
+
+    const productionVarianceRows = useMemo(() => {
+        return getProductionVarianceRows(expectedRecipeIngredients, inputRows, products);
+    }, [expectedRecipeIngredients, inputRows, products]);
 
     useEffect(() => {
         if (activeRecipesForSelectedOutput.length === 0) {
@@ -487,9 +493,15 @@ export function ProductionForm() {
                             )}
                         </div>
 
+                        {!activeProductionRecipe && activeRecipesForSelectedOutput.length === 0 && (
+                            <div className="rounded-xl border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
+                                Manual Production
+                            </div>
+                        )}
+
                         {activeProductionRecipe && expectedRecipeIngredients.length > 0 && (
-                            <div className="rounded-xl border bg-muted/20 p-3">
-                                <div className="mb-2 flex items-center justify-between gap-2">
+                            <div className="mt-4 space-y-4 rounded-xl border bg-muted/20 p-3">
+                                <div className="flex items-center justify-between gap-2">
                                     <p className="text-sm font-semibold">Expected materials</p>
                                     <span className="rounded-full border bg-background px-2 py-0.5 text-xs font-medium text-muted-foreground">
                                         {activeProductionRecipe.name}
@@ -502,6 +514,35 @@ export function ProductionForm() {
                                             <span className="font-medium text-foreground">{Number(ingredient.quantity).toLocaleString()} {ingredient.unit}</span>
                                         </div>
                                     ))}
+                                </div>
+
+                                <div className="rounded-xl border bg-background/50 p-3">
+                                    <div className="mb-2 flex items-center justify-between gap-2">
+                                        <p className="text-sm font-semibold">Actual vs Expected Review</p>
+                                        <span className="text-xs text-muted-foreground">Informational only</span>
+                                    </div>
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead>Material</TableHead>
+                                                <TableHead>Expected</TableHead>
+                                                <TableHead>Actual</TableHead>
+                                                <TableHead>Variance</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {productionVarianceRows.map((row) => (
+                                                <TableRow key={`${row.recipeId}-${row.inputProductId}`}>
+                                                    <TableCell>{row.productName}</TableCell>
+                                                    <TableCell>{row.expectedQuantity.toLocaleString()} {row.unit}</TableCell>
+                                                    <TableCell>{row.actualQuantity.toLocaleString()} {row.unit}</TableCell>
+                                                    <TableCell className={row.variance !== null && row.variance < 0 ? 'text-destructive' : row.variance !== null && row.variance > 0 ? 'text-emerald-600' : 'text-muted-foreground'}>
+                                                        {row.compatible && row.variance !== null ? `${row.variance.toLocaleString()} ${row.unit}` : '—'}
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
                                 </div>
                             </div>
                         )}

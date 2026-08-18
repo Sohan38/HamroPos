@@ -1,4 +1,4 @@
-import { ProductionRecipe, ProductionRecipeItem } from '@/types';
+import { Product, ProductionRecipe, ProductionRecipeItem } from '@/types';
 
 export interface ExpectedProductionIngredient {
     recipeId: string;
@@ -6,6 +6,18 @@ export interface ExpectedProductionIngredient {
     inputProductId: string;
     quantity: number;
     unit: ProductionRecipeItem['unit'];
+}
+
+export interface ProductionVarianceRow {
+    recipeId: string;
+    recipeName: string;
+    inputProductId: string;
+    productName: string;
+    expectedQuantity: number;
+    actualQuantity: number;
+    variance: number | null;
+    unit: ProductionRecipeItem['unit'];
+    compatible: boolean;
 }
 
 export function getActiveRecipesForOutputProduct(
@@ -47,6 +59,36 @@ export function getExpectedProductionIngredients(
             quantity: Number(item.quantityPerOutputUnit || 0) * quantity,
             unit: item.unit,
         }));
+}
+
+export function getProductionVarianceRows(
+    expectedIngredients: ExpectedProductionIngredient[] = [],
+    actualRows: Array<{ productId: string; quantity: number | string }> = [],
+    products: Array<Pick<Product, 'id' | 'name' | 'unit'>> = []
+): ProductionVarianceRow[] {
+    return expectedIngredients.map((ingredient) => {
+        const product = products.find((candidate) => candidate.id === ingredient.inputProductId);
+        const actualQuantity = actualRows
+            .filter((row) => row.productId === ingredient.inputProductId)
+            .reduce((sum, row) => sum + Number(row.quantity || 0), 0);
+
+        const compatible = product ? product.unit === ingredient.unit : true;
+        const variance = compatible
+            ? Number((actualQuantity - ingredient.quantity).toFixed(6))
+            : null;
+
+        return {
+            recipeId: ingredient.recipeId,
+            recipeName: ingredient.recipeName,
+            inputProductId: ingredient.inputProductId,
+            productName: product?.name ?? ingredient.inputProductId,
+            expectedQuantity: Number(ingredient.quantity || 0),
+            actualQuantity: Number(actualQuantity || 0),
+            variance,
+            unit: ingredient.unit,
+            compatible,
+        };
+    });
 }
 
 export function getSelectedProductionRecipe(
