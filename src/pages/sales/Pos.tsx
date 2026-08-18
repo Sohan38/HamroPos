@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, lazy, Suspense, useEffect, useCallback } from 'react';
 import { isAfter, isBefore, parseISO, startOfDay } from 'date-fns';
-import { useInventory, useSales, useCustomers, useProductBatches, useCredit } from '@/contexts/GlobalProviders';
+import { useInventory, useSales, useCustomers, useProductBatches, useCredit, useInventoryLocationStocks, useProductBatchLocations } from '@/contexts/GlobalProviders';
 import { useCurrency } from '@/hooks/useCurrency';
 import { useApp } from '@/contexts/AppContext';
 import { rankSearch } from '@/utils/search/rank';
@@ -84,6 +84,8 @@ export default function SalesPos() {
   const { add: addCredit } = useCredit();
   const { items: customers } = useCustomers();
   const { items: batches, update: updateBatch } = useProductBatches();
+  const { items: locationStocks, update: updateLocationStock } = useInventoryLocationStocks();
+  const { items: batchLocations, update: updateBatchLocation } = useProductBatchLocations();
   const { format, symbol } = useCurrency();
   const { settings } = useApp();
 
@@ -580,6 +582,27 @@ export default function SalesPos() {
           const match = productBatches.find(batch => batch.id === batchId);
           if (!match) continue;
           updateBatch(batchId, { quantity: Math.max(0, match.quantity - deductionQuantity) });
+
+          // Deduct from batch allocation at default location
+          const batchLoc = batchLocations.find(
+            bl => bl.batchId === batchId && bl.locationId === 'loc-default' && !bl.deletedAt
+          );
+          if (batchLoc) {
+            updateBatchLocation(batchLoc.id, {
+              quantity: Math.max(0, Number(batchLoc.quantity ?? 0) - deductionQuantity),
+            });
+          }
+        }
+
+        // Deduct from default location stock
+        const locStock = locationStocks.find(
+          s => s.productId === productId && s.locationId === 'loc-default' && !s.deletedAt
+        );
+        if (locStock) {
+          updateLocationStock(locStock.id, {
+            quantity: Math.max(0, Number(locStock.quantity ?? 0) - requestedQuantity),
+            lastMovementAt: new Date().toISOString(),
+          });
         }
 
         const updatedVariants = p.variants?.map(variant => ({
