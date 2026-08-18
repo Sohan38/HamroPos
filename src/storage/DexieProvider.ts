@@ -363,9 +363,66 @@ export class DexieProvider implements IStorageProvider {
     return this.defaultBatchAllocationsInitPromise;
   }
 
+  private defaultLocationStocksInitPromise: Promise<void> | null = null;
+
+  private async ensureDefaultLocationStocks(): Promise<void> {
+    if (this.defaultLocationStocksInitPromise) {
+      return this.defaultLocationStocksInitPromise;
+    }
+
+    this.defaultLocationStocksInitPromise = (async () => {
+      try {
+        const locations = (await this.table('locations').toArray()) as any[];
+        const defaultLocation = locations.find((location: any) => location.isDefault || location.id === 'loc-default');
+        if (!defaultLocation) {
+          await this.ensureDefaultLocation();
+          return;
+        }
+
+        const stocks = (await this.table('inventoryLocationStocks').toArray()) as any[];
+        const products = (await this.table('inventory').toArray()) as any[];
+        const used = new Set(stocks.filter((item: any) => item.productId).map((item: any) => `${item.productId}::${item.locationId}`));
+
+        for (const product of products) {
+          if (product.deletedAt) continue;
+          const key = `${product.id}::${defaultLocation.id}`;
+          if (used.has(key)) continue;
+
+          const hasAnyStockRecord = stocks.some((item: any) => item.productId === product.id);
+          if (hasAnyStockRecord) continue;
+
+          const createdAt = new Date().toISOString();
+          const defaultStock = {
+            id: `ils-${product.id}`,
+            productId: product.id,
+            locationId: defaultLocation.id,
+            quantity: Number(product.quantity ?? 0),
+            lastMovementAt: createdAt,
+            createdAt,
+            updatedAt: createdAt,
+            deletedAt: null,
+            version: 1,
+          };
+
+          await this.save('inventoryLocationStocks', defaultStock as any);
+          used.add(key);
+        }
+      } catch (error) {
+        console.error('[DexieProvider] ensureDefaultLocationStocks failed:', error);
+      } finally {
+        this.defaultLocationStocksInitPromise = null;
+      }
+    })();
+
+    return this.defaultLocationStocksInitPromise;
+  }
+
   async get<T extends StorageRecord>(key: string): Promise<T[]> {
     if (key === 'productBatchLocations') {
       await this.ensureDefaultBatchAllocations();
+    }
+    if (key === 'inventoryLocationStocks') {
+      await this.ensureDefaultLocationStocks();
     }
     if (this.memCache.has(key)) {
       return this.memCache.get(key) as T[];
@@ -427,6 +484,7 @@ export class DexieProvider implements IStorageProvider {
   async exportAll(): Promise<string> {
     await this.ensureDefaultLocation();
     await this.ensureDefaultBatchAllocations();
+    await this.ensureDefaultLocationStocks();
 
     const backup: Record<string, any> = {
       schemaVersion: this.SCHEMA_VERSION,

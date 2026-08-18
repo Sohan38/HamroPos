@@ -22,6 +22,7 @@ import {
 import { ExpiryBadge, getBatchStatus } from '@/components/BatchFormDialog';
 import { InventoryDispositionDialog } from '@/components/InventoryDispositionDialog';
 import { useMemo, useState, useEffect } from 'react';
+import { getLocationStockForProduct } from '@/lib/locationStock';
 
 import { useFeature } from '@/hooks/useFeature';
 
@@ -79,8 +80,7 @@ export default function InventoryDetail() {
     if (locationFilter === 'all') {
       return product.quantity;
     }
-    const stock = locationStocks.find(s => s.productId === product.id && s.locationId === locationFilter);
-    return stock?.quantity ?? 0;
+    return getLocationStockForProduct(product, locationFilter, locationStocks);
   }, [product, locationFilter, locationStocks]);
 
   // Filter batches by location if locationFilter is set

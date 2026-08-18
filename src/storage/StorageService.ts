@@ -26,6 +26,9 @@ export class LocalStorageProvider implements IStorageProvider {
    * only — subsequent reads within the same session cost zero disk I/O.
    */
   async get<T extends StorageRecord>(key: string): Promise<T[]> {
+    if (key === 'inventoryLocationStocks') {
+      this.ensureDefaultLocationStocks();
+    }
     if (this.memCache.has(key)) {
       return this.memCache.get(key) as T[];
     }
@@ -129,6 +132,7 @@ export class LocalStorageProvider implements IStorageProvider {
   async exportAll(): Promise<string> {
     this.ensureDefaultLocation();
     this.ensureDefaultBatchAllocations();
+    this.ensureDefaultLocationStocks();
 
     const backup = {
       schemaVersion: this.SCHEMA_VERSION,
@@ -355,6 +359,53 @@ export class LocalStorageProvider implements IStorageProvider {
     }
 
     localStorage.setItem(`${this.KEY_PREFIX}productBatchLocations`, JSON.stringify(allocations));
+  }
+
+  private ensureDefaultLocationStocks(): void {
+    const locationRows = JSON.parse(localStorage.getItem(`${this.KEY_PREFIX}locations`) || '[]');
+    const defaultLocation = Array.isArray(locationRows)
+      ? locationRows.find((location: any) => location.isDefault || location.id === 'loc-default')
+      : null;
+
+    if (!defaultLocation) {
+      this.ensureDefaultLocation();
+      return;
+    }
+
+    const stockRows = JSON.parse(localStorage.getItem(`${this.KEY_PREFIX}inventoryLocationStocks`) || '[]');
+    const stocks = Array.isArray(stockRows) ? stockRows : [];
+    const products = JSON.parse(localStorage.getItem(`${this.KEY_PREFIX}inventory`) || '[]');
+    const productList = Array.isArray(products) ? products : [];
+    const used = new Set(stocks.filter((item: any) => item.productId).map((item: any) => `${item.productId}::${item.locationId}`));
+
+    let changed = false;
+    for (const product of productList) {
+      if (product.deletedAt) continue;
+      const key = `${product.id}::${defaultLocation.id}`;
+      if (used.has(key)) continue;
+
+      const hasAnyStockRecord = stocks.some((item: any) => item.productId === product.id);
+      if (hasAnyStockRecord) continue;
+
+      const createdAt = new Date().toISOString();
+      stocks.push({
+        id: `ils-${product.id}`,
+        productId: product.id,
+        locationId: defaultLocation.id,
+        quantity: Number(product.quantity ?? 0),
+        lastMovementAt: createdAt,
+        createdAt,
+        updatedAt: createdAt,
+        deletedAt: null,
+        version: 1,
+      });
+      used.add(key);
+      changed = true;
+    }
+
+    if (changed) {
+      localStorage.setItem(`${this.KEY_PREFIX}inventoryLocationStocks`, JSON.stringify(stocks));
+    }
   }
 
   async getSettings(): Promise<any> {
