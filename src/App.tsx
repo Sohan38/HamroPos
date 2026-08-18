@@ -1,4 +1,4 @@
-import { Suspense, lazy } from 'react';
+import { Suspense, lazy, useState } from 'react';
 import { Route, Switch, Router as WouterRouter } from 'wouter';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/toaster';
@@ -6,6 +6,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { Spinner } from '@/components/ui/spinner';
 import { useFeature } from '@/hooks/useFeature';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { SplashScreen } from '@/components/SplashScreen';
 
 import { AppProvider } from '@/contexts/AppContext';
 import { GlobalProviders } from '@/contexts/GlobalProviders';
@@ -212,8 +213,25 @@ function Router() {
 }
 
 function App() {
+  // Show splash only on first install. After chunks are cached, skip it entirely.
+  const [splashDone, setSplashDone] = useState(() => {
+    try {
+      return localStorage.getItem('app_initialized') === 'true';
+    } catch {
+      return true; // If storage is unavailable, skip splash
+    }
+  });
+
+  const handleSplashDone = () => {
+    try {
+      localStorage.setItem('app_initialized', 'true');
+    } catch { /* ignore */ }
+    setSplashDone(true);
+  };
+
   return (
     <ErrorBoundary>
+      {!splashDone && <SplashScreen onDone={handleSplashDone} />}
       <AppProvider>
         <LicenseProvider>
           <QueryClientProvider client={queryClient}>
