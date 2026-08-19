@@ -41,14 +41,26 @@ export class CapacitorBarcodeProvider implements BarcodeProvider {
           await BarcodeScanner.stopScan().catch(() => {});
         };
 
+        let lastCode = '';
+        let lastTime = 0;
+
         try {
           // Listen for detected barcodes
           listener = await BarcodeScanner.addListener('barcodesScanned', async (event) => {
             const barcodes = event.barcodes || [];
             if (barcodes.length > 0) {
               const firstBarcode = barcodes[0];
-              const val = firstBarcode.rawValue || firstBarcode.displayValue || '';
+              const val = (firstBarcode.rawValue || firstBarcode.displayValue || '').trim();
               if (val) {
+                const now = Date.now();
+                // If scanning continuously, skip if same code scanned within 1.5s
+                if (options?.autoClose === false && val === lastCode && now - lastTime < 1500) {
+                  return;
+                }
+                
+                lastCode = val;
+                lastTime = now;
+
                 if (options?.onScan) {
                   options.onScan(val);
                 }

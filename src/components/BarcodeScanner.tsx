@@ -207,17 +207,15 @@ export function BarcodeScanner({ onScan, className, autoClose = true }: BarcodeS
             {/* ── Scanner viewport with blur surround ── */}
             <div
               className={`relative w-full overflow-hidden rounded-xl ${
-                BarcodeService.getActiveProviderName() === 'capacitor' ? 'bg-transparent' : 'bg-black'
+                BarcodeService.getActiveProviderName() === 'capacitor' ? 'bg-transparent barcode-scanner-camera-box' : 'bg-black'
               }`}
               style={{ aspectRatio: '4/3' }}
             >
-              {/* Camera feed container — ZXing injects <video> here on Web/Desktop */}
-              {BarcodeService.getActiveProviderName() !== 'capacitor' && (
-                <div
-                  id={containerId}
-                  className="absolute inset-0 w-full h-full"
-                />
-              )}
+              {/* Camera feed container */}
+              <div
+                id={containerId}
+                className="absolute inset-0 w-full h-full bg-transparent"
+              />
 
               {/* Dark blur overlay — four strips leaving a clear centre window */}
               {scanning && (

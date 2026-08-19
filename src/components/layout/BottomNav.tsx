@@ -20,7 +20,6 @@ export function BottomNav() {
   const mainNavItems = [
     { href: '/', label: 'Dashboard', icon: Home, show: true },
     { href: '/inventory', label: 'Inventory', icon: Package, show: true },
-    { href: '/inventory/production', label: 'Production', icon: Factory, show: true },
     { href: '/sales', label: 'Sales', icon: ShoppingCart, show: true },
   ];
 
@@ -33,6 +32,7 @@ export function BottomNav() {
 
   // Dynamically assemble more sheets options
   const moreNavItems = [
+    { href: '/inventory/production', label: 'Production', icon: Factory, show: true },
     { href: '/purchases', label: 'Purchases', icon: Truck, show: true },
     { href: '/dispositions', label: 'Dispositions', icon: FileText, show: true },
     { href: '/inventory/consumption', label: 'Consumption', icon: Utensils, show: isConsumptionEnabled },

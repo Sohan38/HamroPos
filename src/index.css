@@ -303,10 +303,13 @@
   to { opacity: 1; }
 }
 
-/* Make WebView transparent during native Capacitor MLKit scanning overlays */
+/* Make WebView container transparent only when native scanner is active */
 body.barcode-scanner-active {
   background-color: transparent !important;
   --background: transparent !important;
+}
+body.barcode-scanner-active #root {
+  background-color: transparent !important;
 }
 
 /* Hide all background layout wrappers so they don't block the camera preview underneath */
@@ -316,12 +319,15 @@ body.barcode-scanner-active #root > :not([role="dialog"]):not([data-radix-portal
   pointer-events: none !important;
 }
 
-/* Keep the scanner modal overlay visible, but set its dialog backgrounds to transparent/blurred */
+/* Make dialog card opaque, but let the camera preview pass through the transparent camera container cutout box */
 body.barcode-scanner-active [role="dialog"] {
-  background-color: rgba(0, 0, 0, 0.15) !important;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  background-color: hsl(var(--background)) !important;
+}
+
+body.barcode-scanner-active .barcode-scanner-camera-box,
+body.barcode-scanner-active #barcode-scanner-container {
+  background-color: transparent !important;
+  opacity: 1 !important;
 }
 
 /* Make the Radix dialog backdrop transparent to let the camera preview pass through */
@@ -331,7 +337,5 @@ body.barcode-scanner-active [data-state="open"] {
 body.barcode-scanner-active [class*="bg-black/80"],
 body.barcode-scanner-active [class*="bg-black/60"],
 body.barcode-scanner-active div[class*="fixed inset-0"] {
-  background-color: transparent !important;
+  background-color: rgba(0, 0, 0, 0.4) !important;
 }
-
-
