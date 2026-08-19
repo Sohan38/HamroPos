@@ -25,27 +25,40 @@ function barcodeCenter(barcode: NativeBarcode): [number, number] | null {
   ];
 }
 
-function isInsideGuide(barcode: NativeBarcode): boolean {
+function isInsideGuide(
+  barcode: NativeBarcode,
+  region?: BarcodeScannerOptions['scanRegion'],
+): boolean {
   const center = barcodeCenter(barcode);
   if (!center) return true;
+  if (!region) return true;
 
-  // Matches the mobile guide: 8% side margins and a 28% top/bottom margin.
-  const normalizedX = center[0] / 1280;
-  const normalizedY = center[1] / 720;
-  return normalizedX >= 0.08 && normalizedX <= 0.92 && normalizedY >= 0.28 && normalizedY <= 0.72;
+  return (
+    center[0] >= region.left &&
+    center[0] <= region.right &&
+    center[1] >= region.top &&
+    center[1] <= region.bottom
+  );
 }
 
-function chooseBarcode(barcodes: NativeBarcode[]): NativeBarcode | null {
+function chooseBarcode(
+  barcodes: NativeBarcode[],
+  region?: BarcodeScannerOptions['scanRegion'],
+): NativeBarcode | null {
   const readable = barcodes.filter(barcode => Boolean((barcode.rawValue || barcode.displayValue || '').trim()));
-  const candidates = readable.filter(isInsideGuide);
+  const candidates = readable.filter(barcode => isInsideGuide(barcode, region));
   if (candidates.length === 0) return null;
+
+  const target = region
+    ? [(region.left + region.right) / 2, (region.top + region.bottom) / 2]
+    : [640, 360];
 
   // Prefer the barcode closest to the centre guide, then the largest readable target.
   return [...candidates].sort((left, right) => {
     const leftCenter = barcodeCenter(left);
     const rightCenter = barcodeCenter(right);
-    const leftDistance = leftCenter ? Math.hypot(leftCenter[0] - 640, leftCenter[1] - 360) : Infinity;
-    const rightDistance = rightCenter ? Math.hypot(rightCenter[0] - 640, rightCenter[1] - 360) : Infinity;
+    const leftDistance = leftCenter ? Math.hypot(leftCenter[0] - target[0], leftCenter[1] - target[1]) : Infinity;
+    const rightDistance = rightCenter ? Math.hypot(rightCenter[0] - target[0], rightCenter[1] - target[1]) : Infinity;
     return leftDistance - rightDistance || barcodeArea(right) - barcodeArea(left);
   })[0] ?? null;
 }
@@ -108,7 +121,7 @@ export class CapacitorBarcodeProvider implements BarcodeProvider {
           // Listen for detected barcodes
           listener = await BarcodeScanner.addListener('barcodesScanned', async (event) => {
             const barcodes = (event.barcodes || []) as NativeBarcode[];
-            const selected = chooseBarcode(barcodes);
+            const selected = chooseBarcode(barcodes, options?.scanRegion);
             const visibleCodes = new Set(
               barcodes.map(barcode => (barcode.rawValue || barcode.displayValue || '').trim()).filter(Boolean),
             );
@@ -150,7 +163,6 @@ export class CapacitorBarcodeProvider implements BarcodeProvider {
               BarcodeFormat.UpcA,
               BarcodeFormat.UpcE,
               BarcodeFormat.Itf,
-              BarcodeFormat.QrCode,
             ],
           });
         } catch (err) {

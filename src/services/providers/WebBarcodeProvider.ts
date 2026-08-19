@@ -22,7 +22,7 @@ export class WebBarcodeProvider implements BarcodeProvider {
   private mutex: Promise<any> = Promise.resolve();
   private runLocked<T>(fn: () => Promise<T>): Promise<T> {
     const next = this.mutex.then(fn);
-    this.mutex = next.then(() => {}, () => {});
+    this.mutex = next.then(() => { }, () => { });
     return next;
   }
 
@@ -79,10 +79,8 @@ export class WebBarcodeProvider implements BarcodeProvider {
           BarcodeFormat.UPC_E,
           BarcodeFormat.ITF,
           BarcodeFormat.CODABAR,
-          BarcodeFormat.QR_CODE,
-          BarcodeFormat.DATA_MATRIX,
         ]);
-        
+
         // Disabled TRY_HARDER to prevent CPU lagging and thermal throttling on mobile
         hints.set(DecodeHintType.TRY_HARDER, false);
 
@@ -116,15 +114,15 @@ export class WebBarcodeProvider implements BarcodeProvider {
           const stream = await navigator.mediaDevices.getUserMedia(constraints).catch(() =>
             navigator.mediaDevices.getUserMedia({ video: true })
           );
-          
+
           if (this.stopped) {
             stream.getTracks().forEach(t => t.stop());
             return reject(new Error('Scanner stopped.'));
           }
-          
+
           this.activeStream = stream;
           video.srcObject = stream;
-          await video.play().catch(() => {});
+          await video.play().catch(() => { });
 
           // Throttle decode loops: only decode every ~250ms (4 FPS) to reduce CPU overhead
           let lastDecodeTime = 0;
@@ -178,7 +176,7 @@ export class WebBarcodeProvider implements BarcodeProvider {
     if ((this as any)._activeReject) {
       try {
         (this as any)._activeReject(new Error('Scanner stopped.'));
-      } catch {}
+      } catch { }
       delete (this as any)._activeReject;
     }
 
@@ -189,14 +187,14 @@ export class WebBarcodeProvider implements BarcodeProvider {
       setTimeout(() => {
         try {
           activeReader.reset();
-        } catch {}
+        } catch { }
       }, 0);
     }
 
     if (this.activeStream) {
       try {
         this.activeStream.getTracks().forEach(t => t.stop());
-      } catch {}
+      } catch { }
       this.activeStream = null;
     }
 
@@ -205,7 +203,7 @@ export class WebBarcodeProvider implements BarcodeProvider {
         try {
           const stream = this.videoEl.srcObject as MediaStream;
           stream.getTracks().forEach(t => t.stop());
-        } catch {}
+        } catch { }
         this.videoEl.srcObject = null;
       }
       this.videoEl.remove();
@@ -216,7 +214,7 @@ export class WebBarcodeProvider implements BarcodeProvider {
   async stop(): Promise<void> {
     this.stopped = true;
     // Execute immediately without awaiting the queue lock to avoid UI deadlocks
-    this.teardown().catch(() => {});
+    this.teardown().catch(() => { });
     return Promise.resolve();
   }
 }

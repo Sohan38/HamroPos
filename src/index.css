@@ -381,18 +381,36 @@ body.barcode-scanner-active div[class*="fixed inset-0"] {
     padding: 1rem 1rem max(1rem, env(safe-area-inset-bottom)) !important;
   }
 
-  body.barcode-scanner-active .barcode-scanner-body::before {
-    position: fixed;
-    z-index: 0;
-    inset: 0;
-    content: '';
-    pointer-events: none;
-    background: rgba(0, 0, 0, 0.58);
-  }
-
   body.barcode-scanner-active .barcode-scanner-body>* {
     position: relative;
     z-index: 1;
+  }
+
+  body.barcode-scanner-active .barcode-scanner-body {
+    min-height: calc(100dvh - 5rem);
+    display: block;
+    overflow: hidden;
+  }
+
+  body.barcode-scanner-active .barcode-scanner-body>p:first-child {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    left: 1rem;
+  }
+
+  body.barcode-scanner-active .barcode-scanner-body>p:last-child {
+    position: absolute;
+    right: 1rem;
+    bottom: max(1rem, env(safe-area-inset-bottom));
+    left: 1rem;
+  }
+
+  body.barcode-scanner-active .barcode-scanner-body>div:not(.barcode-scanner-viewport) {
+    position: absolute;
+    top: 3rem;
+    right: 1rem;
+    left: 1rem;
   }
 
   body.barcode-scanner-active .barcode-scanner-body>p {
@@ -400,11 +418,53 @@ body.barcode-scanner-active div[class*="fixed inset-0"] {
   }
 
   body.barcode-scanner-active .barcode-scanner-viewport {
-    width: 100%;
+    position: absolute;
+    top: 50%;
+    left: 1rem;
+    width: calc(100% - 2rem);
     height: min(58dvh, 30rem);
+    margin: 0;
     aspect-ratio: auto !important;
+    transform: translateY(-50%);
     border: 1px solid rgba(255, 255, 255, 0.38);
     border-radius: 1.25rem;
     box-shadow: 0 0 0 999px rgba(0, 0, 0, 0.12), 0 1rem 3rem rgba(0, 0, 0, 0.32);
+  }
+
+  body.barcode-scanner-active .barcode-native-mask {
+    position: static !important;
+    z-index: 3 !important;
+    pointer-events: none;
+  }
+
+  body.barcode-scanner-active .barcode-native-mask-top,
+  body.barcode-scanner-active .barcode-native-mask-bottom,
+  body.barcode-scanner-active .barcode-native-mask-left,
+  body.barcode-scanner-active .barcode-native-mask-right {
+    position: fixed;
+    z-index: 3;
+    background: rgba(0, 0, 0, 0.58);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+
+  body.barcode-scanner-active .barcode-native-mask-top {
+    top: 0;
+    right: 0;
+    left: 0;
+  }
+
+  body.barcode-scanner-active .barcode-native-mask-bottom {
+    right: 0;
+    bottom: 0;
+    left: 0;
+  }
+
+  body.barcode-scanner-active .barcode-native-mask-left {
+    left: 0;
+  }
+
+  body.barcode-scanner-active .barcode-native-mask-right {
+    right: 0;
   }
 }

@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Camera, X, Zap } from 'lucide-react';
 import { useBackModal } from '@/contexts/NavigationContext';
 import { BarcodeService } from '@/services/BarcodeService';
+import type { BarcodeScannerOptions } from '@/services/IBarcodeProvider';
 
 interface BarcodeScannerProps {
   onScan: (barcode: string) => 'accepted' | 'rejected' | void;
@@ -17,6 +18,8 @@ export function BarcodeScanner({ onScan, className, autoClose = true }: BarcodeS
   const [error, setError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const containerId = 'barcode-scanner-container';
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const [guideRect, setGuideRect] = useState<BarcodeScannerOptions['scanRegion'] | null>(null);
 
   const lastCodeRef = useRef<string>('');
   const lastTimeRef = useRef<number>(0);
@@ -57,8 +60,22 @@ export function BarcodeScanner({ onScan, className, autoClose = true }: BarcodeS
     await BarcodeService.stop().catch(() => { });
     const el = document.getElementById(containerId);
     if (el) el.innerHTML = '';
+    setGuideRect(null);
     startingRef.current = false;
     setScanning(false);
+  };
+
+  const getScanRegion = () => {
+    const rect = viewportRef.current?.getBoundingClientRect();
+    if (!rect || rect.width <= 0 || rect.height <= 0) return undefined;
+
+    const scale = window.devicePixelRatio || 1;
+    return {
+      left: rect.left * scale,
+      top: rect.top * scale,
+      right: rect.right * scale,
+      bottom: rect.bottom * scale,
+    };
   };
 
   const startScanner = useCallback(async () => {
@@ -68,6 +85,41 @@ export function BarcodeScanner({ onScan, className, autoClose = true }: BarcodeS
     setScanning(false);
 
     const activeProvider = BarcodeService.getActiveProviderName();
+    const scanRegion = activeProvider === 'capacitor' ? getScanRegion() : undefined;
+    const cssGuideRect = viewportRef.current?.getBoundingClientRect();
+    if (cssGuideRect && activeProvider === 'capacitor') {
+      setGuideRect({
+        left: cssGuideRect.left,
+        top: cssGuideRect.top,
+        right: cssGuideRect.right,
+        bottom: cssGuideRect.bottom,
+      });
+    }
+    const updateScanRegion = () => {
+      if (!scanRegion) return;
+      const nextRegion = getScanRegion();
+      if (nextRegion) {
+        Object.assign(scanRegion, nextRegion);
+        const nextCssRect = viewportRef.current?.getBoundingClientRect();
+        if (nextCssRect) {
+          setGuideRect({
+            left: nextCssRect.left,
+            top: nextCssRect.top,
+            right: nextCssRect.right,
+            bottom: nextCssRect.bottom,
+          });
+        }
+      }
+    };
+    if (scanRegion) {
+      window.addEventListener('resize', updateScanRegion);
+      window.visualViewport?.addEventListener('resize', updateScanRegion);
+    }
+    const removeScanRegionListener = () => {
+      window.removeEventListener('resize', updateScanRegion);
+      window.visualViewport?.removeEventListener('resize', updateScanRegion);
+      setGuideRect(null);
+    };
 
     const processScan = async (barcode: string) => {
       const trimmed = barcode.trim();
@@ -96,13 +148,16 @@ export function BarcodeScanner({ onScan, className, autoClose = true }: BarcodeS
         const barcode = await BarcodeService.scan({
           containerId,
           autoClose,
+          scanRegion,
           onScan: async (val) => { await processScan(val); }
         });
+        removeScanRegionListener();
         if (barcode && autoClose) {
           await processScan(barcode);
           return;
         }
       } catch (err: any) {
+        removeScanRegionListener();
         setScanning(false);
         if (/cancel|stopped/i.test(err?.message ?? '')) {
           startingRef.current = false;
@@ -230,6 +285,7 @@ export function BarcodeScanner({ onScan, className, autoClose = true }: BarcodeS
             <div
               className={`barcode-scanner-viewport relative w-full overflow-hidden rounded-xl ${BarcodeService.getActiveProviderName() === 'capacitor' ? 'bg-transparent barcode-scanner-camera-box' : 'bg-black'
                 }`}
+              ref={viewportRef}
               style={{ aspectRatio: '4/3' }}
             >
               {/* Camera feed container */}
@@ -292,6 +348,21 @@ export function BarcodeScanner({ onScan, className, autoClose = true }: BarcodeS
                 </div>
               )}
             </div>
+
+            {scanning && guideRect && BarcodeService.getActiveProviderName() === 'capacitor' && (
+              <div className="barcode-native-mask" aria-hidden="true">
+                <div className="barcode-native-mask-top" style={{ height: guideRect.top }} />
+                <div className="barcode-native-mask-bottom" style={{ top: guideRect.bottom }} />
+                <div
+                  className="barcode-native-mask-left"
+                  style={{ top: guideRect.top, height: guideRect.bottom - guideRect.top, width: guideRect.left }}
+                />
+                <div
+                  className="barcode-native-mask-right"
+                  style={{ top: guideRect.top, height: guideRect.bottom - guideRect.top, left: guideRect.right }}
+                />
+              </div>
+            )}
 
             <p className="text-[11px] text-muted-foreground text-center">
               EAN-13 · Code-128 · UPC · Code-39 and more

@@ -3,6 +3,12 @@ export interface BarcodeScannerOptions {
   onScan?: (text: string) => void;
   onError?: (err: string) => void;
   autoClose?: boolean;
+  scanRegion?: {
+    left: number;
+    top: number;
+    right: number;
+    bottom: number;
+  };
 }
 
 export interface BarcodeProvider {
