@@ -27,6 +27,7 @@ interface InventoryFormStepsInput {
     existingCategories: string[];
     existingBrands: string[];
     existingProductNameLookup: Set<string>;
+    existingBarcodes: string[];
     isExpiryEnabled: boolean;
     isBatchesEnabled: boolean;
     hasExpiry: boolean;
@@ -60,7 +61,7 @@ export function useInventoryFormSteps(
     setActiveStep: (step: number) => void
 ) {
     const {
-        isNew, existingProduct, existingCategories, existingBrands, existingProductNameLookup,
+        isNew, existingProduct, existingCategories, existingBrands, existingProductNameLookup, existingBarcodes,
         isExpiryEnabled, isBatchesEnabled, hasExpiry, handleToggleExpiry,
         localBatches, handleAddBatch, handleEditBatch, handleDeleteBatch,
         isVariantsEnabled, hasVariants, handleToggleVariants,
@@ -88,6 +89,7 @@ export function useInventoryFormSteps(
                     existingCategories={existingCategories}
                     existingBrands={existingBrands}
                     existingNameLookup={existingProductNameLookup}
+                    existingBarcodes={existingBarcodes}
                 />
             ),
             fields: ['name', 'category', 'barcode', 'brand', 'imageBase64'],
@@ -215,7 +217,7 @@ export function useInventoryFormSteps(
 
         return result;
     }, [
-        form, isNew, existingProduct, existingCategories, existingBrands, existingProductNameLookup,
+        form, isNew, existingProduct, existingCategories, existingBrands, existingProductNameLookup, existingBarcodes,
         isExpiryEnabled, isBatchesEnabled, hasExpiry, handleToggleExpiry,
         localBatches, handleAddBatch, handleEditBatch, handleDeleteBatch,
         isVariantsEnabled, hasVariants, handleToggleVariants,

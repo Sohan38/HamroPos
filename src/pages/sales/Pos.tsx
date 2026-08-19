@@ -189,8 +189,9 @@ export default function SalesPos() {
     const map = new Map<string, typeof inventory[number]>();
 
     for (const product of inventory) {
-      if (product.quantity > 0 && product.barcode) {
-        map.set(product.barcode.trim(), product);
+      const barcode = product.barcode?.trim();
+      if (product.quantity > 0 && isProductAvailableForPOS(product) && barcode) {
+        map.set(barcode, product);
       }
     }
 
@@ -235,14 +236,14 @@ export default function SalesPos() {
       });
       setSearchQuery('');
       closeSearch();
-      return;
+      return true;
     }
 
     const productBatches = batchesByProduct.get(product.id) ?? [];
     const sellableQuantity = productBatches.length > 0 ? getSellableBatchQuantity(productBatches) : product.quantity;
     if (sellableQuantity <= 0) {
       toast.error(`Only ${sellableQuantity} ${product.unit} in stock`);
-      return;
+      return false;
     }
 
     setCart(cur => {
@@ -272,6 +273,7 @@ export default function SalesPos() {
     setSearchQuery('');
     closeSearch();
     toast.success(`Added ${product.name}`, { duration: 1200 });
+    return true;
   };
 
   const setVariantQuantity = (productId: string, name: string, requestedQuantity: number) => {
@@ -315,13 +317,13 @@ export default function SalesPos() {
 
     const exact = barcodeMap.get(code);
     if (exact) {
-      addToCart(exact);
-      return;
+      return addToCart(exact) ? 'accepted' as const : 'rejected' as const;
     }
 
     setSearchQuery(code);
     setSearchOpen(true);
     toast.error("Product not found");
+    return 'rejected' as const;
   };
 
   const updateCartQuantity = (lineKey: string, delta: number) => {

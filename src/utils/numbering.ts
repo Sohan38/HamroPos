@@ -2,6 +2,7 @@ import { format } from 'date-fns';
 
 type InvoiceLike = { invoiceNumber?: string | null; date?: string | null };
 type BatchLike = { batchNumber?: string | null };
+type BarcodeLike = { barcode?: string | null };
 
 function slugify(value: string | null | undefined, maxLength = 4): string {
     const cleaned = (value || '')
@@ -40,6 +41,37 @@ function getNextSequence(values: Array<string | null | undefined>, prefix: strin
         .filter((value): value is number => Number.isFinite(value));
 
     return sequences.length > 0 ? Math.max(...sequences) : 0;
+}
+
+export function generateProductBarcode(
+    existingProducts: BarcodeLike[],
+    length = 6,
+): string {
+    const requestedLength = Number.isFinite(length) ? Math.floor(length) : 6;
+    const digitLength = Math.max(4, Math.min(12, requestedLength));
+    const minimum = 10 ** (digitLength - 1);
+    const maximum = (10 ** digitLength) - 1;
+    const used = new Set(
+        existingProducts
+            .map(product => product.barcode?.trim())
+            .filter((barcode): barcode is string => Boolean(barcode)),
+    );
+    const numericValues = existingProducts
+        .map(product => product.barcode?.trim() ?? '')
+        .filter(barcode => new RegExp(`^\\d{${digitLength}}$`).test(barcode))
+        .map(Number)
+        .filter(value => Number.isSafeInteger(value));
+    const highestUsed = numericValues.length > 0 ? Math.max(...numericValues) : minimum - 1;
+    const firstCandidate = highestUsed < maximum ? highestUsed + 1 : minimum;
+    const candidateCount = maximum - minimum + 1;
+
+    for (let offset = 0; offset < candidateCount; offset += 1) {
+        const candidate = minimum + ((firstCandidate - minimum + offset) % candidateCount);
+        const barcode = String(candidate);
+        if (!used.has(barcode)) return barcode;
+    }
+
+    throw new Error(`No unused ${digitLength}-digit barcode is available.`);
 }
 
 export function generateSupplierInvoiceNumber(

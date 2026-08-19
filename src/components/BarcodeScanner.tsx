@@ -6,7 +6,7 @@ import { useBackModal } from '@/contexts/NavigationContext';
 import { BarcodeService } from '@/services/BarcodeService';
 
 interface BarcodeScannerProps {
-  onScan: (barcode: string) => void;
+  onScan: (barcode: string) => 'accepted' | 'rejected' | void;
   className?: string;
   autoClose?: boolean;
 }
@@ -20,22 +20,35 @@ export function BarcodeScanner({ onScan, className, autoClose = true }: BarcodeS
 
   const lastCodeRef = useRef<string>('');
   const lastTimeRef = useRef<number>(0);
+  const audioContextRef = useRef<AudioContext | null>(null);
 
-  const playBeep = () => {
+  const playScanSound = useCallback((outcome: 'accepted' | 'rejected') => {
     try {
-      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(1200, audioCtx.currentTime);
-      gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.12);
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.start();
-      osc.stop(audioCtx.currentTime + 0.12);
+      const AudioContextConstructor = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContextConstructor) return;
+
+      const audioContext = audioContextRef.current ?? new AudioContextConstructor();
+      audioContextRef.current = audioContext;
+      if (audioContext.state === 'suspended') void audioContext.resume();
+
+      const frequencies = outcome === 'accepted' ? [880, 1320] : [260, 180];
+      const startTime = audioContext.currentTime;
+      frequencies.forEach((frequency, index) => {
+        const oscillator = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+        const noteStart = startTime + index * 0.075;
+        oscillator.type = outcome === 'accepted' ? 'sine' : 'square';
+        oscillator.frequency.setValueAtTime(frequency, noteStart);
+        gain.gain.setValueAtTime(0.0001, noteStart);
+        gain.gain.exponentialRampToValueAtTime(0.12, noteStart + 0.012);
+        gain.gain.exponentialRampToValueAtTime(0.0001, noteStart + 0.11);
+        oscillator.connect(gain);
+        gain.connect(audioContext.destination);
+        oscillator.start(noteStart);
+        oscillator.stop(noteStart + 0.12);
+      });
     } catch { }
-  };
+  }, []);
 
   const onScanRef = useRef(onScan);
   useEffect(() => { onScanRef.current = onScan; }, [onScan]);
@@ -61,13 +74,13 @@ export function BarcodeScanner({ onScan, className, autoClose = true }: BarcodeS
       if (!trimmed) return;
 
       const now = Date.now();
-      if (!autoClose && trimmed === lastCodeRef.current && now - lastTimeRef.current < 1500) return;
+      if (trimmed === lastCodeRef.current && now - lastTimeRef.current < 1500) return;
 
       lastCodeRef.current = trimmed;
       lastTimeRef.current = now;
 
-      playBeep();
-      onScanRef.current(trimmed);
+      const outcome = onScanRef.current(trimmed);
+      playScanSound(outcome === 'rejected' ? 'rejected' : 'accepted');
 
       if (autoClose) {
         startingRef.current = false;
@@ -113,17 +126,22 @@ export function BarcodeScanner({ onScan, className, autoClose = true }: BarcodeS
       await webProvider.scan({
         containerId,
         onScan: async (val) => { await processScan(val); },
-        onError: (err) => { setError(err); setScanning(false); },
+        onError: (err) => {
+          playScanSound('rejected');
+          setError(err);
+          setScanning(false);
+        },
       });
     } catch (err: any) {
       startingRef.current = false;
       const msg = err?.message || String(err);
       if (msg === 'Scanner stopped.') return;
       console.error('[BarcodeScanner] Web scanner error:', msg);
+      playScanSound('rejected');
       setError(msg || 'Scanning could not be initialized.');
       setScanning(false);
     }
-  }, [autoClose]);
+  }, [autoClose, playScanSound]);
 
   const handleClose = async () => {
     await stopScanner();
@@ -149,7 +167,11 @@ export function BarcodeScanner({ onScan, className, autoClose = true }: BarcodeS
   }, [open]);
 
   useEffect(() => {
-    return () => { BarcodeService.stop().catch(() => { }); };
+    return () => {
+      BarcodeService.stop().catch(() => { });
+      void audioContextRef.current?.close().catch(() => { });
+      audioContextRef.current = null;
+    };
   }, []);
 
   return (

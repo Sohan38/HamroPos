@@ -207,9 +207,17 @@ export function useInventoryForm(
 
     const barcodeLookup = useMemo(() => {
         const map = new Map<string, typeof allInventory[number]>();
-        allInventory.forEach(item => { if (item.barcode) map.set(item.barcode, item); });
+        allInventory.forEach(item => {
+            const barcode = item.barcode?.trim().toLowerCase();
+            if (barcode) map.set(barcode, item);
+        });
         return map;
     }, [allInventory]);
+
+    const existingBarcodes = useMemo(
+        () => allInventory.map(item => item.barcode ?? ''),
+        [allInventory],
+    );
 
     const totalBatchQuantity = useMemo(() => localBatches.reduce((sum, b) => sum + b.quantity, 0), [localBatches]);
     const totalVariantQuantity = useMemo(() => watchedVariants.reduce((sum, v) => sum + (v.quantity || 0), 0), [watchedVariants]);
@@ -392,8 +400,9 @@ export function useInventoryForm(
                 return;
             }
 
-            if (data.barcode) {
-                const duplicate = barcodeLookup.get(data.barcode);
+            const normalizedBarcode = data.barcode?.trim().toLowerCase();
+            if (normalizedBarcode) {
+                const duplicate = barcodeLookup.get(normalizedBarcode);
                 if (duplicate && duplicate.id !== existingProduct?.id) {
                     form.setError('barcode', { message: `Barcode already used by "${duplicate.name}"` });
                     return;
@@ -439,7 +448,7 @@ export function useInventoryForm(
                 // adds the stock once. This avoids double-counting when the purchase logic
                 // increments both product.quantity and supplier stock for the same incoming stock.
                 quantity: isNew ? 0 : calculatedStock,
-                barcode: data.barcode ?? '',
+                barcode: data.barcode?.trim() ?? '',
                 brand: data.brand ?? '',
                 supplierId: resolvedSupplierIds[0] ?? '',
                 supplierIds: resolvedSupplierIds,
@@ -613,6 +622,7 @@ export function useInventoryForm(
         existingBrands,
         existingProductNameLookup,
         barcodeLookup,
+        existingBarcodes,
         purchaseRateWatch,
         sellingRateWatch,
         quantityWatch,

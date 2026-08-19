@@ -1,26 +1,46 @@
-import React, { useCallback, useEffect, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { Camera, CheckCircle2, X } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Camera, CheckCircle2, Minus, Plus, RefreshCw, SlidersHorizontal, X } from 'lucide-react';
 import { SectionProps } from './types';
 import { toast } from 'sonner';
 import { useWatch } from 'react-hook-form';
 import { cn } from '@/lib/utils';
 import { BarcodeScanner } from '@/components/BarcodeScanner';
 import { rankSearch } from '@/utils/search/rank';
+import { generateProductBarcode } from '@/utils/numbering';
+import { Slider } from '@/components/ui/slider';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 interface ProductIdentitySectionProps extends SectionProps {
   isNew: boolean;
   existingCategories: string[];
   existingBrands: string[];
   existingNameLookup?: Set<string>;
+  existingBarcodes: string[];
 }
 
-export const ProductIdentitySection = React.memo(({ form, isNew, existingCategories, existingBrands, existingNameLookup }: ProductIdentitySectionProps) => {
+export const ProductIdentitySection = React.memo(({ form, isNew, existingCategories, existingBrands, existingNameLookup, existingBarcodes }: ProductIdentitySectionProps) => {
   const imageBase64 = useWatch({ control: form.control, name: 'imageBase64' }) ?? '';
   const nameValue = useWatch({ control: form.control, name: 'name' }) ?? '';
   const categoryValue = useWatch({ control: form.control, name: 'category' }) ?? '';
   const brandValue = useWatch({ control: form.control, name: 'brand' }) ?? '';
+  const [barcodeLength, setBarcodeLength] = useState(6);
+
+  const handleGenerateBarcode = useCallback(() => {
+    try {
+      const barcode = generateProductBarcode(existingBarcodes.map(value => ({ barcode: value })), barcodeLength);
+      form.setValue('barcode', barcode, { shouldDirty: true, shouldValidate: true });
+      toast.success(`Generated ${barcode}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not generate a barcode');
+    }
+  }, [barcodeLength, existingBarcodes, form]);
+
+  const adjustBarcodeLength = useCallback((delta: number) => {
+    setBarcodeLength(current => Math.max(4, Math.min(12, current + delta)));
+  }, []);
 
   const handleImageUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -224,15 +244,142 @@ export const ProductIdentitySection = React.memo(({ form, isNew, existingCategor
       <FormField control={form.control} name="barcode" render={({ field }) => (
         <FormItem>
           <FormLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Barcode <span className="font-normal normal-case tracking-normal opacity-60 ml-1">(opt.)</span></FormLabel>
-          <div className="flex items-center gap-1.5">
-            <FormControl>
-              <Input placeholder="Scan or type barcode" {...field} className="h-9" />
-            </FormControl>
-            <BarcodeScanner
-              className="h-9 w-9 shrink-0"
-              onScan={(code) => form.setValue('barcode', code, { shouldValidate: true })}
-            />
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="flex min-w-0 flex-1 items-center gap-1.5">
+              <FormControl>
+                <Input placeholder="Scan or type barcode" {...field} className="h-10 min-w-0 font-mono" />
+              </FormControl>
+              <BarcodeScanner
+                className="h-10 w-10 shrink-0"
+                onScan={(code) => form.setValue('barcode', code, { shouldValidate: true })}
+              />
+            </div>
+            <div className="sm:hidden rounded-2xl border border-border/70 bg-muted/20 p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold text-foreground">Quick code</p>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">Set length, then generate</p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <span className="font-mono text-lg font-semibold leading-none text-primary">{barcodeLength}</span>
+                  <span className="ml-1 text-[10px] text-muted-foreground">digits</span>
+                </div>
+              </div>
+              <div className="mt-3 flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0"
+                  onClick={() => adjustBarcodeLength(-1)}
+                  disabled={barcodeLength <= 4}
+                  aria-label="Use fewer barcode digits"
+                  title="Use fewer digits"
+                >
+                  <Minus className="h-3.5 w-3.5" />
+                </Button>
+                <Slider
+                  value={[barcodeLength]}
+                  min={4}
+                  max={12}
+                  step={1}
+                  onValueChange={value => setBarcodeLength(value[0] ?? 6)}
+                  aria-label="Generated barcode length"
+                  className="flex-1"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0"
+                  onClick={() => adjustBarcodeLength(1)}
+                  disabled={barcodeLength >= 12}
+                  aria-label="Use more barcode digits"
+                  title="Use more digits"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                className="mt-3 h-9 w-full gap-1.5 text-xs"
+                onClick={handleGenerateBarcode}
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                Generate unique code
+              </Button>
+            </div>
+            <div className="hidden items-center gap-1 rounded-xl border border-border/70 bg-muted/20 p-1 sm:flex sm:shrink-0">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="h-8 gap-1.5 px-2 text-xs"
+                    aria-label="Adjust generated barcode length"
+                  >
+                    <span className="font-mono font-semibold text-primary">{barcodeLength}d</span>
+                    <SlidersHorizontal className="h-3.5 w-3.5 text-muted-foreground" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-64 p-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-semibold">Code length</p>
+                      <p className="text-[11px] text-muted-foreground">4 to 12 digits</p>
+                    </div>
+                    <span className="font-mono text-sm font-semibold text-primary">{barcodeLength}d</span>
+                  </div>
+                  <div className="mt-3 flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 shrink-0"
+                      onClick={() => adjustBarcodeLength(-1)}
+                      disabled={barcodeLength <= 4}
+                      aria-label="Use fewer barcode digits"
+                    >
+                      <Minus className="h-3.5 w-3.5" />
+                    </Button>
+                    <Slider
+                      value={[barcodeLength]}
+                      min={4}
+                      max={12}
+                      step={1}
+                      onValueChange={value => setBarcodeLength(value[0] ?? 6)}
+                      aria-label="Generated barcode length"
+                      className="flex-1"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 shrink-0"
+                      onClick={() => adjustBarcodeLength(1)}
+                      disabled={barcodeLength >= 12}
+                      aria-label="Use more barcode digits"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </PopoverContent>
+              </Popover>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-8 w-8"
+                onClick={handleGenerateBarcode}
+                aria-label="Generate unique barcode"
+                title="Generate unique barcode"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+              </Button>
+            </div>
           </div>
+          <p className="text-[11px] text-muted-foreground sm:hidden">Unique numeric code. Choose its length for quicker manual lookup.</p>
           <FormMessage className="text-xs" />
         </FormItem>
       )} />
