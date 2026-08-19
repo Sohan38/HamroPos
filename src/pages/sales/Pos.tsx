@@ -319,17 +319,6 @@ export default function SalesPos() {
       return;
     }
 
-    const partial = inventory.find(
-      p =>
-        p.quantity > 0 &&
-        (p.barcode?.includes(code) || code.includes(p.barcode ?? ''))
-    );
-
-    if (partial) {
-      addToCart(partial);
-      return;
-    }
-
     setSearchQuery(code);
     setSearchOpen(true);
     toast.error("Product not found");

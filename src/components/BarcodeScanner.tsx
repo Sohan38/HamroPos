@@ -34,14 +34,14 @@ export function BarcodeScanner({ onScan, className, autoClose = true }: BarcodeS
       gain.connect(audioCtx.destination);
       osc.start();
       osc.stop(audioCtx.currentTime + 0.12);
-    } catch {}
+    } catch { }
   };
 
   const onScanRef = useRef(onScan);
   useEffect(() => { onScanRef.current = onScan; }, [onScan]);
 
   const stopScanner = async () => {
-    await BarcodeService.stop().catch(() => {});
+    await BarcodeService.stop().catch(() => { });
     const el = document.getElementById(containerId);
     if (el) el.innerHTML = '';
     startingRef.current = false;
@@ -149,7 +149,7 @@ export function BarcodeScanner({ onScan, className, autoClose = true }: BarcodeS
   }, [open]);
 
   useEffect(() => {
-    return () => { BarcodeService.stop().catch(() => {}); };
+    return () => { BarcodeService.stop().catch(() => { }); };
   }, []);
 
   return (
@@ -175,7 +175,7 @@ export function BarcodeScanner({ onScan, className, autoClose = true }: BarcodeS
       >
         <DialogContent
           showCloseButton={false}
-          className="w-[95vw] max-w-[420px] p-0 overflow-hidden rounded-2xl"
+          className="w-[95vw] max-w-105 p-0 overflow-hidden rounded-2xl"
         >
           <DialogHeader className="px-4 pt-4 pb-2 flex flex-row items-center justify-between">
             <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
@@ -206,9 +206,8 @@ export function BarcodeScanner({ onScan, className, autoClose = true }: BarcodeS
 
             {/* ── Scanner viewport with blur surround ── */}
             <div
-              className={`relative w-full overflow-hidden rounded-xl ${
-                BarcodeService.getActiveProviderName() === 'capacitor' ? 'bg-transparent barcode-scanner-camera-box' : 'bg-black'
-              }`}
+              className={`relative w-full overflow-hidden rounded-xl ${BarcodeService.getActiveProviderName() === 'capacitor' ? 'bg-transparent barcode-scanner-camera-box' : 'bg-black'
+                }`}
               style={{ aspectRatio: '4/3' }}
             >
               {/* Camera feed container */}
