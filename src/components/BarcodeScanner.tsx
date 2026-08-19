@@ -197,9 +197,9 @@ export function BarcodeScanner({ onScan, className, autoClose = true }: BarcodeS
       >
         <DialogContent
           showCloseButton={false}
-          className="w-[95vw] max-w-105 p-0 overflow-hidden rounded-2xl"
+          className="barcode-scanner-dialog w-[95vw] max-w-105 p-0 overflow-hidden rounded-2xl"
         >
-          <DialogHeader className="px-4 pt-4 pb-2 flex flex-row items-center justify-between">
+          <DialogHeader className="barcode-scanner-header px-4 pt-4 pb-2 flex flex-row items-center justify-between">
             <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
               <Zap className="h-4 w-4 text-primary" /> Scan Barcode
             </DialogTitle>
@@ -208,7 +208,7 @@ export function BarcodeScanner({ onScan, className, autoClose = true }: BarcodeS
             </Button>
           </DialogHeader>
 
-          <div className="px-4 pb-4 space-y-3">
+          <div className="barcode-scanner-body px-4 pb-4 space-y-3">
             {error ? (
               <div className="bg-destructive/10 text-destructive rounded-xl p-4 text-sm text-center space-y-3">
                 <p>{error}</p>
@@ -228,7 +228,7 @@ export function BarcodeScanner({ onScan, className, autoClose = true }: BarcodeS
 
             {/* ── Scanner viewport with blur surround ── */}
             <div
-              className={`relative w-full overflow-hidden rounded-xl ${BarcodeService.getActiveProviderName() === 'capacitor' ? 'bg-transparent barcode-scanner-camera-box' : 'bg-black'
+              className={`barcode-scanner-viewport relative w-full overflow-hidden rounded-xl ${BarcodeService.getActiveProviderName() === 'capacitor' ? 'bg-transparent barcode-scanner-camera-box' : 'bg-black'
                 }`}
               style={{ aspectRatio: '4/3' }}
             >

@@ -1,6 +1,59 @@
 import { BarcodeProvider, BarcodeScannerOptions } from '../IBarcodeProvider';
 
+type NativeBarcode = {
+  rawValue?: string | null;
+  displayValue?: string | null;
+  cornerPoints?: Array<[number, number]>;
+};
+
+function barcodeArea(barcode: NativeBarcode): number {
+  const points = barcode.cornerPoints ?? [];
+  if (points.length < 4) return 0;
+
+  const xs = points.map(([x]) => x);
+  const ys = points.map(([, y]) => y);
+  return (Math.max(...xs) - Math.min(...xs)) * (Math.max(...ys) - Math.min(...ys));
+}
+
+function barcodeCenter(barcode: NativeBarcode): [number, number] | null {
+  const points = barcode.cornerPoints ?? [];
+  if (points.length === 0) return null;
+
+  return [
+    points.reduce((sum, [x]) => sum + x, 0) / points.length,
+    points.reduce((sum, [, y]) => sum + y, 0) / points.length,
+  ];
+}
+
+function isInsideGuide(barcode: NativeBarcode): boolean {
+  const center = barcodeCenter(barcode);
+  if (!center) return true;
+
+  // Matches the mobile guide: 8% side margins and a 28% top/bottom margin.
+  const normalizedX = center[0] / 1280;
+  const normalizedY = center[1] / 720;
+  return normalizedX >= 0.08 && normalizedX <= 0.92 && normalizedY >= 0.28 && normalizedY <= 0.72;
+}
+
+function chooseBarcode(barcodes: NativeBarcode[]): NativeBarcode | null {
+  const readable = barcodes.filter(barcode => Boolean((barcode.rawValue || barcode.displayValue || '').trim()));
+  const candidates = readable.filter(isInsideGuide);
+  if (candidates.length === 0) return null;
+
+  // Prefer the barcode closest to the centre guide, then the largest readable target.
+  return [...candidates].sort((left, right) => {
+    const leftCenter = barcodeCenter(left);
+    const rightCenter = barcodeCenter(right);
+    const leftDistance = leftCenter ? Math.hypot(leftCenter[0] - 640, leftCenter[1] - 360) : Infinity;
+    const rightDistance = rightCenter ? Math.hypot(rightCenter[0] - 640, rightCenter[1] - 360) : Infinity;
+    return leftDistance - rightDistance || barcodeArea(right) - barcodeArea(left);
+  })[0] ?? null;
+}
+
 export class CapacitorBarcodeProvider implements BarcodeProvider {
+  private activeCleanup: (() => Promise<void>) | null = null;
+  private activeReject: ((reason?: unknown) => void) | null = null;
+
   supported(): boolean {
     return (
       typeof window !== 'undefined' &&
@@ -14,7 +67,7 @@ export class CapacitorBarcodeProvider implements BarcodeProvider {
     }
 
     try {
-      const { BarcodeScanner, BarcodeFormat } =
+      const { BarcodeScanner, BarcodeFormat, LensFacing, Resolution } =
         await import('@capacitor-mlkit/barcode-scanning');
 
       // 1. Ensure camera permission
@@ -32,50 +85,62 @@ export class CapacitorBarcodeProvider implements BarcodeProvider {
 
       return new Promise<string>(async (resolve, reject) => {
         let listener: any = null;
-        
+
         const cleanup = async () => {
+          if (this.activeCleanup !== cleanup) return;
+          this.activeCleanup = null;
+          this.activeReject = null;
           document.body.classList.remove('barcode-scanner-active');
           if (listener) {
-            await listener.remove().catch(() => {});
+            await listener.remove().catch(() => { });
+            listener = null;
           }
-          await BarcodeScanner.stopScan().catch(() => {});
+          await BarcodeScanner.stopScan().catch(() => { });
         };
 
-        let lastCode = '';
-        let lastTime = 0;
+        this.activeCleanup = cleanup;
+        this.activeReject = reject;
+
+        let lockedCode = '';
+        let hasResolved = false;
 
         try {
           // Listen for detected barcodes
           listener = await BarcodeScanner.addListener('barcodesScanned', async (event) => {
-            const barcodes = event.barcodes || [];
-            if (barcodes.length > 0) {
-              const firstBarcode = barcodes[0];
-              const val = (firstBarcode.rawValue || firstBarcode.displayValue || '').trim();
-              if (val) {
-                const now = Date.now();
-                // If scanning continuously, skip if same code scanned within 1.5s
-                if (options?.autoClose === false && val === lastCode && now - lastTime < 1500) {
-                  return;
-                }
-                
-                lastCode = val;
-                lastTime = now;
+            const barcodes = (event.barcodes || []) as NativeBarcode[];
+            const selected = chooseBarcode(barcodes);
+            const visibleCodes = new Set(
+              barcodes.map(barcode => (barcode.rawValue || barcode.displayValue || '').trim()).filter(Boolean),
+            );
 
-                if (options?.onScan) {
-                  options.onScan(val);
-                }
-                
-                // If autoClose is false, do not call cleanup() to support continuous scanning
-                if (options?.autoClose !== false) {
-                  await cleanup();
-                  resolve(val);
-                }
-              }
+            if (!selected) {
+              lockedCode = '';
+              return;
+            }
+
+            const val = (selected.rawValue || selected.displayValue || '').trim();
+            if (options?.autoClose === false && lockedCode) {
+              if (visibleCodes.has(lockedCode)) return;
+              lockedCode = '';
+            }
+            if (!val || hasResolved || (options?.autoClose === false && val === lockedCode)) return;
+
+            lockedCode = val;
+            if (options?.onScan) {
+              await options.onScan(val);
+            }
+
+            if (options?.autoClose !== false) {
+              hasResolved = true;
+              await cleanup();
+              resolve(val);
             }
           });
 
           // Start scanning
           await BarcodeScanner.startScan({
+            lensFacing: LensFacing.Back,
+            resolution: Resolution['1280x720'],
             formats: [
               BarcodeFormat.Ean13,
               BarcodeFormat.Ean8,
@@ -104,11 +169,16 @@ export class CapacitorBarcodeProvider implements BarcodeProvider {
   }
 
   async stop(): Promise<void> {
+    const cleanup = this.activeCleanup;
+    const reject = this.activeReject;
+    if (cleanup) await cleanup().catch(() => { });
+    if (reject) reject(new Error('Scanner stopped.'));
+
     try {
       const { BarcodeScanner } = await import('@capacitor-mlkit/barcode-scanning');
       document.body.classList.remove('barcode-scanner-active');
-      await BarcodeScanner.stopScan().catch(() => {});
-    } catch {}
+      await BarcodeScanner.stopScan().catch(() => { });
+    } catch { }
   }
 }
 
