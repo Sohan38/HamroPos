@@ -150,15 +150,12 @@ export class LocalStorageProvider implements IStorageProvider {
 
     for (const key of allKeys) {
       const fullKey = this.getFullKey(key);
-      const val = localStorage.getItem(fullKey);
-      if (val) {
-        try {
-          backup.data[fullKey] = JSON.parse(val);
-        } catch {
-          backup.data[fullKey] = key === 'settings' ? await this.getSettings() : [];
-        }
+      // Read through the memory cache so deferred localStorage writes cannot
+      // leave a freshly changed record out of the backup.
+      if (key === 'settings') {
+        backup.data[fullKey] = await this.getSettings();
       } else {
-        backup.data[fullKey] = key === 'settings' ? await this.getSettings() : [];
+        backup.data[fullKey] = await this.get(key);
       }
     }
 
@@ -390,7 +387,7 @@ export class LocalStorageProvider implements IStorageProvider {
       if (defaultRecords.length > 1) {
         const keepRecord = defaultRecords[0];
         const sumDefaultQty = defaultRecords.reduce((sum: number, s: any) => sum + Number(s.quantity ?? 0), 0);
-        
+
         // Consolidate quantity into the first record
         const keepIdx = stocks.findIndex((s: any) => s.id === keepRecord.id);
         if (keepIdx >= 0) {

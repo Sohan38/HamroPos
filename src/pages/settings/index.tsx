@@ -24,7 +24,7 @@ export default function Settings() {
   const [activeTab, setActiveTab] = useState(() => {
     if (typeof window !== 'undefined') {
       const tab = new URLSearchParams(window.location.search).get('tab');
-    if (tab && ['profile', 'preferences', 'locations', 'license', 'data', 'diagnostics'].includes(tab)) {
+      if (tab && ['profile', 'preferences', 'locations', 'license', 'data', 'diagnostics'].includes(tab)) {
         return tab;
       }
     }
@@ -89,27 +89,35 @@ export default function Settings() {
       if (isNative) {
         try {
           const { Filesystem, Directory, Encoding } = await import('@capacitor/filesystem');
-          const result = await Filesystem.writeFile({
+          const { Share } = await import('@capacitor/share');
+          const cacheResult = await Filesystem.writeFile({
             path: filename,
             data: data,
-            directory: Directory.Documents,
+            directory: Directory.Cache,
             encoding: Encoding.UTF8
           });
 
-          toast.success(`Backup saved! File: ${filename}`);
-
-          try {
-            const { Share } = await import('@capacitor/share');
+          const canShare = await Share.canShare();
+          if (canShare.value) {
             await Share.share({
-              title: 'Sohan Backup',
-              url: result.uri,
+              title: 'Sohan data backup',
+              url: cacheResult.uri,
               dialogTitle: 'Share or save backup'
             });
-          } catch (_) { }
+            toast.success('Backup ready to share or save');
+          } else {
+            const savedResult = await Filesystem.writeFile({
+              path: filename,
+              data,
+              directory: Directory.Documents,
+              encoding: Encoding.UTF8
+            });
+            toast.success(`Backup saved! File: ${savedResult.uri || filename}`);
+          }
           return;
         } catch (err) {
           console.error('Native filesystem export failed:', err);
-          toast.error('Export failed — storage permission may be needed');
+          toast.error('Export failed — try sharing again or check storage access');
         }
       } else {
         const blob = new Blob([data], { type: 'application/json' });
@@ -494,11 +502,10 @@ export default function Settings() {
             </CardHeader>
             <CardContent className="p-4 sm:p-6 pt-0 sm:pt-0 space-y-4">
               {syncResult && (
-                <div className={`flex items-start gap-3 rounded-lg border p-3 text-sm ${
-                  syncResult.ok
+                <div className={`flex items-start gap-3 rounded-lg border p-3 text-sm ${syncResult.ok
                     ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
                     : 'border-destructive/30 bg-destructive/10 text-destructive'
-                }`}>
+                  }`}>
                   {syncResult.ok
                     ? <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0" />
                     : <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />}
