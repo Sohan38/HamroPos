@@ -398,19 +398,34 @@ export class FinancialPostingService {
         const original = transactions.find(transaction => transaction.id === transactionId);
         if (!original) throw new Error('Financial transaction not found.');
 
+        const generateReversalDescription = (desc: string) => {
+            if (desc.startsWith('Supplier payment')) {
+                return `Payable Settlement Reversal · ${desc.replace(/^Supplier payment\s*·?\s*/i, '')}`;
+            }
+            if (desc.startsWith('Purchase')) {
+                return `Purchase Adjustment (Reversal) · ${desc.replace(/^Purchase\s*/i, '')}`;
+            }
+            if (desc.startsWith('Customer payment')) {
+                return `Customer Settlement Reversal · ${desc.replace(/^Customer payment\s*·?\s*/i, '')}`;
+            }
+            return `Reversal of ${desc}`;
+        };
+
+        const reversalDescription = generateReversalDescription(original.description);
+
         const movements = (await storage.get<FinancialMovement>(MOVEMENTS_KEY))
             .filter(movement => movement.transactionId === transactionId)
             .map(movement => ({
                 accountId: movement.accountId,
                 amount: -movement.amount,
-                description: `Reversal of ${original.description}`,
+                description: reversalDescription,
                 locationId: movement.locationId,
             }));
 
         const reversal = await this.post(storage, {
             date,
             type: 'adjustment',
-            description: `Reversal of ${original.description}`,
+            description: reversalDescription,
             sourceType: 'financial_reversal',
             sourceId,
             idempotencyKey,
