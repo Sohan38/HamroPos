@@ -40,11 +40,11 @@ const MOVEMENTS_KEY = 'financialMovements';
 const ACCOUNTS_KEY = 'financialAccounts';
 
 const DEFAULT_ACCOUNTS: Array<Pick<FinancialAccount, 'id' | 'name' | 'type' | 'status' | 'paymentMethods' | 'isSystem'>> = [
-    { id: 'financial-account-cash', name: 'Main Cash', type: 'cash', status: 'active', paymentMethods: ['cash'], isSystem: true },
-    { id: 'financial-account-bank', name: 'Bank', type: 'bank', status: 'active', paymentMethods: ['bank'], isSystem: true },
-    { id: 'financial-account-digital', name: 'QR / Digital', type: 'digital', status: 'active', paymentMethods: ['qr'], isSystem: true },
+    { id: 'financial-account-cash', name: 'Main Cash Drawer', type: 'cash', status: 'active', paymentMethods: ['cash'], isSystem: true },
+    { id: 'financial-account-bank', name: 'Primary Bank A/C (Fonepay QR Linked)', type: 'bank', status: 'active', paymentMethods: ['bank', 'qr'], isSystem: true },
+    { id: 'financial-account-digital', name: 'Digital Wallet (eSewa / Khalti)', type: 'digital', status: 'active', paymentMethods: ['other'], isSystem: true },
     { id: 'financial-account-card', name: 'Card Clearing', type: 'card', status: 'active', paymentMethods: ['card'], isSystem: true },
-    { id: 'financial-account-other', name: 'Other Clearing', type: 'clearing', status: 'active', paymentMethods: ['other'], isSystem: true },
+    { id: 'financial-account-other', name: 'Other Clearing', type: 'clearing', status: 'active', paymentMethods: [], isSystem: true },
     { id: 'financial-account-receivables', name: 'Customer Receivables', type: 'receivable', status: 'active', paymentMethods: [], isSystem: true },
     { id: 'financial-account-payables', name: 'Supplier Payables', type: 'payable', status: 'active', paymentMethods: [], isSystem: true },
 ];
@@ -454,6 +454,20 @@ export class FinancialPostingService {
         if (configuredId) return configuredId;
 
         const accounts = await storage.get<FinancialAccount>(ACCOUNTS_KEY);
+
+        // Fonepay / Merchant QR lands directly in the linked Bank Account
+        if (paymentMethod === 'qr') {
+            const qrBank = accounts.find(account =>
+                account.status === 'active' && account.paymentMethods?.includes('qr')
+            );
+            if (qrBank) return qrBank.id;
+
+            const primaryBank = accounts.find(account =>
+                account.status === 'active' && account.type === 'bank'
+            );
+            if (primaryBank) return primaryBank.id;
+        }
+
         return accounts.find(account =>
             account.status === 'active' && account.paymentMethods?.includes(paymentMethod)
         )?.id ?? null;

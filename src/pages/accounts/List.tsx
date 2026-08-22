@@ -93,6 +93,7 @@ export default function AccountsList() {
   const [accountNumber, setAccountNumber] = useState('');
   const [accountNotes, setAccountNotes] = useState('');
   const [initialBalance, setInitialBalance] = useState('0');
+  const [linkQrToBank, setLinkQrToBank] = useState(true);
   const [savingAccount, setSavingAccount] = useState(false);
 
   // Form States - Transfer
@@ -210,6 +211,7 @@ export default function AccountsList() {
     setAccountNumber('');
     setAccountNotes('');
     setInitialBalance('0');
+    setLinkQrToBank(true);
     setAccountDialogOpen(true);
   };
 
@@ -222,6 +224,7 @@ export default function AccountsList() {
     setAccountNumber(acc.accountNumber || '');
     setAccountNotes(acc.notes || '');
     setInitialBalance('0');
+    setLinkQrToBank(acc.paymentMethods?.includes('qr') ?? true);
     setAccountDialogOpen(true);
   };
 
@@ -238,6 +241,17 @@ export default function AccountsList() {
       const now = new Date().toISOString();
       const accountId = editingAccount ? editingAccount.id : `acc-${uuidv4().slice(0, 8)}`;
 
+      let paymentMethods: any[] = [];
+      if (accountType === 'cash') {
+        paymentMethods = ['cash'];
+      } else if (accountType === 'bank') {
+        paymentMethods = linkQrToBank ? ['bank', 'qr'] : ['bank'];
+      } else if (accountType === 'digital') {
+        paymentMethods = ['other'];
+      } else if (accountType === 'card') {
+        paymentMethods = ['card'];
+      }
+
       const payload: FinancialAccount = {
         id: accountId,
         name: accountName.trim(),
@@ -246,7 +260,7 @@ export default function AccountsList() {
         institutionName: institutionName.trim() || null,
         accountNumber: accountNumber.trim() || null,
         notes: accountNotes.trim() || null,
-        paymentMethods: accountType === 'cash' ? ['cash'] : accountType === 'bank' ? ['bank'] : accountType === 'digital' ? ['qr'] : accountType === 'card' ? ['card'] : [],
+        paymentMethods,
         isSystem: editingAccount?.isSystem ?? false,
         createdAt: editingAccount?.createdAt ?? now,
         updatedAt: now,
@@ -589,12 +603,24 @@ export default function AccountsList() {
                         <Icon className="size-5" />
                       </div>
                       <div>
-                        <h3 className="font-semibold text-sm leading-tight text-foreground">
-                          {acc.name}
-                        </h3>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="font-semibold text-sm leading-tight text-foreground">
+                            {acc.name}
+                          </h3>
+                          {acc.type === 'bank' && acc.paymentMethods?.includes('qr') && (
+                            <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20 px-1.5 py-0 h-4">
+                              <QrCode className="size-2.5 mr-1" /> Fonepay QR
+                            </Badge>
+                          )}
+                          {acc.type === 'digital' && (
+                            <Badge variant="outline" className="text-[10px] bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/20 px-1.5 py-0 h-4">
+                              Wallet
+                            </Badge>
+                          )}
+                        </div>
                         <p className="text-xs text-muted-foreground capitalize mt-0.5">
                           {acc.institutionName ? `${acc.institutionName} · ` : ''}
-                          {acc.type === 'cooperative' ? 'Sahakari' : acc.type}
+                          {acc.type === 'cooperative' ? 'Sahakari' : acc.type === 'digital' ? 'Digital Wallet (eSewa/Khalti)' : acc.type}
                         </p>
                       </div>
                     </div>
@@ -714,9 +740,9 @@ export default function AccountsList() {
                   <SelectContent>
                     <SelectItem value="bank">Bank Account</SelectItem>
                     <SelectItem value="cooperative">Sahakari (Cooperative)</SelectItem>
-                    <SelectItem value="cash">Cash Drawer</SelectItem>
-                    <SelectItem value="digital">Digital Wallet / QR</SelectItem>
-                    <SelectItem value="card">Card Clearing</SelectItem>
+                    <SelectItem value="cash">Cash Drawer / Locker</SelectItem>
+                    <SelectItem value="digital">Digital Wallet (eSewa / Khalti)</SelectItem>
+                    <SelectItem value="card">Card POS Machine</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -731,12 +757,33 @@ export default function AccountsList() {
               </div>
             </div>
 
+            {accountType === 'bank' && (
+              <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl space-y-1.5">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={linkQrToBank}
+                    onChange={e => setLinkQrToBank(e.target.checked)}
+                    className="rounded text-primary focus:ring-primary h-4 w-4"
+                  />
+                  <span className="text-xs font-semibold text-foreground">
+                    Link Counter Fonepay / Merchant QR to this Bank
+                  </span>
+                </label>
+                <p className="text-[11px] text-muted-foreground pl-6">
+                  When customers scan the QR at checkout, money will land directly in this bank account.
+                </p>
+              </div>
+            )}
+
             <div className="space-y-2">
-              <label className="text-xs font-medium">Account Number (Optional)</label>
+              <label className="text-xs font-medium">
+                {accountType === 'digital' ? 'Wallet ID / Mobile Number' : 'Account Number (Optional)'}
+              </label>
               <Input
                 value={accountNumber}
                 onChange={e => setAccountNumber(e.target.value)}
-                placeholder="e.g. 01201017500124"
+                placeholder={accountType === 'digital' ? 'e.g. 9801234567' : 'e.g. 01201017500124'}
               />
             </div>
 
