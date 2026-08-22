@@ -218,7 +218,7 @@ export interface Customer extends StorageRecord {
 
 export type PaymentMethod = 'cash' | 'qr' | 'card' | 'bank' | 'other' | 'split' | 'credit';
 
-export type FinancialAccountType = 'cash' | 'bank' | 'digital' | 'card' | 'receivable' | 'payable' | 'clearing';
+export type FinancialAccountType = 'cash' | 'bank' | 'cooperative' | 'digital' | 'card' | 'receivable' | 'payable' | 'clearing';
 export type FinancialAccountStatus = 'active' | 'inactive';
 export type FinancialTransactionType =
   | 'sale_payment'
@@ -236,6 +236,9 @@ export interface FinancialAccount extends StorageRecord {
   name: string;
   type: FinancialAccountType;
   status: FinancialAccountStatus;
+  accountNumber?: string | null;
+  institutionName?: string | null;
+  notes?: string | null;
   locationId?: string | null;
   paymentMethods?: PaymentMethod[];
   isSystem?: boolean;

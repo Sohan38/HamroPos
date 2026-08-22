@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useLocation } from 'wouter';
 import {
   BookOpen,
   RefreshCw,
@@ -109,6 +110,7 @@ const SOURCE_FILTERS: Array<{ id: SourceTypeFilter; label: string }> = [
 ];
 
 export default function DaybookList() {
+  const [, setLocation] = useLocation();
   const storage = useStorageProvider();
   const { items: accounts, refresh: refreshAccounts } = useFinancialAccounts();
   const { items: sales } = useSales();
@@ -441,6 +443,15 @@ export default function DaybookList() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setLocation('/accounts')}
+            className="h-9 gap-1.5 text-xs rounded-xl font-medium"
+          >
+            <Building2 className="size-3.5" />
+            Accounts & Banks
+          </Button>
           <Button
             variant="outline"
             size="sm"
