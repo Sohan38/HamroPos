@@ -8,6 +8,7 @@ import {
     PurchaseStatus,
 } from '@/types';
 import { IStorageProvider } from '@/storage/IStorageProvider';
+import { FinancialPostingService } from './financialPostingService';
 
 /**
  * Purchase inventory transitions live here instead of in the form component.
@@ -552,17 +553,23 @@ async function persistTransition(
     await storage.set('inventoryLocationStocks', locationStocks);
     await storage.set('productBatchLocations', batchLocations);
 
-    // Reconcile auto-generated expense records tied to this purchase.
-    await reconcileAutoExpenses(storage, previous, candidate);
-
     await storage.set('purchases', nextPurchases);
+    const priorPostings = (await storage.get<any>('financialTransactions'))
+        .filter((transaction: any) => transaction.sourceType === 'purchase' && transaction.sourceId === candidate.id && transaction.status === 'posted');
+    for (const posting of priorPostings) {
+        await FinancialPostingService.reverse(storage, posting.id, candidate.id, `purchase:${candidate.id}:reversal:${candidate.version}`);
+    }
+    await FinancialPostingService.postPurchase(storage, saved);
     return saved;
 }
 
 export async function createPurchase(storage: IStorageProvider, input: PurchaseInput) {
     const purchases = await storage.get<PurchaseInvoice>('purchases');
     const candidate = makePurchase(input);
-    return persistTransition(storage, null, candidate, purchases);
+    const commit = () => persistTransition(storage, null, candidate, purchases);
+    return storage.transaction
+        ? storage.transaction(['purchases', 'inventory', 'productBatches', 'inventoryLocationStocks', 'productBatchLocations', 'financialAccounts', 'financialTransactions', 'financialMovements'], 'rw', commit)
+        : commit();
 }
 
 export async function patchPurchase(storage: IStorageProvider, id: string, updates: Partial<PurchaseInvoice>) {
@@ -570,7 +577,10 @@ export async function patchPurchase(storage: IStorageProvider, id: string, updat
     const previous = purchases.find(purchase => purchase.id === id && active(purchase));
     if (!previous) throw new Error('Purchase not found.');
     const candidate = makePurchase({ ...previous, ...updates, id } as PurchaseInput, previous);
-    return persistTransition(storage, previous, candidate, purchases);
+    const commit = () => persistTransition(storage, previous, candidate, purchases);
+    return storage.transaction
+        ? storage.transaction(['purchases', 'inventory', 'productBatches', 'inventoryLocationStocks', 'productBatchLocations', 'financialAccounts', 'financialTransactions', 'financialMovements'], 'rw', commit)
+        : commit();
 }
 
 export async function patchPurchaseFinancial(storage: IStorageProvider, id: string, updates: Partial<PurchaseInvoice>) {
@@ -592,10 +602,19 @@ export async function patchPurchaseFinancial(storage: IStorageProvider, id: stri
     const nextPurchases = purchases.filter(purchase => purchase.id !== candidate.id);
     nextPurchases.push(candidate);
 
-    // Persist purchase change and reconcile expenses without touching inventory/batches.
-    await storage.set('purchases', nextPurchases);
-    await reconcileAutoExpenses(storage, previous, candidate);
-    return candidate;
+    const commit = async () => {
+        await storage.set('purchases', nextPurchases);
+        const priorPostings = (await storage.get<any>('financialTransactions'))
+            .filter((transaction: any) => transaction.sourceType === 'purchase' && transaction.sourceId === candidate.id && transaction.status === 'posted');
+        for (const posting of priorPostings) {
+            await FinancialPostingService.reverse(storage, posting.id, candidate.id, `purchase:${candidate.id}:reversal:${candidate.version}`);
+        }
+        await FinancialPostingService.postPurchase(storage, candidate);
+        return candidate;
+    };
+    return storage.transaction
+        ? storage.transaction(['purchases', 'financialAccounts', 'financialTransactions', 'financialMovements'], 'rw', commit)
+        : commit();
 }
 
 export async function updatePurchase(storage: IStorageProvider, id: string, input: PurchaseInput) {
@@ -603,7 +622,10 @@ export async function updatePurchase(storage: IStorageProvider, id: string, inpu
     const previous = purchases.find(purchase => purchase.id === id && active(purchase));
     if (!previous) throw new Error('Purchase not found.');
     const candidate = makePurchase({ ...input, id }, previous);
-    return persistTransition(storage, previous, candidate, purchases);
+    const commit = () => persistTransition(storage, previous, candidate, purchases);
+    return storage.transaction
+        ? storage.transaction(['purchases', 'inventory', 'productBatches', 'inventoryLocationStocks', 'productBatchLocations', 'financialAccounts', 'financialTransactions', 'financialMovements'], 'rw', commit)
+        : commit();
 }
 
 export async function deletePurchase(storage: IStorageProvider, id: string) {
@@ -617,5 +639,8 @@ export async function deletePurchase(storage: IStorageProvider, id: string) {
         updatedAt: now(),
         version: previous.version + 1,
     };
-    return persistTransition(storage, previous, candidate, purchases);
+    const commit = () => persistTransition(storage, previous, candidate, purchases);
+    return storage.transaction
+        ? storage.transaction(['purchases', 'inventory', 'productBatches', 'inventoryLocationStocks', 'productBatchLocations', 'financialAccounts', 'financialTransactions', 'financialMovements'], 'rw', commit)
+        : commit();
 }

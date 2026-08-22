@@ -30,6 +30,9 @@ const COLLECTION_KEYS = [
   'cashBook',
   'credit',
   'dispositions',
+  'financialAccounts',
+  'financialTransactions',
+  'financialMovements',
 ] as const;
 
 type CollectionKey = typeof COLLECTION_KEYS[number];
@@ -392,7 +395,7 @@ export class DexieProvider implements IStorageProvider {
           if (defaultRecords.length > 1) {
             const keepRecord = defaultRecords[0];
             const sumDefaultQty = defaultRecords.reduce((sum: number, s: any) => sum + Number(s.quantity ?? 0), 0);
-            
+
             // Consolidate quantity into the first record
             keepRecord.quantity = sumDefaultQty;
             keepRecord.updatedAt = now;

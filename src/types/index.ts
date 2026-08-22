@@ -216,7 +216,57 @@ export interface Customer extends StorageRecord {
   notes: string;
 }
 
-export type PaymentMethod = 'cash' | 'qr' | 'card' | 'bank' | 'split' | 'credit';
+export type PaymentMethod = 'cash' | 'qr' | 'card' | 'bank' | 'other' | 'split' | 'credit';
+
+export type FinancialAccountType = 'cash' | 'bank' | 'digital' | 'card' | 'receivable' | 'payable' | 'clearing';
+export type FinancialAccountStatus = 'active' | 'inactive';
+export type FinancialTransactionType =
+  | 'sale_payment'
+  | 'customer_credit'
+  | 'customer_payment'
+  | 'supplier_payment'
+  | 'purchase_receipt'
+  | 'expense'
+  | 'refund'
+  | 'transfer'
+  | 'opening_balance'
+  | 'adjustment';
+
+export interface FinancialAccount extends StorageRecord {
+  name: string;
+  type: FinancialAccountType;
+  status: FinancialAccountStatus;
+  locationId?: string | null;
+  paymentMethods?: PaymentMethod[];
+  isSystem?: boolean;
+}
+
+export interface FinancialTransaction extends StorageRecord {
+  date: string;
+  type: FinancialTransactionType;
+  description: string;
+  sourceType: string;
+  sourceId: string;
+  reference?: string | null;
+  status: 'posted' | 'reversed';
+  reversalOfId?: string | null;
+  reversedById?: string | null;
+  idempotencyKey: string;
+  userId?: string | null;
+  locationId?: string | null;
+}
+
+export interface FinancialMovement extends StorageRecord {
+  transactionId: string;
+  accountId: string;
+  amount: number;
+  date: string;
+  description: string;
+  sourceType: string;
+  sourceId: string;
+  reference?: string | null;
+  locationId?: string | null;
+}
 
 export type DispositionReason = 'expired' | 'damaged' | 'defective' | 'supplier_recall' | 'wrong_item_supplied' | 'other';
 export type DispositionResolution = 'return_to_supplier' | 'supplier_replacement' | 'supplier_credit' | 'supplier_refund' | 'write_off' | 'reversal';
@@ -412,9 +462,13 @@ export interface CashBookEntry extends StorageRecord {
 }
 
 export interface CreditPayment {
+  id?: string;
   date: string;
   amount: number;
   note: string;
+  paymentMethod?: Exclude<PaymentMethod, 'split' | 'credit'>;
+  financialAccountId?: string | null;
+  reference?: string | null;
 }
 
 export interface Credit extends StorageRecord {
@@ -479,6 +533,7 @@ export interface AppSettings {
   theme: 'light' | 'dark' | 'system';
   language: string;
   features: FeatureConfig;
+  financialAccountMapping?: Partial<Record<Exclude<PaymentMethod, 'split' | 'credit'>, string>>;
 }
 
 export type UserRole = 'admin' | 'manager' | 'cashier' | 'receptionist' | 'staff';
