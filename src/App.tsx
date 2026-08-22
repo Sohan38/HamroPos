@@ -1,5 +1,6 @@
-import { Suspense, lazy, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { Route, Switch, Router as WouterRouter } from 'wouter';
+import { useHashLocation } from 'wouter/use-hash-location';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -12,6 +13,7 @@ import { AppProvider } from '@/contexts/AppContext';
 import { GlobalProviders } from '@/contexts/GlobalProviders';
 import { NavigationProvider } from '@/contexts/NavigationContext';
 import { Shell } from '@/components/layout/Shell';
+import { isStaleChunkError, markAppBooted, reloadOnceForUpdate } from '@/lib/updateRecovery';
 
 /**
  * Retries a dynamic import up to `retries` times with exponential backoff.
@@ -24,6 +26,9 @@ function retryLazy<T extends { default: any }>(
 ): React.LazyExoticComponent<T['default']> {
   return lazy(() =>
     factory().catch((err) => {
+      if (isStaleChunkError(err) && reloadOnceForUpdate()) {
+        return new Promise<T>(() => { });
+      }
       if (retries <= 0) throw err;
       return new Promise<T>((resolve, reject) =>
         setTimeout(() => {
@@ -213,6 +218,10 @@ function Router() {
 }
 
 function App() {
+  useEffect(() => {
+    markAppBooted();
+  }, []);
+
   // Show splash only on first install. After chunks are cached, skip it entirely.
   const [splashDone, setSplashDone] = useState(() => {
     try {
@@ -237,7 +246,13 @@ function App() {
           <QueryClientProvider client={queryClient}>
             <GlobalProviders>
               <TooltipProvider>
-                <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
+                {/* Use hash-based routing on file:// (packaged Electron) since
+                     pathname-based routing doesn't work with file:// protocol */}
+                <WouterRouter
+                  {...(window.location.protocol === 'file:'
+                    ? { hook: useHashLocation }
+                    : { base: import.meta.env.BASE_URL.replace(/\/$/, '') })}
+                >
                   <NavigationProvider>
                     <ConfirmProvider>
                       <Router />

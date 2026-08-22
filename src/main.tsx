@@ -1,15 +1,16 @@
 import { createRoot } from 'react-dom/client';
 import App from './App';
 import './index.css';
+import { isStaleChunkError, reloadOnceForUpdate } from './lib/updateRecovery';
 
 // Global error handler to catch any boot or runtime crashes (e.g. chunk loading errors)
 // and prevent showing a blank screen.
 function showGlobalErrorOverlay(message: string) {
   if (document.getElementById('global-error-overlay')) return;
-  
-  const isDark = document.documentElement.classList.contains('dark') || 
-                 (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
-                 
+
+  const isDark = document.documentElement.classList.contains('dark') ||
+    (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+
   const bgColor = isDark ? '#09090b' : '#ffffff';
   const cardBg = isDark ? '#18181b' : '#ffffff';
   const borderColor = isDark ? '#27272a' : '#e4e4e7';
@@ -67,12 +68,14 @@ function showGlobalErrorOverlay(message: string) {
 
 window.addEventListener('error', (event) => {
   console.error('[Global Error Listener] Caught error:', event.error || event.message);
-  showGlobalErrorOverlay(event.message);
+  if (isStaleChunkError(event.error || event.message) && reloadOnceForUpdate()) return;
 });
 
 window.addEventListener('unhandledrejection', (event) => {
   console.error('[Global Promise rejection] Caught error:', event.reason);
-  showGlobalErrorOverlay(String(event.reason));
+  if (isStaleChunkError(event.reason) && reloadOnceForUpdate()) {
+    event.preventDefault();
+  }
 });
 
 createRoot(document.getElementById('root')!).render(<App />);

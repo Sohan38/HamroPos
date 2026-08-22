@@ -7,21 +7,17 @@
  * │  Platform   │  Method                                            │
  * ├──────────────────────────────────────────────────────────────────┤
  * │  Web / PWA  │  window.open() popup → window.print() → close     │
- * │  Capacitor  │  hidden <iframe> inject → iframe.print() → remove  │
+ * │  Capacitor  │  native Android PrintManager plugin                │
  * └──────────────────────────────────────────────────────────────────┘
  *
- * The iframe strategy works in Capacitor's WebView on Android because
- * Android's WebView exposes the system Print Manager when
- * contentWindow.print() is called — exactly like a native app.
- *
- * Architecture is intentionally kept modular so future strategies
- * (Bluetooth ESC/POS, USB thermal, Wi-Fi, Star/Epson SDKs) can be
- * plugged in by extending `PrintStrategy` without touching call sites.
+ * Native Android uses the platform PrintManager through the small
+ * NativePrint Capacitor plugin. Browser and desktop wrappers use their
+ * system print APIs and can provide an optional native bridge.
  */
 
 // ─── Platform detection ───────────────────────────────────────────────────────
 
-export type PrintPlatform = 'web' | 'mobile';
+export type PrintPlatform = 'web' | 'mobile' | 'desktop';
 
 /**
  * Returns 'mobile' when running inside a Capacitor native WebView,
@@ -35,6 +31,7 @@ export function getPrintPlatform(): PrintPlatform {
         if (cap && typeof cap.isNativePlatform === 'function') {
             return cap.isNativePlatform() ? 'mobile' : 'web';
         }
+        if (typeof (window as any).electronAPI?.printHTML === 'function') return 'desktop';
     } catch {
         // Not in a browser context at all (e.g. Jest) — treat as web.
     }
@@ -66,9 +63,35 @@ export function printHTMLDocument(
 ): Promise<void> {
     const platform = getPrintPlatform();
     if (platform === 'mobile') {
-        return printViaMobileIframe(html);
+        return printViaAndroidManager(html, options.title);
+    }
+    if (platform === 'desktop') {
+        return printViaDesktopBridge(html, options.title);
     }
     return printViaPopup(html, options.title);
+}
+
+async function printViaAndroidManager(html: string, title = 'Receipt'): Promise<void> {
+    try {
+        const { registerPlugin } = await import('@capacitor/core');
+        const NativePrint = registerPlugin<{ print(options: { html: string; title: string }): Promise<{ started: boolean }> }>('NativePrint');
+        await NativePrint.print({ html, title });
+    } catch (error) {
+        throw new Error(
+            error instanceof Error
+                ? error.message
+                : 'Android printing is unavailable. Install a system print service or use Share/PDF.',
+        );
+    }
+}
+
+async function printViaDesktopBridge(html: string, title = 'Receipt'): Promise<void> {
+    const bridge = (window as any).electronAPI;
+    if (typeof bridge?.printHTML === 'function') {
+        await bridge.printHTML(html, title);
+        return;
+    }
+    return printViaPopup(html, title);
 }
 
 // ─── Web strategy: popup window ───────────────────────────────────────────────
