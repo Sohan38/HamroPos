@@ -1,5 +1,5 @@
 import React from 'react';
-import { Product, ProductBatch, ProductBatchLocation, Supplier, Customer, PurchaseInvoice, SaleInvoice, HotelRoom, HotelBill, RestaurantBill, Expense, CashBookEntry, Credit, InventoryDisposition, Location, InventoryLocationStock, InventoryMovement, ConsumptionTransaction, ProductionRecipe, ProductionRecipeItem } from '../types';
+import { Product, ProductBatch, ProductBatchLocation, Supplier, Customer, PurchaseInvoice, SaleInvoice, HotelRoom, HotelBill, RestaurantBill, Expense, CashBookEntry, Credit, InventoryDisposition, Location, InventoryLocationStock, InventoryMovement, ConsumptionTransaction, ProductionRecipe, ProductionRecipeItem, FinancialAccount, FinancialTransaction, FinancialMovement } from '../types';
 import { createStorageContext } from './createStorageContext';
 
 export const { Provider: InventoryProvider, useStorage: useInventory } = createStorageContext<Product>('inventory');
@@ -22,6 +22,9 @@ export const { Provider: RestaurantBillsProvider, useStorage: useRestaurantBills
 export const { Provider: ExpensesProvider, useStorage: useExpenses } = createStorageContext<Expense>('expenses');
 export const { Provider: CashBookProvider, useStorage: useCashBook } = createStorageContext<CashBookEntry>('cashBook');
 export const { Provider: CreditProvider, useStorage: useCredit } = createStorageContext<Credit>('credit');
+export const { Provider: FinancialAccountsProvider, useStorage: useFinancialAccounts } = createStorageContext<FinancialAccount>('financialAccounts');
+export const { Provider: FinancialTransactionsProvider, useStorage: useFinancialTransactions } = createStorageContext<FinancialTransaction>('financialTransactions');
+export const { Provider: FinancialMovementsProvider, useStorage: useFinancialMovements } = createStorageContext<FinancialMovement>('financialMovements');
 
 export function GlobalProviders({ children }: { children: React.ReactNode }) {
   return (
@@ -45,7 +48,13 @@ export function GlobalProviders({ children }: { children: React.ReactNode }) {
                                       <ExpensesProvider>
                                         <CashBookProvider>
                                           <CreditProvider>
-                                            {children}
+                                            <FinancialAccountsProvider>
+                                              <FinancialTransactionsProvider>
+                                                <FinancialMovementsProvider>
+                                                  {children}
+                                                </FinancialMovementsProvider>
+                                              </FinancialTransactionsProvider>
+                                            </FinancialAccountsProvider>
                                           </CreditProvider>
                                         </CashBookProvider>
                                       </ExpensesProvider>

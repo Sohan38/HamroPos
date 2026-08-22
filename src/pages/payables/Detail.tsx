@@ -104,16 +104,25 @@ export default function PayableDetail() {
       const isFullyPaid = newPaidAmount >= invoice.grandTotal - 0.001;
       const nextPaidAmount = isFullyPaid ? invoice.grandTotal : newPaidAmount;
       const newPayment: CreditPayment = {
+        id: `${invoice.id}:payment:${Date.now()}`,
         date: new Date().toISOString(),
         amount: amt,
         note: PAYMENT_METHOD_LABELS[paymentMethod],
+        paymentMethod,
       };
 
-      await patchPurchaseFinancial(storage, invoice.id, {
-        paidAmount: nextPaidAmount,
-        payments: [...payments, newPayment],
-        paymentStatus: isFullyPaid ? 'paid' : 'partial',
-      });
+      const commit = async () => {
+        await patchPurchaseFinancial(storage, invoice.id, {
+          paidAmount: nextPaidAmount,
+          payments: [...payments, newPayment],
+          paymentStatus: isFullyPaid ? 'paid' : 'partial',
+        });
+      };
+      if (storage.transaction) {
+        await storage.transaction(['purchases', 'expenses', 'financialAccounts', 'financialTransactions', 'financialMovements'], 'rw', commit);
+      } else {
+        await commit();
+      }
 
       toast.success(isFullyPaid ? 'Invoice fully settled!' : `${format(amt)} payment recorded`);
       setPaymentAmount('');

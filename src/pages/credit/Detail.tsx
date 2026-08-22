@@ -16,12 +16,15 @@ import {
 import { format as formatDate, parseISO } from 'date-fns';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { useStorageProvider } from '@/storage/StorageContext';
+import { FinancialPostingService } from '@/services/financialPostingService';
 
 export default function CreditDetail() {
   const goBack = useSmartBack('/credit');
   const { id } = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
   const { items: credits, update } = useCredit();
+  const storage = useStorageProvider();
   const { items: customers } = useCustomers();
   const { items: sales } = useSales();
   const { format } = useCurrency();
@@ -101,17 +104,33 @@ export default function CreditDetail() {
       const newPaidAmount = paidAmount + amt;
       const isFullyPaid = newPaidAmount >= credit.amount - 0.001;
       const newPayment = {
+        id: `${credit.id}:payment:${Date.now()}`,
         date: new Date().toISOString(),
         amount: amt,
         note: PAYMENT_METHOD_LABELS[paymentMethod],
+        paymentMethod,
       };
 
-      await update(credit.id, {
-        paidAmount: newPaidAmount,
-        payments: [...payments, newPayment],
-        status: isFullyPaid ? 'paid' : 'partial',
-        paidAt: isFullyPaid ? new Date().toISOString() : credit.paidAt,
-      });
+      const commit = async () => {
+        await update(credit.id, {
+          paidAmount: newPaidAmount,
+          payments: [...payments, newPayment],
+          status: isFullyPaid ? 'paid' : 'partial',
+          paidAt: isFullyPaid ? new Date().toISOString() : credit.paidAt,
+        });
+        await FinancialPostingService.postCustomerPayment(storage, {
+          id: newPayment.id,
+          creditId: credit.id,
+          date: newPayment.date,
+          amount: amt,
+          paymentMethod,
+        });
+      };
+      if (storage.transaction) {
+        await storage.transaction(['credit', 'financialAccounts', 'financialTransactions', 'financialMovements'], 'rw', commit);
+      } else {
+        await commit();
+      }
 
       toast.success(isFullyPaid ? 'Credit fully settled!' : `${format(amt)} payment recorded`);
       setPaymentAmount('');

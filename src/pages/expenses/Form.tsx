@@ -26,6 +26,9 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { PaymentMethodPicker, SettlePaymentMethod } from '@/components/PaymentMethodPicker';
+import { useStorageProvider } from '@/storage/StorageContext';
+import { FinancialPostingService } from '@/services/financialPostingService';
+import type { PaymentMethod } from '@/types';
 
 // Predefined categories with icons
 const CATEGORY_OPTIONS = [
@@ -50,6 +53,7 @@ interface ExpenseFormData {
 }
 
 export default function ExpenseForm() {
+  const storage = useStorageProvider();
   const goBack = useSmartBack('/expenses');
   const [, setLocation] = useLocation();
   const { id } = useParams<{ id: string }>();
@@ -122,10 +126,46 @@ export default function ExpenseForm() {
 
     try {
       if (isNew) {
-        await add(payload as any);
+        const commit = async () => {
+          const saved = await add(payload as any);
+          await FinancialPostingService.postExpense(storage, {
+            id: saved.id,
+            date: saved.date,
+            amount: saved.amount,
+            paymentMethod: saved.paymentMethod as Exclude<PaymentMethod, 'split' | 'credit'>,
+            description: saved.description,
+          });
+        };
+        if (storage.transaction) {
+          await storage.transaction(['expenses', 'financialAccounts', 'financialTransactions', 'financialMovements'], 'rw', commit);
+        } else {
+          await commit();
+        }
         toast.success('Expense recorded');
       } else if (existing) {
-        update(existing.id, payload as any);
+        const commit = async () => {
+          const transactions = await storage.get<any>('financialTransactions');
+          const previousPosting = transactions
+            .filter((transaction: any) => transaction.sourceType === 'expense' && transaction.sourceId === existing.id && transaction.status === 'posted')
+            .sort((a: any, b: any) => b.createdAt.localeCompare(a.createdAt))[0];
+          if (previousPosting) {
+            await FinancialPostingService.reverse(storage, previousPosting.id, existing.id, `expense:${existing.id}:reversal:${existing.version}`);
+          }
+          await update(existing.id, payload as any);
+          await FinancialPostingService.postExpense(storage, {
+            id: existing.id,
+            date: payload.date,
+            amount: amountNum,
+            paymentMethod: payload.paymentMethod as Exclude<PaymentMethod, 'split' | 'credit'>,
+            description: payload.description,
+            eventKey: `expense:${existing.id}:version:${existing.version + 1}`,
+          });
+        };
+        if (storage.transaction) {
+          await storage.transaction(['expenses', 'financialAccounts', 'financialTransactions', 'financialMovements'], 'rw', commit);
+        } else {
+          await commit();
+        }
         toast.success('Expense updated');
       }
       setLocation('/expenses');

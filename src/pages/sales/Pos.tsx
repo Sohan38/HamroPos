@@ -21,6 +21,8 @@ import { VariantPicker } from '@/components/pos/VariantPicker';
 import { CartItem, Product } from '@/types';
 import { isProductAvailableForPOS } from '@/lib/productCapabilities';
 import { InventoryLedgerService } from '@/services/inventoryLedgerService';
+import { useStorageProvider } from '@/storage/StorageContext';
+import { FinancialPostingService } from '@/services/financialPostingService';
 
 interface VariantDraft {
   productId: string;
@@ -89,6 +91,7 @@ export default function SalesPos() {
   const { items: batchLocations, update: updateBatchLocation, add: addBatchLocation } = useProductBatchLocations();
   const { format, symbol } = useCurrency();
   const { settings } = useApp();
+  const storage = useStorageProvider();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -544,59 +547,79 @@ export default function SalesPos() {
         paidAmount: paidNow,
         paymentMethod, notes: '',
       };
-      const savedSale = await addSale(saleRecord);
-      if (paymentMethod === 'credit' && selectedCustomer) {
-        await addCredit({
-          customerId: selectedCustomer.id,
-          customerName: selectedCustomer.name,
-          phone: selectedCustomer.phone,
-          amount: dueAmount,
-          paidAmount: 0,
-          description: `POS sale • ${cart.length} item${cart.length !== 1 ? 's' : ''}`,
-          date: new Date().toISOString(),
-          dueDate: null,
-          status: 'pending',
-          paidAt: null,
-          notes: paidNow > 0 ? `Paid ${format(paidNow)} at checkout` : 'Full credit sale',
-          sourceSaleId: savedSale.id,
-          payments: [],
-        });
-      }
-
-      for (const [productId, requestedQuantity] of requestedByProduct) {
-        const p = inventoryById.get(productId);
-        if (!p) continue;
-
-        const productBatchDeductions = batchDeductionsByProduct.get(productId) ?? new Map<string, number>();
-
-        const updatedVariants = p.variants?.map(variant => ({
-          ...variant,
-          quantity: Math.max(0, variant.quantity - (requestedByVariant.get(`${p.id}::${variant.name}`) ?? 0)),
-        }));
-
-        const mutations = {
-          inventory: { items: inventory, update: updateInventory },
-          locationStocks: { items: locationStocks, update: updateLocationStock, add: addLocationStock as any },
-          batches: { items: batches, update: updateBatch },
-          batchLocations: { items: batchLocations, update: updateBatchLocation, add: addBatchLocation as any },
-        };
-
-        if (productBatchDeductions.size > 0) {
-          for (const [batchId, deductionQuantity] of productBatchDeductions) {
-            await InventoryLedgerService.adjustStock(productId, 'loc-default', -deductionQuantity, mutations, {
-              batchId,
-            });
-          }
-        } else {
-          await InventoryLedgerService.adjustStock(productId, 'loc-default', -requestedQuantity, mutations);
-        }
-
-        if (p.hasVariants && updatedVariants) {
-          await updateInventory(p.id, {
-            variants: updatedVariants,
+      const commitSale = async () => {
+        const saved = await addSale(saleRecord);
+        if (paymentMethod === 'credit' && selectedCustomer) {
+          await addCredit({
+            customerId: selectedCustomer.id,
+            customerName: selectedCustomer.name,
+            phone: selectedCustomer.phone,
+            amount: dueAmount,
+            paidAmount: 0,
+            description: `POS sale • ${cart.length} item${cart.length !== 1 ? 's' : ''}`,
+            date: new Date().toISOString(),
+            dueDate: null,
+            status: 'pending',
+            paidAt: null,
+            notes: paidNow > 0 ? `Paid ${format(paidNow)} at checkout` : 'Full credit sale',
+            sourceSaleId: saved.id,
+            payments: [],
           });
         }
-      }
+
+        for (const [productId, requestedQuantity] of requestedByProduct) {
+          const p = inventoryById.get(productId);
+          if (!p) continue;
+
+          const productBatchDeductions = batchDeductionsByProduct.get(productId) ?? new Map<string, number>();
+
+          const updatedVariants = p.variants?.map(variant => ({
+            ...variant,
+            quantity: Math.max(0, variant.quantity - (requestedByVariant.get(`${p.id}::${variant.name}`) ?? 0)),
+          }));
+
+          const mutations = {
+            inventory: { items: inventory, update: updateInventory },
+            locationStocks: { items: locationStocks, update: updateLocationStock, add: addLocationStock as any },
+            batches: { items: batches, update: updateBatch },
+            batchLocations: { items: batchLocations, update: updateBatchLocation, add: addBatchLocation as any },
+          };
+
+          if (productBatchDeductions.size > 0) {
+            for (const [batchId, deductionQuantity] of productBatchDeductions) {
+              await InventoryLedgerService.adjustStock(productId, 'loc-default', -deductionQuantity, mutations, {
+                batchId,
+              });
+            }
+          } else {
+            await InventoryLedgerService.adjustStock(productId, 'loc-default', -requestedQuantity, mutations);
+          }
+
+          if (p.hasVariants && updatedVariants) {
+            await updateInventory(p.id, {
+              variants: updatedVariants,
+            });
+          }
+        }
+
+        await FinancialPostingService.postSale(storage, {
+          id: saved.id,
+          date: saved.date,
+          grandTotal: saved.grandTotal,
+          paidAmount: saved.paidAmount,
+          paymentMethod: saved.paymentMethod,
+          splitPayments: saved.splitPayments,
+          customerId: saved.customerId,
+          locationId: 'loc-default',
+        });
+        return saved;
+      };
+      const savedSale = storage.transaction
+        ? await storage.transaction([
+          'sales', 'credit', 'inventory', 'inventoryLocationStocks', 'productBatches',
+          'productBatchLocations', 'financialAccounts', 'financialTransactions', 'financialMovements',
+        ], 'rw', commitSale)
+        : await commitSale();
 
       toast.success(paymentMethod === 'credit'
         ? `Sale saved • ${format(dueAmount)} added to credit`
