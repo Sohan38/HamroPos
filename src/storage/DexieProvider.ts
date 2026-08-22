@@ -90,14 +90,55 @@ export class DexieProvider implements IStorageProvider {
 
   /** Write-through memory cache — same zero-latency read pattern as before */
   private readonly memCache = new Map<string, StorageRecord[]>();
+  private cachedSettings: any = null;
 
   private defaultLocationInitPromise: Promise<void> | null = null;
   private defaultBatchAllocationsInitPromise: Promise<void> | null = null;
   private defaultLocationStocksInitPromise: Promise<void> | null = null;
 
+  private pendingNotificationKeys = new Set<string>();
+  private notificationDebounceTimer: any = null;
+
+  private scheduleNotification(key?: string) {
+    if (typeof window === 'undefined') return;
+    if (key) {
+      this.pendingNotificationKeys.add(key);
+    }
+    if (this.notificationDebounceTimer) return;
+    this.notificationDebounceTimer = setTimeout(() => {
+      this.notificationDebounceTimer = null;
+      this.flushNotifications();
+    }, 10);
+  }
+
+  private flushNotifications() {
+    if (typeof window === 'undefined') return;
+    const keys = Array.from(this.pendingNotificationKeys);
+    this.pendingNotificationKeys.clear();
+    if (keys.length === 0) {
+      window.dispatchEvent(new CustomEvent('sohan-storage-changed', { detail: {} }));
+    } else {
+      for (const key of keys) {
+        window.dispatchEvent(new CustomEvent('sohan-storage-changed', { detail: { key } }));
+      }
+    }
+  }
+
   private notifyStorageChanged(key?: string) {
     if (typeof window === 'undefined') return;
-    window.dispatchEvent(new CustomEvent('sohan-storage-changed', { detail: { key } }));
+    const currentTx = Dexie.currentTransaction;
+    if (currentTx) {
+      if (key) this.pendingNotificationKeys.add(key);
+      try {
+        currentTx.on('complete', () => {
+          this.scheduleNotification();
+        });
+      } catch {
+        this.scheduleNotification(key);
+      }
+      return;
+    }
+    this.scheduleNotification(key);
   }
 
   private table(key: string): Table<StorageRecord, string> {
@@ -274,6 +315,7 @@ export class DexieProvider implements IStorageProvider {
   }
 
   private async ensureDefaultLocation(): Promise<void> {
+    if (Dexie.currentTransaction) return;
     if (this.defaultLocationInitPromise) {
       return this.defaultLocationInitPromise;
     }
@@ -316,6 +358,7 @@ export class DexieProvider implements IStorageProvider {
   }
 
   private async ensureDefaultBatchAllocations(): Promise<void> {
+    if (Dexie.currentTransaction) return;
     if (this.defaultBatchAllocationsInitPromise) {
       return this.defaultBatchAllocationsInitPromise;
     }
@@ -368,6 +411,7 @@ export class DexieProvider implements IStorageProvider {
   }
 
   private async ensureDefaultLocationStocks(): Promise<void> {
+    if (Dexie.currentTransaction) return;
     if (this.defaultLocationStocksInitPromise) {
       return this.defaultLocationStocksInitPromise;
     }
@@ -471,14 +515,16 @@ export class DexieProvider implements IStorageProvider {
   }
 
   async get<T extends StorageRecord>(key: string): Promise<T[]> {
-    if (key === 'productBatchLocations') {
-      await this.ensureDefaultBatchAllocations();
-    }
-    if (key === 'inventoryLocationStocks') {
-      await this.ensureDefaultLocationStocks();
-    }
     if (this.memCache.has(key)) {
       return this.memCache.get(key) as T[];
+    }
+    if (!Dexie.currentTransaction) {
+      if (key === 'productBatchLocations') {
+        await this.ensureDefaultBatchAllocations();
+      }
+      if (key === 'inventoryLocationStocks') {
+        await this.ensureDefaultLocationStocks();
+      }
     }
     try {
       const rows = await this.table(key).toArray();
@@ -491,6 +537,9 @@ export class DexieProvider implements IStorageProvider {
   }
 
   async getSettings(): Promise<any> {
+    if (this.cachedSettings) {
+      return this.cachedSettings;
+    }
     try {
       const row = await db.settings.get('settings');
       if (row?.value && typeof row.value === 'object') {
@@ -514,17 +563,22 @@ export class DexieProvider implements IStorageProvider {
         if (!settings.defaultLocationId) {
           settings.defaultLocationId = defaults.defaultLocationId;
         }
+        this.cachedSettings = settings;
         return settings;
       }
     } catch (error) {
       console.error('[DexieProvider] getSettings failed:', error);
     }
     const settings = { ...this.defaultSettings };
-    await this.ensureDefaultLocation();
+    if (!Dexie.currentTransaction) {
+      await this.ensureDefaultLocation();
+    }
+    this.cachedSettings = settings;
     return settings;
   }
 
   async saveSettings(settings: any): Promise<void> {
+    this.cachedSettings = settings;
     try {
       await db.settings.put({ key: 'settings', value: settings });
     } catch (error) {

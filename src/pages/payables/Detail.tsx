@@ -119,7 +119,7 @@ export default function PayableDetail() {
         });
       };
       if (storage.transaction) {
-        await storage.transaction(['purchases', 'expenses', 'financialAccounts', 'financialTransactions', 'financialMovements'], 'rw', commit);
+        await storage.transaction(['purchases', 'expenses', 'financialAccounts', 'financialTransactions', 'financialMovements', 'settings'], 'rw', commit);
       } else {
         await commit();
       }

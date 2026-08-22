@@ -580,7 +580,7 @@ export async function createPurchase(storage: IStorageProvider, input: PurchaseI
         return persistTransition(storage, null, candidate, latestPurchases);
     };
     return storage.transaction
-        ? storage.transaction(['purchases', 'inventory', 'productBatches', 'inventoryLocationStocks', 'productBatchLocations', 'financialAccounts', 'financialTransactions', 'financialMovements'], 'rw', commit)
+        ? storage.transaction(['purchases', 'inventory', 'productBatches', 'inventoryLocationStocks', 'productBatchLocations', 'financialAccounts', 'financialTransactions', 'financialMovements', 'locations', 'settings'], 'rw', commit)
         : commit();
 }
 
@@ -591,7 +591,7 @@ export async function patchPurchase(storage: IStorageProvider, id: string, updat
     const candidate = makePurchase({ ...previous, ...updates, id } as PurchaseInput, previous);
     const commit = () => persistTransition(storage, previous, candidate, purchases);
     return storage.transaction
-        ? storage.transaction(['purchases', 'inventory', 'productBatches', 'inventoryLocationStocks', 'productBatchLocations', 'financialAccounts', 'financialTransactions', 'financialMovements'], 'rw', commit)
+        ? storage.transaction(['purchases', 'inventory', 'productBatches', 'inventoryLocationStocks', 'productBatchLocations', 'financialAccounts', 'financialTransactions', 'financialMovements', 'locations', 'settings'], 'rw', commit)
         : commit();
 }
 
@@ -625,7 +625,7 @@ export async function patchPurchaseFinancial(storage: IStorageProvider, id: stri
         return candidate;
     };
     return storage.transaction
-        ? storage.transaction(['purchases', 'financialAccounts', 'financialTransactions', 'financialMovements'], 'rw', commit)
+        ? storage.transaction(['purchases', 'financialAccounts', 'financialTransactions', 'financialMovements', 'settings'], 'rw', commit)
         : commit();
 }
 
@@ -636,7 +636,7 @@ export async function updatePurchase(storage: IStorageProvider, id: string, inpu
     const candidate = makePurchase({ ...input, id }, previous);
     const commit = () => persistTransition(storage, previous, candidate, purchases);
     return storage.transaction
-        ? storage.transaction(['purchases', 'inventory', 'productBatches', 'inventoryLocationStocks', 'productBatchLocations', 'financialAccounts', 'financialTransactions', 'financialMovements'], 'rw', commit)
+        ? storage.transaction(['purchases', 'inventory', 'productBatches', 'inventoryLocationStocks', 'productBatchLocations', 'financialAccounts', 'financialTransactions', 'financialMovements', 'locations', 'settings'], 'rw', commit)
         : commit();
 }
 
@@ -653,6 +653,6 @@ export async function deletePurchase(storage: IStorageProvider, id: string) {
     };
     const commit = () => persistTransition(storage, previous, candidate, purchases);
     return storage.transaction
-        ? storage.transaction(['purchases', 'inventory', 'productBatches', 'inventoryLocationStocks', 'productBatchLocations', 'financialAccounts', 'financialTransactions', 'financialMovements'], 'rw', commit)
+        ? storage.transaction(['purchases', 'inventory', 'productBatches', 'inventoryLocationStocks', 'productBatchLocations', 'financialAccounts', 'financialTransactions', 'financialMovements', 'locations', 'settings'], 'rw', commit)
         : commit();
 }

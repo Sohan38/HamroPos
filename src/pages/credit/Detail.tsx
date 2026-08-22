@@ -128,7 +128,7 @@ export default function CreditDetail() {
         });
       };
       if (storage.transaction) {
-        await storage.transaction(['credit', 'financialAccounts', 'financialTransactions', 'financialMovements'], 'rw', commit);
+        await storage.transaction(['credit', 'financialAccounts', 'financialTransactions', 'financialMovements', 'settings'], 'rw', commit);
       } else {
         await commit();
       }

@@ -602,7 +602,7 @@ export default function SalesPos() {
           }
         }
 
-        await FinancialPostingService.postSale(storage, {
+        await FinancialPostingService.postSaleInTransaction(storage, {
           id: saved.id,
           date: saved.date,
           grandTotal: saved.grandTotal,
@@ -619,6 +619,7 @@ export default function SalesPos() {
         ? await storage.transaction([
           'sales', 'credit', 'inventory', 'inventoryLocationStocks', 'productBatches',
           'productBatchLocations', 'financialAccounts', 'financialTransactions', 'financialMovements',
+          'locations', 'settings',
         ], 'rw', commitSale)
         : await commitSale();
 

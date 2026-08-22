@@ -28,14 +28,24 @@ export function createStorageContext<T extends { id: string }>(key: string) {
         const activeItems = data.filter((i: any) => !i.deletedAt);
         setItems(activeItems);
         setLoading(false);
+      }).catch((err) => {
+        console.error(`[StorageContext:${key}] refresh failed:`, err);
       });
     }, [storage]);
+
+    const scheduleRefresh = useCallback(() => {
+      // Defer reactive reads until any surrounding IndexedDB transaction has committed.
+      setTimeout(refresh, 0);
+    }, [refresh]);
 
     useEffect(() => {
       refresh();
 
-      const handleStorageChanged = () => {
-        refresh();
+      const handleStorageChanged = (e: Event) => {
+        const customEvent = e as CustomEvent;
+        if (!customEvent.detail?.key || customEvent.detail.key === key) {
+          scheduleRefresh();
+        }
       };
 
       if (typeof window !== 'undefined') {
@@ -47,7 +57,7 @@ export function createStorageContext<T extends { id: string }>(key: string) {
           window.removeEventListener('sohan-storage-changed', handleStorageChanged);
         }
       };
-    }, [refresh]);
+    }, [refresh, scheduleRefresh]);
 
     const add = useCallback(async (item: any) => {
       const newItem = {
@@ -55,17 +65,17 @@ export function createStorageContext<T extends { id: string }>(key: string) {
         ...item,
       };
       await storage.save(key, newItem);
-      refresh();
+      scheduleRefresh();
       return newItem;
-    }, [storage, refresh]);
+    }, [storage, scheduleRefresh]);
 
     const update = useCallback(async (id: string, updates: Partial<T>) => {
       const current = await storage.getById<any>(key, id);
       if (current) {
         await storage.save(key, { ...current, ...updates });
-        refresh();
+        scheduleRefresh();
       }
-    }, [storage, refresh]);
+    }, [storage, scheduleRefresh]);
 
     const remove = useCallback(async (id: string) => {
       const errorMsg = await validateDeletionConstraints(key, id, storage);
@@ -88,13 +98,13 @@ export function createStorageContext<T extends { id: string }>(key: string) {
         }
       }
 
-      refresh();
-    }, [storage, refresh]);
+      scheduleRefresh();
+    }, [storage, scheduleRefresh]);
 
     const undoRemove = useCallback(async (id: string) => {
       await storage.undoSoftDelete(key, id);
-      refresh();
-    }, [storage, refresh]);
+      scheduleRefresh();
+    }, [storage, scheduleRefresh]);
 
     const hardRemove = useCallback(async (id: string) => {
       const errorMsg = await validateDeletionConstraints(key, id, storage);
@@ -117,8 +127,8 @@ export function createStorageContext<T extends { id: string }>(key: string) {
         }
       }
 
-      refresh();
-    }, [storage, refresh]);
+      scheduleRefresh();
+    }, [storage, scheduleRefresh]);
 
     return (
       <Context.Provider value={{ items, loading, add, update, remove, undoRemove, hardRemove, refresh }}>

@@ -139,7 +139,7 @@ export class FinancialPostingService {
         }
     }
 
-    static async postSale(
+    private static async buildSalePosting(
         storage: IStorageProvider,
         sale: {
             id: string;
@@ -153,6 +153,7 @@ export class FinancialPostingService {
             invoiceNumber?: string | null;
             customerName?: string | null;
         },
+        inTransaction = false,
     ) {
         await this.ensureDefaultAccounts(storage);
         const movements: FinancialMovementInput[] = [];
@@ -187,7 +188,7 @@ export class FinancialPostingService {
             }
         }
 
-        return this.post(storage, {
+        const posting: PostFinancialTransactionInput = {
             date: sale.date,
             type: sale.paymentMethod === 'credit' ? 'customer_credit' : 'sale_payment',
             description: `Sale${sale.invoiceNumber ? ` ${sale.invoiceNumber}` : ''}${sale.customerName ? ` · ${sale.customerName}` : ''}`,
@@ -196,7 +197,24 @@ export class FinancialPostingService {
             idempotencyKey: `sale:${sale.id}:payment`,
             locationId: sale.locationId ?? null,
             movements,
-        });
+        };
+        return inTransaction ? postWithinTransaction(storage, posting) : this.post(storage, posting);
+    }
+
+    static async postSale(
+        storage: IStorageProvider,
+        sale: Parameters<typeof FinancialPostingService.buildSalePosting>[1],
+    ) {
+        await this.ensureDefaultAccounts(storage);
+        return this.buildSalePosting(storage, sale);
+    }
+
+    static async postSaleInTransaction(
+        storage: IStorageProvider,
+        sale: Parameters<typeof FinancialPostingService.buildSalePosting>[1],
+    ) {
+        await this.ensureDefaultAccounts(storage);
+        return this.buildSalePosting(storage, sale, true);
     }
 
     static async postExpense(storage: IStorageProvider, expense: {
@@ -358,7 +376,7 @@ export class FinancialPostingService {
     ): Promise<FinancialTransaction> {
         const work = () => postWithinTransaction(storage, input);
         if (storage.transaction) {
-            return storage.transaction([TRANSACTIONS_KEY, MOVEMENTS_KEY, ACCOUNTS_KEY], 'rw', work);
+            return storage.transaction([TRANSACTIONS_KEY, MOVEMENTS_KEY, ACCOUNTS_KEY, 'settings'], 'rw', work);
         }
         return work();
     }
