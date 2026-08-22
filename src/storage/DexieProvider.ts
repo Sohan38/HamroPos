@@ -150,15 +150,23 @@ export class DexieProvider implements IStorageProvider {
   async set<T extends StorageRecord>(key: string, data: T[]): Promise<void> {
     this.memCache.set(key, data as StorageRecord[]);
     try {
-      await db.transaction('rw', this.table(key), async () => {
+      if (Dexie.currentTransaction) {
         await this.table(key).clear();
         if (data.length > 0) {
           await this.table(key).bulkPut(data as StorageRecord[]);
         }
-      });
+      } else {
+        await db.transaction('rw', this.table(key), async () => {
+          await this.table(key).clear();
+          if (data.length > 0) {
+            await this.table(key).bulkPut(data as StorageRecord[]);
+          }
+        });
+      }
       this.notifyStorageChanged(key);
     } catch (error) {
       console.error(`[DexieProvider] set("${key}") failed:`, error);
+      throw error;
     }
   }
 

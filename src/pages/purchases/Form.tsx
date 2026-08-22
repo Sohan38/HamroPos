@@ -12,7 +12,28 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Save, PackagePlus, Trash2, AlertCircle, Truck, X } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
+import { Badge } from '@/components/ui/badge';
+import {
+  ArrowLeft,
+  Save,
+  PackagePlus,
+  Trash2,
+  AlertCircle,
+  Truck,
+  X,
+  CheckCircle2,
+  FileText,
+  PlusCircle,
+  ArrowRight,
+  Boxes,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { PurchaseItem, PurchasePaymentStatus, PurchaseStatus } from '@/types';
 import { createPurchase, updatePurchase } from '@/services/purchaseService';
@@ -68,6 +89,28 @@ export default function PurchaseForm() {
   const [supplierDialogOpen, setSupplierDialogOpen] = useState(false);
   const [supplierPresetName, setSupplierPresetName] = useState('');
   const [saving, setSaving] = useState(false);
+
+  const [savedPurchase, setSavedPurchase] = useState<any>(null);
+
+  function handleRecordAnother() {
+    setSavedPurchase(null);
+    setItems([]);
+    setDiscount('0');
+    setTax('0');
+    setPaidAmount('0');
+    setNotes('');
+    setReferenceNumber('');
+    setPaymentStatus('unpaid');
+    setPaymentMethod('cash');
+    if (selectedSupplier) {
+      const generated = generateSupplierInvoiceNumber(purchases, selectedSupplier.name, purchaseDate);
+      setInvoiceNumber(generated);
+    } else {
+      setInvoiceNumber('');
+      setSupplierId('');
+    }
+    toast.info('Form ready for new purchase');
+  }
 
   useEffect(() => {
     if (productIdFromQuery && !items.some(item => item.productId === productIdFromQuery)) {
@@ -151,39 +194,33 @@ export default function PurchaseForm() {
       return;
     }
 
-    const existingIndex = items.findIndex(item => item.productId === product.id);
-    if (existingIndex >= 0) {
-      updateItem(existingIndex, 'quantity', Number(items[existingIndex].quantity) + 1);
-    } else {
-      const supplierCost = product.supplierStocks?.find(record => record.supplierId === supplierId && (record.locationId || 'loc-default') === 'loc-default')?.cost;
-      const purchaseRate = supplierCost ?? product.purchaseRate ?? 0;
-      const defaultVariantName = product.hasVariants && product.variants?.length
-        ? product.variants[0]?.name ?? ''
-        : undefined;
-      const defaultBatchNumber = product.hasExpiry
-        ? generateBatchNumber([...existingBatches, ...items.map(item => ({ batchNumber: item.batchNumber }))], {
-          productName: product.name,
-          supplierName: selectedSupplier?.name ?? '',
-          date: purchaseDate,
-        })
-        : '';
+    const isBatchesEnabled = true;
+    // Pick latest cost from product supplierStocks for this supplier, or fallback to product.purchaseRate
+    const supplierStockEntry = product.supplierStocks?.find(ss => ss.supplierId === supplierId);
+    const initialRate = supplierStockEntry?.cost && supplierStockEntry.cost > 0
+      ? supplierStockEntry.cost
+      : (product.purchaseRate || 0);
 
-      setItems(current => [...current, {
+    const defaultExpiryMonths = product.hasExpiry ? 12 : null;
+    const defaultManufacturingDate = product.hasExpiry ? today() : null;
+    const defaultExpiryDate = product.hasExpiry ? getComputedExpiryDate(defaultManufacturingDate, defaultExpiryMonths) : null;
+
+    setItems(prev => [
+      ...prev,
+      {
         productId: product.id,
         productName: product.name,
         quantity: 1,
-        purchaseRate,
-        subtotal: purchaseRate,
-        initialPurchaseRate: purchaseRate,
-        variantName: defaultVariantName,
-        batchNumber: defaultBatchNumber,
-        expiryMode: product.hasExpiry ? 'manual' : undefined,
-        manufacturingDate: null,
-        expiryMonths: null,
-        expiryDate: null,
-        notes: '',
-      }]);
-    }
+        purchaseRate: initialRate,
+        initialPurchaseRate: initialRate,
+        subtotal: initialRate,
+        batchNumber: product.hasExpiry || isBatchesEnabled ? generateBatchNumber([...existingBatches, ...prev.map(item => ({ batchNumber: item.batchNumber }))], { productName: product.name, supplierName: selectedSupplier?.name ?? '', date: purchaseDate }) : undefined,
+        manufacturingDate: defaultManufacturingDate,
+        expiryMonths: defaultExpiryMonths,
+        expiryDate: defaultExpiryDate,
+        expiryMode: product.hasExpiry ? 'months' : undefined,
+      },
+    ]);
   }
 
   function addItemById(productId: string) {
@@ -224,18 +261,16 @@ export default function PurchaseForm() {
     setLocation(`/inventory/new?supplierId=${encodeURIComponent(supplierId)}&returnTo=${returnTo}`);
   }
 
-  function getValidatedPaymentState() {
-    const normalizedPaidAmount = Math.max(0, Number(paidAmount) || 0);
-    const normalizedGrandTotal = Math.max(0, grandTotal);
+  function getValidatedPaymentState(): { paymentStatus: PurchasePaymentStatus; paidAmount: number } {
+    const normalizedGrandTotal = Number(grandTotal) || 0;
+    const parsedPaidAmount = Number(paidAmount) || 0;
 
     if (paymentStatus === 'partial') {
+      const normalizedPaidAmount = Math.min(Math.max(0, parsedPaidAmount), normalizedGrandTotal);
       if (normalizedPaidAmount <= 0) {
-        throw new Error('Partial payments must be greater than zero.');
+        return { paymentStatus: 'unpaid' as PurchasePaymentStatus, paidAmount: 0 };
       }
-      if (normalizedPaidAmount > normalizedGrandTotal) {
-        throw new Error('Paid amount cannot exceed the invoice total.');
-      }
-      if (normalizedPaidAmount === normalizedGrandTotal) {
+      if (normalizedPaidAmount >= normalizedGrandTotal && normalizedGrandTotal > 0) {
         return { paymentStatus: 'paid' as PurchasePaymentStatus, paidAmount: normalizedGrandTotal };
       }
       return { paymentStatus: 'partial' as PurchasePaymentStatus, paidAmount: normalizedPaidAmount };
@@ -342,18 +377,157 @@ export default function PurchaseForm() {
         status,
       } as any;
 
-      if (isNew) await createPurchase(storage, payload);
-      else if (existing) await updatePurchase(storage, existing.id, payload);
-      refreshPurchases();
-      refreshInventory();
-      refreshBatches();
-      toast.success(status === 'received' ? 'Purchase received and inventory updated' : 'Purchase saved as draft');
-      setLocation('/purchases');
+      if (isNew) {
+        const saved = await createPurchase(storage, payload);
+        refreshPurchases();
+        refreshInventory();
+        refreshBatches();
+        toast.success(status === 'received' ? 'Purchase received and inventory updated' : 'Purchase saved as draft');
+        setSavedPurchase(saved);
+      } else if (existing) {
+        await updatePurchase(storage, existing.id, payload);
+        refreshPurchases();
+        refreshInventory();
+        refreshBatches();
+        toast.success('Purchase updated successfully');
+        setLocation(`/purchases/${existing.id}`);
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Unable to save purchase');
     } finally {
       setSaving(false);
     }
+  }
+
+  if (savedPurchase) {
+    const purchaseLocation = savedPurchase.locationId
+      ? locations.find(loc => loc.id === savedPurchase.locationId)?.name
+      : 'Main Location';
+    const isPaid = savedPurchase.paymentStatus === 'paid';
+    const isPartial = savedPurchase.paymentStatus === 'partial';
+
+    return (
+      <div className="p-4 md:p-6 space-y-6 max-w-2xl mx-auto pb-28 md:pb-8 animate-in fade-in zoom-in-95 duration-200">
+        <div className="text-center space-y-3 pt-4">
+          <div className="mx-auto size-16 rounded-full bg-emerald-100 dark:bg-emerald-950/70 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shadow-sm">
+            <CheckCircle2 className="size-9" />
+          </div>
+          <div>
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
+              {savedPurchase.status === 'received' ? 'Purchase Received & Inwarded' : 'Purchase Draft Saved'}
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              Stock, batch allocations, and financial daybook movements have been recorded.
+            </p>
+          </div>
+        </div>
+
+        <Card className="shadow-sm border-emerald-500/20 bg-gradient-to-b from-card to-emerald-500/5">
+          <CardContent className="p-5 md:p-6 space-y-4">
+            <div className="flex items-center justify-between border-b pb-3">
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Invoice Number</p>
+                <p className="text-lg font-bold font-mono text-primary">{savedPurchase.invoiceNumber || '—'}</p>
+              </div>
+              <Badge variant={savedPurchase.status === 'received' ? 'default' : 'secondary'} className="capitalize">
+                {savedPurchase.status}
+              </Badge>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
+              <div>
+                <span className="text-xs text-muted-foreground block">Supplier</span>
+                <span className="font-semibold">{selectedSupplier?.name ?? savedPurchase.supplierName ?? '—'}</span>
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground block">Receiving Location</span>
+                <span className="font-semibold">{purchaseLocation}</span>
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground block">Date</span>
+                <span className="font-semibold">{formatDate(parseISO(savedPurchase.date), 'dd MMM yyyy')}</span>
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground block">Payment Status</span>
+                <Badge variant={isPaid ? 'default' : isPartial ? 'outline' : 'secondary'} className="capitalize mt-0.5">
+                  {savedPurchase.paymentStatus} ({savedPurchase.paymentMethod})
+                </Badge>
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground block">Paid Amount</span>
+                <span className="font-semibold">{format(savedPurchase.paidAmount)}</span>
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground block">Total Amount</span>
+                <span className="font-bold text-base text-primary">{format(savedPurchase.grandTotal)}</span>
+              </div>
+            </div>
+
+            <div className="border-t pt-3 space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Received Products ({savedPurchase.items?.length || 0})
+              </p>
+              <div className="divide-y rounded-lg border bg-background/60 max-h-48 overflow-y-auto">
+                {savedPurchase.items?.map((item: any, idx: number) => (
+                  <div key={idx} className="p-2.5 px-3 flex justify-between items-center text-sm">
+                    <div>
+                      <p className="font-medium">{item.productName}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {item.quantity} qty × {format(item.purchaseRate)}
+                        {item.batchNumber && <span className="ml-2">· Batch: {item.batchNumber}</span>}
+                      </p>
+                    </div>
+                    <span className="font-semibold">{format(item.subtotal)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* ── Professional Next-Step Actions ─── */}
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Button
+              size="lg"
+              className="w-full font-semibold shadow-sm"
+              onClick={() => setLocation(`/purchases/${savedPurchase.id}`)}
+            >
+              <FileText className="size-4 mr-2" />
+              View Purchase Invoice & GRN
+            </Button>
+            <Button
+              size="lg"
+              variant="secondary"
+              className="w-full font-semibold"
+              onClick={handleRecordAnother}
+            >
+              <PlusCircle className="size-4 mr-2" />
+              Record Another Purchase
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Button
+              variant="outline"
+              className="w-full text-xs sm:text-sm"
+              onClick={() => setLocation('/inventory')}
+            >
+              <Boxes className="size-4 mr-1.5" />
+              View Inventory Stock
+            </Button>
+            <Button
+              variant="ghost"
+              className="w-full text-xs sm:text-sm"
+              onClick={() => setLocation('/purchases')}
+            >
+              Purchases List
+              <ArrowRight className="size-4 ml-1.5" />
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
