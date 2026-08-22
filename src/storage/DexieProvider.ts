@@ -227,7 +227,7 @@ export class DexieProvider implements IStorageProvider {
   }
 
   async transaction<T>(storeKeys: string[], mode: 'rw' | 'r', callback: () => Promise<T>): Promise<T> {
-    if (storeKeys.length === 0) return callback();
+    if (storeKeys.length === 0 || Dexie.currentTransaction) return callback();
     const tables = storeKeys.map((key) => this.table(key));
     return db.transaction(mode, tables, callback);
   }

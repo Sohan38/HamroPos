@@ -354,14 +354,23 @@ export default function AccountsList() {
     setOpeningBalanceDialogOpen(true);
   };
 
-  // Save Opening Balance Posting
+  // Save Opening Balance / Target Balance Posting
   const handleSaveOpeningBalance = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedAccountForAction) return;
 
-    const amount = Number(balanceAmount);
-    if (isNaN(amount)) {
-      toast.error('Please enter a valid amount.');
+    const targetAmount = Number(balanceAmount);
+    if (isNaN(targetAmount)) {
+      toast.error('Please enter a valid target balance.');
+      return;
+    }
+
+    const currentBalance = accountBalancesMap.get(selectedAccountForAction.id) ?? 0;
+    const delta = Number((targetAmount - currentBalance).toFixed(2));
+
+    if (Math.abs(delta) < 0.0001) {
+      toast.info(`Balance for ${selectedAccountForAction.name} is already ${format(targetAmount)}`);
+      setOpeningBalanceDialogOpen(false);
       return;
     }
 
@@ -371,15 +380,15 @@ export default function AccountsList() {
         id: uuidv4(),
         date: new Date(`${balanceDate}T${new Date().toLocaleTimeString('en-GB')}`).toISOString(),
         accountId: selectedAccountForAction.id,
-        amount,
-        description: `Opening balance / baseline adjustment for ${selectedAccountForAction.name}${balanceNotes ? ` · ${balanceNotes}` : ''}`,
+        amount: delta,
+        description: `Balance adjustment for ${selectedAccountForAction.name} (${format(currentBalance)} ➔ ${format(targetAmount)})${balanceNotes ? ` · ${balanceNotes}` : ''}`,
       });
 
-      toast.success(`Opening balance posted for ${selectedAccountForAction.name}`);
+      toast.success(`Balance updated to ${format(targetAmount)} for ${selectedAccountForAction.name}`);
       setOpeningBalanceDialogOpen(false);
       await loadData();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to post opening balance');
+      toast.error(err instanceof Error ? err.message : 'Failed to adjust balance');
     } finally {
       setSavingBalance(false);
     }
@@ -957,8 +966,34 @@ export default function AccountsList() {
           </DialogHeader>
 
           <form onSubmit={handleSaveOpeningBalance} className="space-y-4 pt-2">
+            {selectedAccountForAction && (
+              <div className="p-3 bg-muted/40 rounded-xl border space-y-1.5 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Current Balance:</span>
+                  <span className="font-bold text-foreground">
+                    {format(accountBalancesMap.get(selectedAccountForAction.id) ?? 0)}
+                  </span>
+                </div>
+                {!isNaN(Number(balanceAmount)) && (
+                  <div className="flex justify-between border-t pt-1.5 font-medium">
+                    <span className="text-muted-foreground">Adjustment Delta:</span>
+                    <span
+                      className={
+                        (Number(balanceAmount) - (accountBalancesMap.get(selectedAccountForAction.id) ?? 0)) >= 0
+                          ? 'text-emerald-600 font-bold'
+                          : 'text-rose-600 font-bold'
+                      }
+                    >
+                      {(Number(balanceAmount) - (accountBalancesMap.get(selectedAccountForAction.id) ?? 0)) >= 0 ? '+' : ''}
+                      {format(Number(balanceAmount) - (accountBalancesMap.get(selectedAccountForAction.id) ?? 0))}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="space-y-2">
-              <label className="text-xs font-medium">Starting Amount *</label>
+              <label className="text-xs font-medium">New Target Balance *</label>
               <Input
                 type="number"
                 step="0.01"
@@ -968,6 +1003,9 @@ export default function AccountsList() {
                 required
                 className="text-lg font-bold"
               />
+              <p className="text-[11px] text-muted-foreground">
+                Enter the exact amount this account should have right now.
+              </p>
             </div>
 
             <div className="space-y-2">
