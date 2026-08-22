@@ -9,36 +9,38 @@ export default defineConfig(({ mode }) => {
   const port = Number(env.PORT || 5173);
 
   return {
-    base: '/',
+    base: mode === 'electron' ? './' : '/',
     plugins: [
       react(),
       tailwindcss(),
-      VitePWA({
-        registerType: 'autoUpdate',
-        manifest: {
-          name: 'Sohan Manager',
-          short_name: 'Sohan',
-          description: 'Business Management App',
-          theme_color: '#0d6e8a',
-          background_color: '#ffffff',
-          display: 'standalone',
-          orientation: 'portrait',
-          start_url: '/',
-          icons: [
-            { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
-            { src: '/icon-512.png', sizes: '512x512', type: 'image/png' },
-          ],
-        },
-        workbox: {
-          globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-          runtimeCaching: [
-            {
-              urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*$/i,
-              handler: 'CacheFirst',
-            },
-          ],
-        },
-      }),
+      ...(mode !== 'electron' ? [
+        VitePWA({
+          registerType: 'autoUpdate',
+          manifest: {
+            name: 'Sohan Manager',
+            short_name: 'Sohan',
+            description: 'Business Management App',
+            theme_color: '#0d6e8a',
+            background_color: '#ffffff',
+            display: 'standalone',
+            orientation: 'portrait',
+            start_url: '/',
+            icons: [
+              { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+              { src: '/icon-512.png', sizes: '512x512', type: 'image/png' },
+            ],
+          },
+          workbox: {
+            globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+            runtimeCaching: [
+              {
+                urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*$/i,
+                handler: 'CacheFirst',
+              },
+            ],
+          },
+        })
+      ] : []),
     ],
     resolve: {
       alias: {
