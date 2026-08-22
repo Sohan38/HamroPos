@@ -375,14 +375,23 @@ export class FinancialPostingService {
         storage: IStorageProvider,
         input: PostFinancialTransactionInput,
     ): Promise<FinancialTransaction> {
-        const work = () => postWithinTransaction(storage, input);
+        const work = async () => {
+            console.log('[FinancialPost] work() START', input.idempotencyKey);
+            const result = await postWithinTransaction(storage, input);
+            console.log('[FinancialPost] work() END', input.idempotencyKey);
+            return result;
+        };
         // If already inside a Dexie transaction (e.g. called from purchaseService.persistTransition),
         // run directly — opening a nested storage.transaction() causes the outer promise to hang.
         if (Dexie.currentTransaction) {
+            console.log('[FinancialPost] Running inside existing transaction');
             return work();
         }
         if (storage.transaction) {
-            return storage.transaction([TRANSACTIONS_KEY, MOVEMENTS_KEY, ACCOUNTS_KEY, 'settings'], 'rw', work);
+            console.log('[FinancialPost] Opening new transaction for', input.idempotencyKey);
+            const result = await storage.transaction([TRANSACTIONS_KEY, MOVEMENTS_KEY, ACCOUNTS_KEY, 'settings'], 'rw', work);
+            console.log('[FinancialPost] Transaction resolved for', input.idempotencyKey);
+            return result;
         }
         return work();
     }

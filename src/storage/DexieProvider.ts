@@ -227,9 +227,20 @@ export class DexieProvider implements IStorageProvider {
   }
 
   async transaction<T>(storeKeys: string[], mode: 'rw' | 'r', callback: () => Promise<T>): Promise<T> {
-    if (storeKeys.length === 0 || Dexie.currentTransaction) return callback();
+    if (storeKeys.length === 0 || Dexie.currentTransaction) {
+      console.log('[DexieProvider.transaction] Skipping (empty keys or already in tx). keys:', storeKeys, 'inTx:', !!Dexie.currentTransaction);
+      return callback();
+    }
     const tables = storeKeys.map((key) => this.table(key));
-    return db.transaction(mode, tables, callback);
+    console.log('[DexieProvider.transaction] Opening db.transaction for tables:', storeKeys);
+    try {
+      const result = await db.transaction(mode, tables, callback);
+      console.log('[DexieProvider.transaction] db.transaction resolved');
+      return result;
+    } catch (err) {
+      console.error('[DexieProvider.transaction] db.transaction FAILED:', err);
+      throw err;
+    }
   }
 
   async softDelete(key: string, id: string): Promise<void> {
