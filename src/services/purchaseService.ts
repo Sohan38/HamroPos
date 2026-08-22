@@ -566,7 +566,19 @@ async function persistTransition(
 export async function createPurchase(storage: IStorageProvider, input: PurchaseInput) {
     const purchases = await storage.get<PurchaseInvoice>('purchases');
     const candidate = makePurchase(input);
-    const commit = () => persistTransition(storage, null, candidate, purchases);
+    const commit = async () => {
+        const latestPurchases = await storage.get<PurchaseInvoice>('purchases');
+        const invoiceNumber = candidate.invoiceNumber.trim();
+        if (invoiceNumber) {
+            const existing = latestPurchases.find(purchase =>
+                active(purchase) &&
+                purchase.supplierId === candidate.supplierId &&
+                purchase.invoiceNumber.trim() === invoiceNumber
+            );
+            if (existing) return existing;
+        }
+        return persistTransition(storage, null, candidate, latestPurchases);
+    };
     return storage.transaction
         ? storage.transaction(['purchases', 'inventory', 'productBatches', 'inventoryLocationStocks', 'productBatchLocations', 'financialAccounts', 'financialTransactions', 'financialMovements'], 'rw', commit)
         : commit();

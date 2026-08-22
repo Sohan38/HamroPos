@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { BookOpen, RefreshCw } from 'lucide-react';
 import { useStorageProvider } from '@/storage/StorageContext';
-import { useFinancialAccounts } from '@/contexts/GlobalProviders';
+import { useCredit, useExpenses, useFinancialAccounts, usePurchases, useSales } from '@/contexts/GlobalProviders';
 import { FinancialPostingService, type FinancialDaybookRow } from '@/services/financialPostingService';
 import { useCurrency } from '@/hooks/useCurrency';
 import { Button } from '@/components/ui/button';
@@ -11,11 +11,56 @@ import { Input } from '@/components/ui/input';
 export default function DaybookList() {
     const storage = useStorageProvider();
     const { items: accounts, refresh: refreshAccounts } = useFinancialAccounts();
+    const { items: sales } = useSales();
+    const { items: purchases } = usePurchases();
+    const { items: expenses } = useExpenses();
+    const { items: credits } = useCredit();
     const { format } = useCurrency();
     const [rows, setRows] = useState<FinancialDaybookRow[]>([]);
     const [allRows, setAllRows] = useState<FinancialDaybookRow[]>([]);
     const [start, setStart] = useState('');
     const [end, setEnd] = useState('');
+
+    const sourceLabel = (row: FinancialDaybookRow) => {
+        const labels: Record<string, string> = {
+            sale: 'Sales',
+            purchase: 'Purchases',
+            expense: 'Expenses',
+            customer_payment: 'Customer payment',
+            supplier_payment: 'Supplier payment',
+            transfer: 'Account transfer',
+            opening_balance: 'Opening balance',
+            financial_reversal: 'Correction / reversal',
+        };
+        return row.transaction.reference
+            ? `${labels[row.transaction.sourceType] ?? 'Financial entry'} · ${row.transaction.reference}`
+            : labels[row.transaction.sourceType] ?? 'Financial entry';
+    };
+
+    const descriptionLabel = (row: FinancialDaybookRow) => {
+        if (!/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(row.transaction.description.match(/\b[0-9a-f-]{36}\b/i)?.[0] ?? '')) {
+            return row.transaction.description;
+        }
+
+        if (row.transaction.sourceType === 'purchase') {
+            const purchase = purchases.find(item => item.id === row.transaction.sourceId);
+            return `Purchase${purchase?.invoiceNumber ? ` ${purchase.invoiceNumber}` : ''}${purchase?.supplierName ? ` · ${purchase.supplierName}` : ''}`;
+        }
+        if (row.transaction.sourceType === 'sale') {
+            const sale = sales.find(item => item.id === row.transaction.sourceId);
+            return `Sale${sale?.customerName ? ` · ${sale.customerName}` : ''}`;
+        }
+        if (row.transaction.sourceType === 'expense') {
+            return expenses.find(item => item.id === row.transaction.sourceId)?.description ?? 'Expense';
+        }
+        if (row.transaction.sourceType === 'customer_payment') {
+            const credit = credits.find(item => item.id === row.transaction.sourceId);
+            return `Customer payment${credit?.customerName ? ` · ${credit.customerName}` : ''}`;
+        }
+        if (row.transaction.sourceType === 'supplier_payment') return 'Supplier payment';
+        if (row.transaction.sourceType === 'financial_reversal') return 'Correction / reversal';
+        return row.transaction.type === 'transfer' ? 'Account transfer' : 'Financial entry';
+    };
 
     const load = async () => {
         await FinancialPostingService.ensureDefaultAccounts(storage);
@@ -29,7 +74,7 @@ export default function DaybookList() {
 
     const balances = useMemo(() => accounts.map(account => ({
         account,
-        balance: rows
+        balance: allRows
             .filter(row => row.movement.accountId === account.id)
             .reduce((sum, row) => sum + row.movement.amount, 0),
     })), [accounts, allRows]);
@@ -65,7 +110,7 @@ export default function DaybookList() {
                     <table className="w-full text-sm">
                         <thead className="border-b bg-muted/40"><tr className="text-left"><th className="p-3">Date</th><th className="p-3">Description</th><th className="p-3">Account</th><th className="p-3">Source</th><th className="p-3 text-right">Movement</th></tr></thead>
                         <tbody className="divide-y">
-                            {rows.map(row => <tr key={row.movement.id}><td className="p-3 whitespace-nowrap">{new Date(row.movement.date).toLocaleString()}</td><td className="p-3">{row.transaction.description}</td><td className="p-3">{row.account?.name ?? row.movement.accountId}</td><td className="p-3">{row.transaction.sourceType} · {row.transaction.sourceId}</td><td className={`p-3 text-right font-medium ${row.movement.amount >= 0 ? 'text-emerald-600' : 'text-destructive'}`}>{row.movement.amount >= 0 ? '+' : ''}{format(row.movement.amount)}</td></tr>)}
+                            {rows.map(row => <tr key={row.movement.id}><td className="p-3 whitespace-nowrap">{new Date(row.movement.date).toLocaleString()}</td><td className="p-3">{descriptionLabel(row)}</td><td className="p-3">{row.account?.name ?? 'Unassigned account'}</td><td className="p-3">{sourceLabel(row)}</td><td className={`p-3 text-right font-medium ${row.movement.amount >= 0 ? 'text-emerald-600' : 'text-destructive'}`}>{row.movement.amount >= 0 ? '+' : ''}{format(row.movement.amount)}</td></tr>)}
                             {rows.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-muted-foreground">No posted movements for this period.</td></tr>}
                         </tbody>
                     </table>

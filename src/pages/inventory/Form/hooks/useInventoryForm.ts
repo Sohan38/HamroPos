@@ -547,25 +547,6 @@ export function useInventoryForm(
                 }
 
                 try {
-                    if (createdPurchaseIds.length === 0) {
-                        const totalQty = Number(calculatedStock || (data.quantity || 0)) || 0;
-                        if (totalQty > 0) {
-                            try {
-                                const fallbackSupplier = resolvedSupplierIds[0] ?? undefined;
-                                const fallbackLocationId = resolvedSupplierStocks[0]?.locationId || 'loc-default';
-                                const created = await createPurchasesForNewItem(storage, [{
-                                    productId: newId!, quantity: totalQty,
-                                    purchaseRate: productData.purchaseRate || undefined,
-                                    supplierId: fallbackSupplier,
-                                    notes: 'Opening stock from product creation',
-                                    locationId: fallbackLocationId,
-                                }] as any);
-                                created.forEach(p => { if (p?.id) createdPurchaseIds.push(p.id); });
-                            } catch (err) {
-                                console.error('InventoryForm: fallback createPurchase failed', err);
-                            }
-                        }
-                    }
                     await refreshPurchases();
                     toast.success('Product added successfully');
                 } catch (err) {

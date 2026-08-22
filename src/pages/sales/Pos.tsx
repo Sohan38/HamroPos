@@ -610,6 +610,7 @@ export default function SalesPos() {
           paymentMethod: saved.paymentMethod,
           splitPayments: saved.splitPayments,
           customerId: saved.customerId,
+          customerName: saved.customerName,
           locationId: 'loc-default',
         });
         return saved;

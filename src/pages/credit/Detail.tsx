@@ -124,6 +124,7 @@ export default function CreditDetail() {
           date: newPayment.date,
           amount: amt,
           paymentMethod,
+          customerName: credit.customerName,
         });
       };
       if (storage.transaction) {

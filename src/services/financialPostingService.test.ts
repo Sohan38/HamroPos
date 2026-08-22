@@ -67,6 +67,18 @@ describe('FinancialPostingService', () => {
         ]);
     });
 
+    it('uses professional supplier payment descriptions without source IDs', async () => {
+        const { storage, data } = makeStorage();
+        await FinancialPostingService.ensureDefaultAccounts(storage);
+        await FinancialPostingService.postSupplierPayment(storage, {
+            id: 'payment-1', purchaseId: 'purchase-internal-id', date: '2026-08-22T10:00:00.000Z',
+            amount: 1200, paymentMethod: 'cash', invoiceNumber: 'PUR-1042', supplierName: 'Acme Supplies',
+        });
+
+        expect(data.financialTransactions[0].description).toBe('Supplier payment · PUR-1042 · Acme Supplies');
+        expect(data.financialTransactions[0].description).not.toContain('purchase-internal-id');
+    });
+
     it('reverses movements without mutating the original movement', async () => {
         const { storage, data } = makeStorage();
         const original = await FinancialPostingService.postTransfer(storage, {

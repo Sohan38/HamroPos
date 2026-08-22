@@ -150,6 +150,8 @@ export class FinancialPostingService {
             splitPayments?: Array<{ method: PaymentMethod; amount: number }>;
             customerId?: string | null;
             locationId?: string | null;
+            invoiceNumber?: string | null;
+            customerName?: string | null;
         },
     ) {
         await this.ensureDefaultAccounts(storage);
@@ -188,7 +190,7 @@ export class FinancialPostingService {
         return this.post(storage, {
             date: sale.date,
             type: sale.paymentMethod === 'credit' ? 'customer_credit' : 'sale_payment',
-            description: `Sale ${sale.id}`,
+            description: `Sale${sale.invoiceNumber ? ` ${sale.invoiceNumber}` : ''}${sale.customerName ? ` · ${sale.customerName}` : ''}`,
             sourceType: 'sale',
             sourceId: sale.id,
             idempotencyKey: `sale:${sale.id}:payment`,
@@ -225,6 +227,7 @@ export class FinancialPostingService {
         amount: number;
         paymentMethod: Exclude<PaymentMethod, 'split' | 'credit'>;
         creditId: string;
+        customerName?: string | null;
     }) {
         await this.ensureDefaultAccounts(storage);
         const accountId = await this.resolvePaymentAccount(storage, payment.paymentMethod);
@@ -232,7 +235,7 @@ export class FinancialPostingService {
         return this.post(storage, {
             date: payment.date,
             type: 'customer_payment',
-            description: `Customer payment for ${payment.creditId}`,
+            description: `Customer payment${payment.customerName ? ` · ${payment.customerName}` : ''}`,
             sourceType: 'customer_payment',
             sourceId: payment.id,
             idempotencyKey: `customer-payment:${payment.id}`,
@@ -250,6 +253,8 @@ export class FinancialPostingService {
         paymentMethod: Exclude<PaymentMethod, 'split' | 'credit'>;
         purchaseId: string;
         eventKey?: string;
+        invoiceNumber?: string | null;
+        supplierName?: string | null;
     }) {
         await this.ensureDefaultAccounts(storage);
         const accountId = await this.resolvePaymentAccount(storage, payment.paymentMethod);
@@ -257,7 +262,7 @@ export class FinancialPostingService {
         return this.post(storage, {
             date: payment.date,
             type: 'supplier_payment',
-            description: `Supplier payment for ${payment.purchaseId}`,
+            description: `Supplier payment${payment.invoiceNumber ? ` · ${payment.invoiceNumber}` : ''}${payment.supplierName ? ` · ${payment.supplierName}` : ''}`,
             sourceType: 'supplier_payment',
             sourceId: payment.id,
             idempotencyKey: payment.eventKey ?? `supplier-payment:${payment.id}`,
@@ -276,6 +281,8 @@ export class FinancialPostingService {
         paymentMethod: PaymentMethod;
         status?: string;
         version?: number;
+        invoiceNumber?: string | null;
+        supplierName?: string | null;
     }) {
         await this.ensureDefaultAccounts(storage);
         if (purchase.status !== 'received') return null;
@@ -283,7 +290,7 @@ export class FinancialPostingService {
         await this.post(storage, {
             date: purchase.date,
             type: 'purchase_receipt',
-            description: `Purchase ${purchase.id}`,
+            description: `Purchase${purchase.invoiceNumber ? ` ${purchase.invoiceNumber}` : ''}${purchase.supplierName ? ` · ${purchase.supplierName}` : ''}`,
             sourceType: 'purchase',
             sourceId: purchase.id,
             idempotencyKey: `purchase:${purchase.id}:receipt:v${purchase.version ?? 1}`,
@@ -300,6 +307,8 @@ export class FinancialPostingService {
             amount: paidAmount,
             paymentMethod: purchase.paymentMethod as Exclude<PaymentMethod, 'split' | 'credit'>,
             eventKey: `purchase:${purchase.id}:payment:v${purchase.version ?? 1}`,
+            invoiceNumber: purchase.invoiceNumber,
+            supplierName: purchase.supplierName,
         });
     }
 
@@ -314,7 +323,7 @@ export class FinancialPostingService {
         return this.post(storage, {
             date: transfer.date,
             type: 'transfer',
-            description: transfer.description ?? `Transfer ${transfer.id}`,
+            description: transfer.description ?? 'Account transfer',
             sourceType: 'transfer',
             sourceId: transfer.id,
             idempotencyKey: `transfer:${transfer.id}`,
