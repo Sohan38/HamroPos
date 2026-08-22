@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
+import Dexie from 'dexie';
 import type {
     FinancialAccount,
     FinancialMovement,
@@ -375,6 +376,11 @@ export class FinancialPostingService {
         input: PostFinancialTransactionInput,
     ): Promise<FinancialTransaction> {
         const work = () => postWithinTransaction(storage, input);
+        // If already inside a Dexie transaction (e.g. called from purchaseService.persistTransition),
+        // run directly — opening a nested storage.transaction() causes the outer promise to hang.
+        if (Dexie.currentTransaction) {
+            return work();
+        }
         if (storage.transaction) {
             return storage.transaction([TRANSACTIONS_KEY, MOVEMENTS_KEY, ACCOUNTS_KEY, 'settings'], 'rw', work);
         }
