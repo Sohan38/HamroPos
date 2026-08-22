@@ -30,7 +30,7 @@ import {
 } from 'lucide-react';
 import { format as formatDate, parseISO } from 'date-fns';
 import { useStorageProvider } from '@/storage/StorageContext';
-import { useFinancialAccounts } from '@/contexts/GlobalProviders';
+import { useFinancialAccounts, useSales } from '@/contexts/GlobalProviders';
 import {
   FinancialPostingService,
   type FinancialDaybookRow,
@@ -71,6 +71,7 @@ export default function AccountsList() {
   const [, setLocation] = useLocation();
   const storage = useStorageProvider();
   const { items: accounts, refresh: refreshAccounts } = useFinancialAccounts();
+  const { items: sales } = useSales();
   const { format } = useCurrency();
 
   const [ledgerRows, setLedgerRows] = useState<FinancialDaybookRow[]>([]);
@@ -195,6 +196,46 @@ export default function AccountsList() {
       totalPayables,
     };
   }, [accounts, accountBalancesMap]);
+
+  // Channel metrics: QR Collections
+  const qrStats = useMemo(() => {
+    const todayStr = formatDate(new Date(), 'yyyy-MM-dd');
+    let totalQr = 0;
+    let todayQr = 0;
+    const perAccount = new Map<string, number>();
+
+    const targetBank = accounts.find(a => a.type === 'bank' && a.paymentMethods?.includes('qr')) ||
+                       accounts.find(a => a.id === 'financial-account-bank') ||
+                       accounts.find(a => a.type === 'bank');
+
+    sales.forEach(sale => {
+      if (sale.deletedAt) return;
+      let saleQrAmount = 0;
+      if (sale.paymentMethod === 'qr') {
+        saleQrAmount = Number(sale.grandTotal || 0);
+      } else if (sale.splitPayments && sale.splitPayments.length > 0) {
+        const qrSplit = sale.splitPayments.find(sp => sp.method === 'qr');
+        if (qrSplit) saleQrAmount = Number(qrSplit.amount || 0);
+      }
+
+      if (saleQrAmount > 0) {
+        totalQr += saleQrAmount;
+        let saleDateStr = (sale.date || '').slice(0, 10);
+        try {
+          const parsed = parseISO(sale.date);
+          if (!isNaN(parsed.getTime())) saleDateStr = formatDate(parsed, 'yyyy-MM-dd');
+        } catch {}
+        if (saleDateStr === todayStr) {
+          todayQr += saleQrAmount;
+        }
+        if (targetBank) {
+          perAccount.set(targetBank.id, (perAccount.get(targetBank.id) ?? 0) + saleQrAmount);
+        }
+      }
+    });
+
+    return { totalQr, todayQr, perAccount };
+  }, [sales, accounts]);
 
   // Filtered Accounts
   const filteredAccounts = useMemo(() => {
@@ -525,17 +566,17 @@ export default function AccountsList() {
           </CardContent>
         </Card>
 
-        <Card className="bg-card shadow-xs">
+        <Card className="bg-gradient-to-br from-purple-500/10 via-card to-card border-purple-500/20">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-muted-foreground">Digital / QR</span>
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Fonepay QR Total</span>
               <QrCode className="size-4 text-purple-600" />
             </div>
-            <p className="text-lg md:text-xl font-bold text-foreground mt-1">
-              {format(summaryTotals.totalDigital)}
+            <p className="text-lg md:text-xl font-bold text-purple-600 dark:text-purple-400 mt-1">
+              +{format(qrStats.totalQr)}
             </p>
             <p className="text-[11px] text-muted-foreground mt-0.5">
-              eSewa, Khalti, Card
+              Today: <span className="font-semibold text-foreground">+{format(qrStats.todayQr)}</span> · Direct Bank Inflow
             </p>
           </CardContent>
         </Card>
@@ -689,6 +730,16 @@ export default function AccountsList() {
                     <div className="text-xs bg-muted/40 px-2.5 py-1 rounded-md font-mono text-muted-foreground flex justify-between">
                       <span>A/C:</span>
                       <span className="font-semibold text-foreground">{acc.accountNumber}</span>
+                    </div>
+                  )}
+
+                  {/* QR Inflow Channel Breakdown if Bank receives QR */}
+                  {acc.type === 'bank' && (qrStats.perAccount.get(acc.id) ?? 0) > 0 && (
+                    <div className="bg-purple-500/5 border border-purple-500/20 px-2.5 py-1 rounded-md text-[11px] flex justify-between items-center text-purple-700 dark:text-purple-300">
+                      <span className="flex items-center gap-1 font-medium">
+                        <QrCode className="size-3" /> Fonepay QR Inflow:
+                      </span>
+                      <span className="font-bold">+{format(qrStats.perAccount.get(acc.id) ?? 0)}</span>
                     </div>
                   )}
 

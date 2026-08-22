@@ -220,8 +220,17 @@ export default function DaybookList() {
         return { label: 'Purchase Inward', badge: 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20', icon: Truck };
       case 'supplier_payment':
         return { label: 'Supplier Payment', badge: 'bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/20', icon: Wallet };
-      case 'sale':
-        return { label: 'Sales Revenue', badge: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20', icon: ShoppingCart };
+      case 'sale': {
+        const sale = sales.find(s => s.id === row.transaction.sourceId);
+        const isQr = sale?.paymentMethod === 'qr' || sale?.splitPayments?.some(sp => sp.method === 'qr');
+        return {
+          label: isQr ? '⚡ Fonepay QR Sale' : 'Sales Revenue',
+          badge: isQr
+            ? 'bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/20'
+            : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20',
+          icon: isQr ? QrCode : ShoppingCart,
+        };
+      }
       case 'customer_payment':
         return { label: 'Customer Settlement', badge: 'bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/20', icon: UserCheck };
       case 'expense':
@@ -400,18 +409,29 @@ export default function DaybookList() {
   const stats = useMemo(() => {
     let totalInflow = 0;
     let totalOutflow = 0;
+    let qrInflow = 0;
     filteredRows.forEach(row => {
       const amt = Number(row.movement.amount || 0);
-      if (amt > 0) totalInflow += amt;
-      else if (amt < 0) totalOutflow += Math.abs(amt);
+      if (amt > 0) {
+        totalInflow += amt;
+        if (row.transaction.sourceType === 'sale') {
+          const sale = sales.find(s => s.id === row.transaction.sourceId);
+          if (sale && (sale.paymentMethod === 'qr' || sale.splitPayments?.some(sp => sp.method === 'qr'))) {
+            qrInflow += amt;
+          }
+        }
+      } else if (amt < 0) {
+        totalOutflow += Math.abs(amt);
+      }
     });
     return {
       totalInflow,
       totalOutflow,
       netMovement: totalInflow - totalOutflow,
+      qrInflow,
       count: filteredRows.length,
     };
-  }, [filteredRows]);
+  }, [filteredRows, sales]);
 
   // Export to CSV
   const handleExportCSV = () => {
@@ -598,14 +618,17 @@ export default function DaybookList() {
           </CardContent>
         </Card>
 
-        <Card className="bg-muted/40">
+        <Card className="bg-gradient-to-br from-purple-500/10 via-card to-card border-purple-500/20">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-muted-foreground">Movements</span>
-              <Layers className="size-4 text-muted-foreground" />
+              <span className="text-xs font-medium text-muted-foreground">⚡ QR Inflow</span>
+              <QrCode className="size-4 text-purple-600" />
             </div>
-            <p className="text-lg md:text-xl font-bold text-foreground mt-1">
-              {stats.count} <span className="text-xs font-normal text-muted-foreground">entries</span>
+            <p className="text-lg md:text-xl font-bold text-purple-600 dark:text-purple-400 mt-1">
+              +{format(stats.qrInflow)}
+            </p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              {stats.count} movements in period
             </p>
           </CardContent>
         </Card>
