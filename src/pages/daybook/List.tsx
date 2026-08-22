@@ -175,7 +175,11 @@ export default function DaybookList() {
         !key ||
         key === 'financialTransactions' ||
         key === 'financialMovements' ||
-        key === 'financialAccounts'
+        key === 'financialAccounts' ||
+        key === 'sales' ||
+        key === 'purchases' ||
+        key === 'credit' ||
+        key === 'expenses'
       ) {
         void loadData();
       }
@@ -327,44 +331,57 @@ export default function DaybookList() {
 
   // Filtered rows memo
   const filteredRows = useMemo(() => {
-    return allRows.filter(row => {
-      // 1. Date Range
-      if (startDate && row.movement.date < `${startDate}T00:00:00.000Z`) return false;
-      if (endDate && row.movement.date > `${endDate}T23:59:59.999Z`) return false;
+    return allRows
+      .filter(row => {
+        // 1. Date Range (using local calendar date for precise matching)
+        if (startDate || endDate) {
+          let rowDateStr = row.movement.date.slice(0, 10);
+          try {
+            const parsed = parseISO(row.movement.date);
+            if (!isNaN(parsed.getTime())) {
+              rowDateStr = formatDate(parsed, 'yyyy-MM-dd');
+            }
+          } catch {
+            // fallback
+          }
+          if (startDate && rowDateStr < startDate) return false;
+          if (endDate && rowDateStr > endDate) return false;
+        }
 
-      // 2. Account filter
-      if (selectedAccountId !== 'all' && row.movement.accountId !== selectedAccountId) {
-        return false;
-      }
+        // 2. Account filter
+        if (selectedAccountId !== 'all' && row.movement.accountId !== selectedAccountId) {
+          return false;
+        }
 
-      // 3. Source Type filter
-      if (selectedSourceType !== 'all' && row.transaction.sourceType !== selectedSourceType) {
-        return false;
-      }
+        // 3. Source Type filter
+        if (selectedSourceType !== 'all' && row.transaction.sourceType !== selectedSourceType) {
+          return false;
+        }
 
-      // 4. Flow filter
-      if (flowFilter === 'inflow' && row.movement.amount <= 0) return false;
-      if (flowFilter === 'outflow' && row.movement.amount >= 0) return false;
+        // 4. Flow filter
+        if (flowFilter === 'inflow' && row.movement.amount <= 0) return false;
+        if (flowFilter === 'outflow' && row.movement.amount >= 0) return false;
 
-      // 5. Search term
-      if (debouncedSearch) {
-        const desc = (row.movement.description || row.transaction.description || '').toLowerCase();
-        const profDesc = getProfessionalDescription(row).toLowerCase();
-        const accountName = (row.account?.name || '').toLowerCase();
-        const ref = (row.transaction.reference || '').toLowerCase();
-        const amountStr = String(Math.abs(row.movement.amount));
-        const matches =
-          desc.includes(debouncedSearch) ||
-          profDesc.includes(debouncedSearch) ||
-          accountName.includes(debouncedSearch) ||
-          ref.includes(debouncedSearch) ||
-          amountStr.includes(debouncedSearch);
+        // 5. Search term
+        if (debouncedSearch) {
+          const desc = (row.movement.description || row.transaction.description || '').toLowerCase();
+          const profDesc = getProfessionalDescription(row).toLowerCase();
+          const accountName = (row.account?.name || '').toLowerCase();
+          const ref = (row.transaction.reference || '').toLowerCase();
+          const amountStr = String(Math.abs(row.movement.amount));
+          const matches =
+            desc.includes(debouncedSearch) ||
+            profDesc.includes(debouncedSearch) ||
+            accountName.includes(debouncedSearch) ||
+            ref.includes(debouncedSearch) ||
+            amountStr.includes(debouncedSearch);
 
-        if (!matches) return false;
-      }
+          if (!matches) return false;
+        }
 
-      return true;
-    });
+        return true;
+      })
+      .sort((a, b) => b.movement.date.localeCompare(a.movement.date));
   }, [
     allRows,
     startDate,
@@ -403,9 +420,9 @@ export default function DaybookList() {
     const csvLines = [headers.join(',')];
 
     filteredRows.forEach(row => {
-      const d = new Date(row.movement.date);
+      const d = parseISO(row.movement.date);
       const dateStr = formatDate(d, 'yyyy-MM-dd');
-      const timeStr = formatDate(d, 'HH:mm:ss');
+      const timeStr = formatDate(d, 'hh:mm a');
       const desc = `"${getProfessionalDescription(row).replace(/"/g, '""')}"`;
       const src = `"${getSourceDisplay(row).label}"`;
       const acc = `"${(row.account?.name || 'Unassigned').replace(/"/g, '""')}"`;

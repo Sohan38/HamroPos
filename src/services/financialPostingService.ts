@@ -298,6 +298,7 @@ export class FinancialPostingService {
         grandTotal: number;
         paidAmount?: number;
         paymentMethod: PaymentMethod;
+        payments?: any[];
         status?: string;
         version?: number;
         invoiceNumber?: string | null;
@@ -315,6 +316,31 @@ export class FinancialPostingService {
             idempotencyKey: `purchase:${purchase.id}:receipt:v${purchase.version ?? 1}`,
             movements: [{ accountId: 'financial-account-payables', amount: payableAmount }],
         });
+
+        // 1. If explicit payments list exists (from settlements or multiple installments)
+        if (purchase.payments && purchase.payments.length > 0) {
+            let lastResult = null;
+            for (const payment of purchase.payments) {
+                const pmtAmount = Number(payment.amount) || 0;
+                if (pmtAmount <= 0) continue;
+                const method = (payment.paymentMethod && isAccountPaymentMethod(payment.paymentMethod))
+                    ? payment.paymentMethod
+                    : (isAccountPaymentMethod(purchase.paymentMethod) ? purchase.paymentMethod : 'cash');
+                lastResult = await this.postSupplierPayment(storage, {
+                    id: payment.id,
+                    purchaseId: purchase.id,
+                    date: payment.date || purchase.date,
+                    amount: pmtAmount,
+                    paymentMethod: method,
+                    eventKey: `purchase:${purchase.id}:payment:${payment.id}:v${purchase.version ?? 1}`,
+                    invoiceNumber: purchase.invoiceNumber,
+                    supplierName: purchase.supplierName,
+                });
+            }
+            return lastResult;
+        }
+
+        // 2. Otherwise if single upfront payment was made
         const paidAmount = purchase.paymentMethod === 'credit' || purchase.paymentMethod === 'split'
             ? 0
             : Math.min(Math.max(0, Number(purchase.paidAmount) || 0), payableAmount);

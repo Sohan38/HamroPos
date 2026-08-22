@@ -27,7 +27,16 @@ export function DateGroupedList<T>({
     const groups = useMemo(() => {
         const map = new Map<string, T[]>();
         items.forEach((item) => {
-            const dateStr = getDate(item).slice(0, 10);
+            const raw = getDate(item);
+            let dateStr = raw.slice(0, 10);
+            try {
+                const parsed = parseISO(raw);
+                if (!isNaN(parsed.getTime())) {
+                    dateStr = formatDate(parsed, 'yyyy-MM-dd');
+                }
+            } catch {
+                // fallback to slice
+            }
             if (!map.has(dateStr)) map.set(dateStr, []);
             map.get(dateStr)!.push(item);
         });

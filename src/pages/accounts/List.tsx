@@ -131,6 +131,27 @@ export default function AccountsList() {
     void loadData();
   }, [loadData]);
 
+  // Listen to external storage updates so POS sales, Credit settlements, Payables, etc. instantly reflect
+  useEffect(() => {
+    const handleStorageChange = (e: any) => {
+      const key = e.detail?.key;
+      if (
+        !key ||
+        key === 'financialTransactions' ||
+        key === 'financialMovements' ||
+        key === 'financialAccounts' ||
+        key === 'sales' ||
+        key === 'purchases' ||
+        key === 'credit' ||
+        key === 'expenses'
+      ) {
+        void loadData();
+      }
+    };
+    window.addEventListener('sohan-storage-changed', handleStorageChange);
+    return () => window.removeEventListener('sohan-storage-changed', handleStorageChange);
+  }, [loadData]);
+
   // Compute live balances per account
   const accountBalancesMap = useMemo(() => {
     const map = new Map<string, number>();
