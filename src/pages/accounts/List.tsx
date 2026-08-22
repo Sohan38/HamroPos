@@ -531,7 +531,7 @@ export default function AccountsList() {
               {format(summaryTotals.totalLiquid)}
             </p>
             <p className="text-[11px] text-muted-foreground mt-0.5">
-              Cash + Banks + Sahakari + QR
+              Cash + Banks + Sahakari
             </p>
           </CardContent>
         </Card>
@@ -546,7 +546,7 @@ export default function AccountsList() {
               {format(summaryTotals.totalCash)}
             </p>
             <p className="text-[11px] text-muted-foreground mt-0.5">
-              Counter & Drawer cash
+              Counter & drawer cash
             </p>
           </CardContent>
         </Card>
@@ -554,29 +554,29 @@ export default function AccountsList() {
         <Card className="bg-card shadow-xs">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-muted-foreground">Bank & Sahakari</span>
+              <span className="text-xs font-medium text-muted-foreground">Bank Accounts</span>
               <Landmark className="size-4 text-blue-600" />
             </div>
             <p className="text-lg md:text-xl font-bold text-foreground mt-1">
-              {format(summaryTotals.totalBank + summaryTotals.totalCooperative)}
+              {format(summaryTotals.totalBank)}
             </p>
             <p className="text-[11px] text-muted-foreground mt-0.5">
-              Banks: {format(summaryTotals.totalBank)} · Sahakari: {format(summaryTotals.totalCooperative)}
+              Commercial bank balances
             </p>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-purple-500/10 via-card to-card border-purple-500/20">
+        <Card className="bg-card shadow-xs">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Fonepay QR Total</span>
-              <QrCode className="size-4 text-purple-600" />
+              <span className="text-xs font-medium text-muted-foreground">Sahakari</span>
+              <PiggyBank className="size-4 text-amber-600" />
             </div>
-            <p className="text-lg md:text-xl font-bold text-purple-600 dark:text-purple-400 mt-1">
-              +{format(qrStats.totalQr)}
+            <p className="text-lg md:text-xl font-bold text-foreground mt-1">
+              {format(summaryTotals.totalCooperative)}
             </p>
             <p className="text-[11px] text-muted-foreground mt-0.5">
-              Today: <span className="font-semibold text-foreground">+{format(qrStats.todayQr)}</span> · Direct Bank Inflow
+              Cooperative savings & deposits
             </p>
           </CardContent>
         </Card>
@@ -591,7 +591,7 @@ export default function AccountsList() {
             { id: 'cash', label: 'Cash' },
             { id: 'bank', label: 'Banks' },
             { id: 'cooperative', label: 'Sahakari' },
-            { id: 'digital', label: 'Digital / QR' },
+            { id: 'digital', label: 'Digital Wallets' },
             { id: 'other', label: 'Receivables / Payables' },
           ].map(tab => (
             <button
