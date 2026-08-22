@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'wouter';
-import { Home, Package, ShoppingCart, Hotel, Truck, FileText, UtensilsCrossed, Receipt, Wallet, Banknote, Users, Settings, ArrowUpFromLine, ArrowLeftRight, Utensils, Factory } from 'lucide-react';
+import { Home, Package, ShoppingCart, Hotel, Truck, FileText, UtensilsCrossed, Receipt, Wallet, Banknote, Users, Settings, ArrowUpFromLine, ArrowLeftRight, Utensils, Factory, BookOpen } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useFeature } from '@/hooks/useFeature';
@@ -35,6 +35,7 @@ export function DesktopSidebar() {
       title: 'Finance',
       items: [
         { href: '/expenses', label: 'Expenses', icon: Receipt, show: true },
+        { href: '/daybook', label: 'Daybook', icon: BookOpen, show: true },
         { href: '/cash-book', label: 'Cash Book', icon: Wallet, show: true },
         { href: '/credit', label: 'Credit (Udharo)', icon: Banknote, show: true },
         { href: '/payables', label: 'Payables', icon: ArrowUpFromLine, show: true },

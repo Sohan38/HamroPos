@@ -38,6 +38,7 @@ export function BottomNav() {
     { href: '/inventory/consumption', label: 'Consumption', icon: Utensils, show: isConsumptionEnabled },
     { href: '/restaurant', label: 'Restaurant', icon: UtensilsCrossed, show: isRestaurantEnabled },
     { href: '/expenses', label: 'Expenses', icon: Receipt, show: true },
+    { href: '/daybook', label: 'Daybook', icon: FileText, show: true },
     { href: '/cash-book', label: 'Cash Book', icon: Wallet, show: true },
     { href: '/credit', label: 'Credit', icon: Banknote, show: true },
     { href: '/payables', label: 'Payables', icon: ArrowUpFromLine, show: true },
